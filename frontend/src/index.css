@@ -1,0 +1,107 @@
+/* ============================================
+   KILANI RH — PALETTE LOGO EXACTE
+   Or kaki sable #9A8A50 + harmoniques chauds
+   Zéro bleu. Tons terreux institutionnels.
+   ============================================ */
+:root {
+  /* ── Or Kilani (extrait du logo) ── */
+  --gold:          #9A8A50;   /* couleur logo exacte */
+  --gold-deep:     #7A6C3A;   /* foncé pour hover/accent */
+  --gold-mid:      #B8A86A;   /* intermédiaire */
+  --gold-light:    #CFBF80;   /* clair */
+  --gold-pale:     #EDE5CA;   /* très clair, fond badges */
+  --gold-subtle:   #F7F3E8;   /* fond hover léger */
+  --gold-wash:     #FAF7EF;   /* fond de surface chaud */
+
+  /* ── Neutres chauds (teintés or) ── */
+  --white:         #FFFFFF;
+  --surface:       #F8F5EE;   /* blanc cassé chaud */
+  --surface-alt:   #EEE9DB;   /* gris chaud */
+  --border:        #DDD5BE;   /* bordure chaude */
+  --border-light:  #E8E2D0;   /* bordure légère */
+
+  /* ── Textes ── */
+  --text-primary:   #2A2416;  /* quasi-noir chaud */
+  --text-secondary: #5C5038;  /* brun moyen */
+  --text-muted:     #9A8E72;  /* muted or-brun */
+
+  /* ── Sidebar sombre chaud (pas de bleu froid) ── */
+  --sidebar-bg:     #1E1A0E;  /* brun très sombre */
+  --sidebar-hover:  #2A2413;  /* hover */
+  --sidebar-active: #342E18;  /* actif */
+  --sidebar-text:   #B8A878;  /* texte sidebar */
+
+  /* ── Statuts — sans bleu ── */
+  /* Vert olive → validation/succès */
+  --green:      #5A7A3A;
+  --green-bg:   #ECF2E4;
+  --green-text: #3A5220;
+
+  /* Ambre → en attente */
+  --amber:      #C07820;
+  --amber-bg:   #FBF0DC;
+  --amber-text: #7A4C0A;
+
+  /* Terre/rouge → alerte */
+  --red:        #A04030;
+  --red-bg:     #F8EDEA;
+  --red-text:   #6A1E12;
+
+  /* Olive foncé → neutre/info (remplace bleu) */
+  --olive:      #6A7A3A;
+  --olive-bg:   #EEF2E0;
+  --olive-text: #3C4C18;
+
+  /* Brun doux → secondary (remplace purple) */
+  --umber:      #7A5A3A;
+  --umber-bg:   #F3EBE0;
+  --umber-text: #4A3018;
+
+  /* ── Typographie ── */
+  --font-body:    'DM Sans', sans-serif;
+  --font-display: 'DM Serif Display', serif;
+
+  /* ── Géométrie ── */
+  --radius-sm: 4px;
+  --radius:    8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ── Ombres chaudes ── */
+  --shadow-sm: 0 1px 3px rgba(60,40,10,.07), 0 1px 2px rgba(60,40,10,.05);
+  --shadow:    0 4px 12px rgba(60,40,10,.09);
+  --shadow-lg: 0 12px 32px rgba(60,40,10,.13);
+
+  --sidebar-w: 248px;
+  --header-h:  60px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+ul { list-style: none; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-fade { animation: fadeUp .22s ease; }
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
