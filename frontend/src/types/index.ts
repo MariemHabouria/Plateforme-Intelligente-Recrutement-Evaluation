@@ -1,5 +1,29 @@
 export type Role = 'superadmin' | 'manager' | 'directeur' | 'rh' | 'daf' | 'dga' | 'paie' | 'candidat'
 
+// 👉 AJOUTER CETTE INTERFACE
+export interface User {
+  id: string;
+  email: string;
+  nom: string;
+  prenom: string;
+  role: Role;
+  token?: string;
+}
+export interface User {
+  id: string;
+  email: string;
+  nom: string;
+  prenom: string;
+  role: Role;
+  token?: string;
+  mustChangePassword?: boolean;  // ← AJOUTER CETTE LIGNE
+  dernierConnexion?: string;
+  actif?: boolean;
+  departement?: string;
+  poste?: string;
+  telephone?: string;
+}
+
 export interface RoleConfig {
   label: string
   color: string
