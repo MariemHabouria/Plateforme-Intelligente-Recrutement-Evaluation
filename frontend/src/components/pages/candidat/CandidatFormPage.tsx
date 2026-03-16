@@ -49,7 +49,7 @@ export function CandidatFormPage() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Postuler — Chef de projet IT</h1>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Badge variant="gold">CDI</Badge>
-              <Badge variant="gray">📍 Tunis, Siège</Badge>
+              <Badge variant="umber">📍 Tunis, Siège</Badge>
               <Badge variant="gold">Réf. OFF-2026-011</Badge>
             </div>
           </div>
