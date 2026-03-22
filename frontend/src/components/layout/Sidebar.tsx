@@ -16,7 +16,7 @@ import {
   LogOut,
   User
 } from 'lucide-react'
-import { NAV_CONFIG, ROLES } from '@/lib/data'
+import { NAV_CONFIG } from '@/lib/data'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Role } from '@/types'
 
@@ -42,7 +42,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth() // ← Récupérer l'utilisateur connecté
   const [showUserMenu, setShowUserMenu] = useState(false)
   
   // Normalisation du rôle (SUPER_ADMIN → superadmin)
@@ -51,19 +51,42 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
     normalizedRole = 'superadmin'
   }
   
-  // Récupérer la configuration du rôle
-  const r = ROLES[normalizedRole as Role] || {
-    color: 'var(--gold)',
-    initials: normalizedRole?.slice(0,2).toUpperCase() || 'U',
-    name: normalizedRole || 'Utilisateur',
-    label: normalizedRole || 'Rôle inconnu'
-  }
-  
   // Récupérer les items de navigation pour ce rôle
   const nav = NAV_CONFIG[normalizedRole] || []
 
   const handleLogout = () => {
     logout()
+  }
+
+  // Obtenir les initiales de l'utilisateur connecté
+  const getUserInitials = () => {
+    if (user?.prenom && user?.nom) {
+      return (user.prenom[0] + user.nom[0]).toUpperCase()
+    }
+    return normalizedRole?.slice(0,2).toUpperCase() || 'U'
+  }
+
+  // Obtenir le nom complet de l'utilisateur connecté
+  const getUserFullName = () => {
+    if (user?.prenom && user?.nom) {
+      return `${user.prenom} ${user.nom}`
+    }
+    return normalizedRole || 'Utilisateur'
+  }
+
+  // Obtenir le label du rôle pour l'affichage
+  const getRoleLabel = () => {
+    const roleLabels: Record<string, string> = {
+      superadmin: 'Super Admin',
+      manager: 'Manager (N+1)',
+      directeur: 'Directeur (N+2)',
+      rh: 'RH / DRH',
+      daf: 'DAF',
+      dga: 'DGA / DG',
+      paie: 'Responsable Paie',
+      candidat: 'Candidat'
+    }
+    return roleLabels[normalizedRole] || normalizedRole
   }
 
   return (
@@ -208,13 +231,13 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
         )}
       </nav>
 
-      {/* ===== FOOTER UTILISATEUR AVEC DÉCONNEXION ===== */}
+      {/* ===== FOOTER UTILISATEUR AVEC NOM RÉEL ===== */}
       <div style={{ 
         padding: 12, 
         borderTop: '1px solid rgba(154,138,80,.15)',
         position: 'relative'
       }}>
-        {/* Bouton utilisateur */}
+        {/* Bouton utilisateur - Affiche les données RÉELLES de l'utilisateur connecté */}
         <div 
           style={{ 
             display: 'flex', 
@@ -231,7 +254,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             width: 32, 
             height: 32, 
             borderRadius: '50%', 
-            background: r.color || 'var(--gold)',
+            background: 'var(--gold)', // Couleur fixe ou basée sur le rôle
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
@@ -240,7 +263,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             color: '#fff', 
             flexShrink: 0 
           }}>
-            {r.initials || 'U'}
+            {getUserInitials()} {/* ← Initiales réelles de l'utilisateur */}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ 
@@ -251,7 +274,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               overflow: 'hidden', 
               textOverflow: 'ellipsis' 
             }}>
-              {r.name || normalizedRole}
+              {getUserFullName()} {/* ← Nom réel de l'utilisateur */}
             </div>
             <div style={{ 
               fontSize: 10, 
@@ -261,7 +284,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               textOverflow: 'ellipsis', 
               opacity: .7 
             }}>
-              {r.label || normalizedRole}
+              {getRoleLabel()} {/* ← Label du rôle */}
             </div>
           </div>
           <Settings size={13} style={{ color: 'var(--sidebar-text)', opacity: .5 }} />
@@ -284,7 +307,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             <button
               onClick={() => {
                 setShowUserMenu(false)
-                // Naviguer vers profil (à implémenter)
+                onNavigate('profile')
               }}
               style={{
                 width: '100%',
@@ -306,6 +329,31 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               <User size={14} />
               Mon profil
             </button>
+            <button
+  onClick={() => {
+    setShowUserMenu(false)
+    onNavigate('settings')  // ← AJOUTER CETTE LIGNE
+  }}
+  style={{
+    width: '100%',
+    padding: '10px 12px',
+    background: 'transparent',
+    border: 'none',
+    color: '#d6c89a',
+    textAlign: 'left',
+    fontSize: 12,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderBottom: '1px solid rgba(154,138,80,.2)',
+  }}
+  onMouseEnter={e => (e.currentTarget.style.background = 'var(--sidebar-hover)')}
+  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+>
+  <Settings size={14} />
+  Paramètres
+</button>
             <button
               onClick={() => {
                 setShowUserMenu(false)

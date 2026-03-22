@@ -3,16 +3,22 @@ import {
   getUsers,
   getUserById,
   updateUser,
+  updateOwnProfile,  // ← NOUVEAU : importer la fonction
   toggleUserStatus,
   deleteUser,
   resendInvite,
-  resetPassword
+  resetPassword,
 } from '../controllers/user.controller';
 import { protect, authorize } from '../middlewares/auth';
 
 const router = Router();
 
-// Toutes les routes sont protégées et réservées au Super Admin
+// ===== ROUTE PUBLIQUE (mais authentifiée) =====
+// N'importe quel utilisateur connecté peut modifier son propre profil
+router.patch('/profile', protect, updateOwnProfile);  // ← NOUVELLE ROUTE
+
+// ===== ROUTES SUPER ADMIN UNIQUEMENT =====
+// Toutes les routes après ce middleware sont réservées au Super Admin
 router.use(protect);
 router.use(authorize('SUPER_ADMIN'));
 

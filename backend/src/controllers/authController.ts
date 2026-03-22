@@ -87,10 +87,10 @@ export const register = async (req: Request, res: Response) => {
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({
-      success: true,
-      message: 'Utilisateur créé avec succès. Consultez la console pour les identifiants.',
-      user: userWithoutPassword
-    });
+  success: true,
+  message: 'Utilisateur créé avec succès. Un email a été envoyé avec ses identifiants.', // ← Changed!
+  user: userWithoutPassword
+});
 
   } catch (error) {
     console.error('❌ Erreur register:', error);

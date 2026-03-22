@@ -13,73 +13,98 @@ import { CandidatFormPage } from './components/pages/candidat/CandidatFormPage';
 import { SuperAdminPage } from './components/pages/superadmin/SuperAdminPage';
 import { LoginPage } from './components/pages/auth/LoginPage';
 import { ChangePasswordPage } from './components/pages/auth/ChangePasswordPage';
+import { ProfilePage } from './components/pages/profile/ProfilePage';
+import { SettingsPage } from './components/pages/settings/SettingsPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import type { Role } from './types';
 
-// Pages publiques (sans authentification)
-const PUBLIC_PAGES = ['candidature', 'change-password'];
-
-const PAGES_PER_ROLE: Record<Role, string> = {
-  superadmin: 'utilisateurs',
-  manager: 'dashboard',
-  directeur: 'dashboard',
-  rh: 'dashboard',
-  daf: 'dashboard',
-  dga: 'dashboard',
-  paie: 'contrats',
-  candidat: 'candidature',
-};
-
-const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config'];
-
 function AppContent() {
   const { user, loading } = useAuth();
-  const [page, setPage] = useState<string>(() => {
-    const path = window.location.pathname;
-    
-    // Pages publiques
-    if (path === '/candidature') return 'candidature';
-    if (path === '/change-password') return 'change-password';
-    
-    return 'login';
-  });
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
-  // Gestion des routes
+  // Mettre à jour le path quand l'URL change
   useEffect(() => {
-    const path = window.location.pathname;
+    const handlePathChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
     
-    // Pages publiques
-    if (path === '/candidature') {
-      setPage('candidature');
-      return;
-    }
-    
-    if (path === '/change-password') {
-      setPage('change-password');
-      return;
-    }
+    window.addEventListener('popstate', handlePathChange);
+    return () => window.removeEventListener('popstate', handlePathChange);
+  }, []);
 
-    // Si connecté
-    if (user) {
-      // Vérifier si le mot de passe doit être changé
-      if (user.mustChangePassword && path !== '/change-password') {
-        window.location.href = '/change-password';
-        return;
-      }
-      
-      setPage(PAGES_PER_ROLE[user.role as Role] || 'dashboard');
-    } else {
-      setPage('login');
-    }
-  }, [user]);
+  // Gestionnaire de navigation
+  const handleNavigate = (page: string) => {
+    window.history.pushState({}, '', `/${page}`);
+    setCurrentPath(`/${page}`);
+  };
 
   // Pages publiques
-  if (page === 'candidature') {
+  if (currentPath === '/candidature') {
     return <CandidatFormPage />;
   }
 
-  if (page === 'change-password') {
+  if (currentPath === '/change-password') {
     return <ChangePasswordPage />;
+  }
+
+  if (currentPath === '/profile') {
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar 
+          role={user?.role as Role} 
+          currentPage="profile" 
+          onNavigate={handleNavigate} 
+        />
+        <div style={{ 
+          marginLeft: 248, 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: '100vh', 
+          overflow: 'hidden' 
+        }}>
+          <Header page="profile" />
+          <main style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: 24,
+            backgroundColor: '#f8f9fa'
+          }}>
+            <ProfilePage />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentPath === '/settings') {
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar 
+          role={user?.role as Role} 
+          currentPage="settings" 
+          onNavigate={handleNavigate} 
+        />
+        <div style={{ 
+          marginLeft: 248, 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: '100vh', 
+          overflow: 'hidden' 
+        }}>
+          <Header page="settings" />
+          <main style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: 24,
+            backgroundColor: '#f8f9fa'
+          }}>
+            <SettingsPage />
+          </main>
+        </div>
+      </div>
+    );
   }
 
   // Loading
@@ -102,8 +127,8 @@ function AppContent() {
     return <LoginPage />;
   }
 
-  // Force le changement de mot de passe (sécurité supplémentaire)
-  if (user.mustChangePassword) {
+  // Vérifier changement de mot de passe
+  if (user.mustChangePassword && currentPath !== '/change-password') {
     window.location.href = '/change-password';
     return null;
   }
@@ -111,11 +136,14 @@ function AppContent() {
   // Rendu des pages protégées
   const renderPage = () => {
     const role = user.role as Role;
+    const page = currentPath.replace('/', '') || 'dashboard';
 
-    if (role === 'superadmin' && SUPERADMIN_PAGES.includes(page)) {
+    // Super Admin pages
+    if (role === 'superadmin' && ['utilisateurs', 'audit', 'workflows', 'ia_config'].includes(page)) {
       return <SuperAdminPage page={page} />;
     }
 
+    // Pages standards
     switch (page) {
       case 'dashboard':
         return <DashboardPage role={role} />;
@@ -134,6 +162,10 @@ function AppContent() {
       case 'validation':
         return <ValidationPage />;
       default:
+        // Rediriger vers dashboard si page inconnue
+        if (page !== 'profile' && page !== 'settings') {
+          window.location.href = '/dashboard';
+        }
         return <DashboardPage role={role} />;
     }
   };
@@ -142,8 +174,8 @@ function AppContent() {
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar 
         role={user.role as Role} 
-        currentPage={page} 
-        onNavigate={setPage} 
+        currentPage={currentPath.replace('/', '') || 'dashboard'} 
+        onNavigate={handleNavigate} 
       />
       <div style={{ 
         marginLeft: 248, 
@@ -153,7 +185,7 @@ function AppContent() {
         minHeight: '100vh', 
         overflow: 'hidden' 
       }}>
-        <Header page={page} />
+        <Header page={currentPath.replace('/', '') || 'dashboard'} />
         <main style={{ 
           flex: 1, 
           overflowY: 'auto', 
