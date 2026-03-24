@@ -5,10 +5,13 @@ import morgan from 'morgan';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import { testConnection } from './config/database';
-
+import { startRelanceJobs } from './jobs/relanceJob';
 // Routes
 import authRoutes from './routes/authRoutes';
-import userRoutes from './routes/user.routes';  // ← AJOUTER
+import userRoutes from './routes/user.routes';  
+import demandeRoutes from './routes/demandeRoutes';  // ← AJOUTER
+import adminRoutes from './routes/adminRoutes';      // ← AJOUTER
+
 
 dotenv.config();
 
@@ -29,6 +32,8 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);  // ← AJOUTER
+app.use('/api/demandes', demandeRoutes);  // ← AJOUTER
+app.use('/api/admin', adminRoutes);       // ← AJOUTER
 
 // Health check
 app.get('/health', (req, res) => {
@@ -61,6 +66,7 @@ const startServer = async () => {
         console.error('❌ Erreur au démarrage:', error);
         process.exit(1);
     }
+    startRelanceJobs();
 };
 
 startServer();

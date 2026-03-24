@@ -8,7 +8,7 @@ import { CandidatsPage } from './components/pages/candidats/CandidatsPage';
 import { EntretiensPage } from './components/pages/entretiens/EntretiensPage';
 import { EvaluationPage } from './components/pages/evaluation/EvaluationPage';
 import { ContratsPage } from './components/pages/contrats/ContratsPage';
-import { ValidationPage } from './components/pages/validation/ValidationPage';
+
 import { CandidatFormPage } from './components/pages/candidat/CandidatFormPage';
 import { SuperAdminPage } from './components/pages/superadmin/SuperAdminPage';
 import { LoginPage } from './components/pages/auth/LoginPage';
@@ -131,8 +131,7 @@ function AppContent() {
         return <EvaluationPage role={role} />;
       case 'contrats':
         return <ContratsPage />;
-      case 'validation':
-        return <ValidationPage />;
+
       default:
         return <DashboardPage role={role} />;
     }

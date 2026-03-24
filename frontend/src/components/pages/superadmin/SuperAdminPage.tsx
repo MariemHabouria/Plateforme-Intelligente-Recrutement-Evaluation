@@ -9,17 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, FormGroup, FormLabel, FormRow, Select } from '@/components/ui/FormField';
 import { userService, User } from '@/services/user.service';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLES } from '@/lib/data';
-import type { Role } from '@/types';
-
-// Données mockées pour audit (à remplacer par API plus tard)
-const AUDIT_LOG = [
-  { time: '14:32', user: 'S. Karoui',  action: 'Candidature acceptée',          detail: 'Aymen Bouslama — Chef projet IT' },
-  { time: '13:18', user: 'M. Kilani',  action: 'Demande soumise au circuit',    detail: 'DEM-2026-018 — Ingénieur Qualité' },
-  { time: '12:05', user: 'L. Marzouk', action: 'Données PE saisies',            detail: 'Amira Ben Salah — CDD' },
-  { time: '11:40', user: 'A. Kilani',  action: 'Évaluation PE validée',         detail: 'Hana Missaoui — Confirmation' },
-  { time: '10:22', user: 'R. Ben Ali', action: 'Demande refusée (budget)',       detail: 'DEM-2026-014 — Budget dépassé' },
-];
+import { CircuitConfigPage } from './CircuitConfigPage';
 
 // Configuration des rôles (doit correspondre au backend)
 const ROLE_OPTIONS = [
@@ -36,7 +26,7 @@ const ROLE_OPTIONS = [
 export function SuperAdminPage({ page }: { page: string }) {
   if (page === 'audit') return <AuditPage />;
   if (page === 'utilisateurs') return <UtilisateursPage />;
-  if (page === 'workflows') return <WorkflowsPage />;
+  if (page === 'workflows') return <CircuitConfigPage />;  // ← CORRIGÉ
   if (page === 'ia_config') return <IAConfigPage />;
   return <UtilisateursPage />;
 }
@@ -291,7 +281,7 @@ function UtilisateursPage() {
                   <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--text-muted)', padding: '10px 16px', textAlign: 'left' }}>Statut</th>
                   <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--text-muted)', padding: '10px 16px', textAlign: 'left' }}>Dernière activité</th>
                   <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--text-muted)', padding: '10px 16px', textAlign: 'left' }}>Actions</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => {
@@ -439,8 +429,6 @@ function UtilisateursPage() {
             />
           </FormGroup>
 
-          {/* LE CHAMP MOT DE PASSE A ÉTÉ SUPPRIMÉ */}
-
           {/* Rôle */}
           <FormGroup>
             <FormLabel required>Rôle</FormLabel>
@@ -502,8 +490,16 @@ function UtilisateursPage() {
   );
 }
 
-// AuditPage, WorkflowsPage, IAConfigPage restent identiques
+// AuditPage
 function AuditPage() {
+  const AUDIT_LOG = [
+    { time: '14:32', user: 'S. Karoui',  action: 'Candidature acceptée',          detail: 'Aymen Bouslama — Chef projet IT' },
+    { time: '13:18', user: 'M. Kilani',  action: 'Demande soumise au circuit',    detail: 'DEM-2026-018 — Ingénieur Qualité' },
+    { time: '12:05', user: 'L. Marzouk', action: 'Données PE saisies',            detail: 'Amira Ben Salah — CDD' },
+    { time: '11:40', user: 'A. Kilani',  action: 'Évaluation PE validée',         detail: 'Hana Missaoui — Confirmation' },
+    { time: '10:22', user: 'R. Ben Ali', action: 'Demande refusée (budget)',       detail: 'DEM-2026-014 — Budget dépassé' },
+  ];
+
   return (
     <div className="page-fade">
       <div style={{ marginBottom: 20 }}>
@@ -545,68 +541,7 @@ function AuditPage() {
   );
 }
 
-function WorkflowsPage() {
-  const wf = [
-    { name: 'Recrutement standard (4 étapes)',  etapes: ['Manager','Directeur','RH','DAF'], actif: true },
-    { name: 'Recrutement DGA (5 étapes)', etapes: ['Manager','Directeur','RH','DAF','DGA'], actif: true },
-    { name: 'Évaluation PE (6 étapes)', etapes: ['Paie','Manager','Directeur','DRH','DAF','DGA'], actif: true },
-    { name: 'Stage / Alternance (2 étapes)', etapes: ['RH','Manager'], actif: false },
-  ];
-  
-  return (
-    <div className="page-fade">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>Workflows PE & Recrutement</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            Configuration des circuits de validation
-          </div>
-        </div>
-        <Button size="sm"><Plus size={13} />Nouveau workflow</Button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {wf.map((w, i) => (
-          <Card key={i}>
-            <CardBody style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <Badge variant={w.actif ? 'green' : 'red'}>
-                  {w.actif ? 'Actif' : 'Inactif'}
-                </Badge>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{w.name}</div>
-                  <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                    {w.etapes.map((e, j) => (
-                      <span key={j} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ 
-                          background: 'var(--gold-pale)', 
-                          color: 'var(--gold-deep)', 
-                          padding: '2px 8px', 
-                          borderRadius: 4, 
-                          fontSize: 11, 
-                          fontWeight: 500 
-                        }}>
-                          {e}
-                        </span>
-                        {j < w.etapes.length - 1 && (
-                          <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>→</span>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <Button variant="secondary" size="sm"><Edit size={12} />Modifier</Button>
-                <Button variant="ghost" size="sm"><Eye size={12} /></Button>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
+// IAConfigPage
 function IAConfigPage() {
   return (
     <div className="page-fade">
