@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../services/api';
-import type { User } from '../types';
+import type { User, Direction } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -12,7 +12,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mapping des rôles
+// Mapping des rôles backend -> frontend
 const roleMap: Record<string, string> = {
   'SUPER_ADMIN': 'superadmin',
   'MANAGER': 'manager',
@@ -63,11 +63,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const userData: User = {
         ...response.data.user,
-        role: normalizedRole
+        role: normalizedRole,
+        directionId: response.data.user.directionId,  // ⬅️ NOUVEAU
+        direction: response.data.user.direction       // ⬅️ NOUVEAU
       };
       
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(userData));
+      
       setUser(userData);
 
       if (response.data.forcePasswordChange) {
@@ -116,6 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 };

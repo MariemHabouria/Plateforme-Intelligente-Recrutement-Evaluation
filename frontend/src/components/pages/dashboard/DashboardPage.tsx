@@ -1,8 +1,9 @@
+import { useAuth } from '../../../contexts/AuthContext';
 import { STATS, DEMANDES } from '@/lib/data'
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/Card'
 import { CircuitSteps } from '@/components/ui/CircuitSteps'
 import { Badge } from '@/components/ui/Badge'
-import type { Role, StatCard } from '@/types'
+import type { StatCard } from '@/types'
 
 function StatCardComp({ stat }: { stat: StatCard }) {
   return (
@@ -24,8 +25,10 @@ function StatCardComp({ stat }: { stat: StatCard }) {
 
 const CIRCUIT_LABELS = ['MGR', 'DIR', 'RH', 'DAF', 'DGA']
 
-export function DashboardPage({ role }: { role: Role }) {
-  const stats = STATS[role] || []
+export const DashboardPage = () => {
+  const { user } = useAuth();
+  const role = user?.role as string;
+  const stats = STATS[role as keyof typeof STATS] || [];
 
   const recentActivity = [
     { icon: '📋', text: 'Demande DEM-2026-018 soumise', sub: "Ingénieur Qualité · Il y a 2h",   color: 'var(--olive-bg)',   tc: 'var(--olive)' },

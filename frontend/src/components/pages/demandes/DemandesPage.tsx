@@ -131,8 +131,16 @@ export const DemandesPage = () => {
       </div>
 
       {/* Alertes */}
-      {error && <Alert variant="red" style={{ marginBottom: 20 }}>{error}</Alert>}
-      {success && <Alert variant="green" style={{ marginBottom: 20 }}>{success}</Alert>}
+      {error && (
+        <div style={{ marginBottom: 20 }}>
+          <Alert variant="red">{error}</Alert>
+        </div>
+      )}
+      {success && (
+        <div style={{ marginBottom: 20 }}>
+          <Alert variant="green">{success}</Alert>
+        </div>
+      )}
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>

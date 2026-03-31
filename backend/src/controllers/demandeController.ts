@@ -1,14 +1,15 @@
-// backend/src/controllers/demandeController.ts
-
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
-import { circuitConfigService } from '../services/circuitConfig.service';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from '../utils/helpers';
-import { STATUT_PAR_ROLE } from '../config/constants';
-
-// ============================================
-// UTILITAIRES
-// ============================================
+import { emailService } from '../services/email.service';
+// Mapping statut par rôle
+const STATUT_PAR_ROLE: Record<string, string> = {
+  DIRECTEUR: 'EN_VALIDATION_DIR',
+  DRH: 'EN_VALIDATION_DRH',
+  DAF: 'EN_VALIDATION_DAF',
+  DGA: 'EN_VALIDATION_DGA',
+  DG: 'EN_VALIDATION_DG',
+};
 
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
@@ -19,20 +20,74 @@ const generateReference = async (): Promise<string> => {
 };
 
 // ============================================
-// CRUD DEMANDES
+// Déterminer le circuit selon le budget
+// ============================================
+const determinerCircuitParBudget = async (budget: number) => {
+  const circuit = await prisma.circuitConfig.findFirst({
+    where: {
+      actif: true,
+      OR: [
+        { seuilMin: { lte: budget }, seuilMax: { gte: budget } },
+        { seuilMin: { lte: budget }, seuilMax: null }
+      ]
+    },
+    orderBy: { seuilMin: 'asc' }
+  });
+  return circuit;
+};
+
+// ============================================
+// Trouver le validateur selon rôle ET direction
+// ============================================
+const trouverValidateurParRoleEtDirection = async (role: string, directionId: string | null) => {
+  // Rôles transversaux (DRH, DAF, DGA, DG) - pas de direction
+  const rolesTransversaux = ['DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'];
+  
+  if (rolesTransversaux.includes(role)) {
+    return await prisma.user.findFirst({
+      where: { role: role as any, actif: true }
+    });
+  }
+  
+  // Pour DIRECTEUR : chercher celui de la bonne direction
+  if (role === 'DIRECTEUR' && directionId) {
+    return await prisma.user.findFirst({
+      where: { 
+        role: 'DIRECTEUR', 
+        actif: true,
+        directionId: directionId
+      }
+    });
+  }
+  
+  return null;
+};
+
+// ============================================
+// CRUD
 // ============================================
 
 export const getDemandes = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
+    const userDirectionId = (req as any).user.directionId;
     const { page = 1, limit = 10, statut, priorite } = req.query;
     
     const where: any = {};
     
+    // Filtrage selon le rôle
     if (userRole === 'MANAGER') {
       where.managerId = userId;
+    } else if (userRole === 'DIRECTEUR') {
+      // DIRECTEUR voit uniquement les demandes de SA direction
+      where.directionId = userDirectionId;
+    } else if (['DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'].includes(userRole)) {
+      // Rôles transversaux voient tout
+    } else {
+      where.managerId = userId;
     }
+    
     if (statut) where.statut = statut;
     if (priorite) where.priorite = priorite;
     
@@ -42,7 +97,8 @@ export const getDemandes = async (req: Request, res: Response) => {
       prisma.demandeRecrutement.findMany({
         where,
         include: {
-          manager: { select: { id: true, nom: true, prenom: true, email: true } },
+          manager: { select: { id: true, nom: true, prenom: true, email: true, directionId: true } },
+          direction: { select: { id: true, code: true, nom: true } },
           validations: {
             include: { acteur: { select: { id: true, nom: true, prenom: true, role: true } } },
             orderBy: { niveauEtape: 'asc' }
@@ -80,7 +136,8 @@ export const getDemandeById = async (req: Request, res: Response) => {
     const demande = await prisma.demandeRecrutement.findUnique({
       where: { id },
       include: {
-        manager: { select: { id: true, nom: true, prenom: true, email: true } },
+        manager: { select: { id: true, nom: true, prenom: true, email: true, directionId: true } },
+        direction: { select: { id: true, code: true, nom: true } },
         validations: {
           include: { acteur: { select: { id: true, nom: true, prenom: true, role: true } } },
           orderBy: { niveauEtape: 'asc' }
@@ -115,6 +172,16 @@ export const createDemande = async (req: Request, res: Response) => {
     if (!intitulePoste || !justification || !motif || !typeContrat || !priorite || !budgetEstime || !dateSouhaitee) {
       return sendError(res, 'Tous les champs obligatoires doivent être remplis', 400);
     }
+
+    // Récupérer le manager avec sa direction
+    const manager = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { direction: true }
+    });
+
+    if (!manager?.directionId) {
+      return sendError(res, 'Votre compte manager n\'est rattaché à aucune direction. Contactez le Super Admin.', 400);
+    }
     
     const reference = await generateReference();
     
@@ -127,10 +194,11 @@ export const createDemande = async (req: Request, res: Response) => {
         motif,
         typeContrat,
         priorite,
-        budgetEstime: Number(budgetEstime), // ← Convertir en nombre
+        budgetEstime: Number(budgetEstime),
         dateSouhaitee: new Date(dateSouhaitee),
         statut: 'BROUILLON',
-        managerId: userId,
+        manager: { connect: { id: userId } },
+        direction: { connect: { id: manager.directionId } },
         disponibilites: disponibilites ? {
           create: disponibilites.map((d: any) => ({
             date: new Date(d.date),
@@ -139,7 +207,7 @@ export const createDemande = async (req: Request, res: Response) => {
           }))
         } : undefined
       },
-      include: { disponibilites: true }
+      include: { disponibilites: true, direction: true }
     });
     
     sendCreated(res, demande, 'Demande créée avec succès');
@@ -228,7 +296,8 @@ export const submitDemande = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     
     const demande = await prisma.demandeRecrutement.findUnique({
-      where: { id }
+      where: { id },
+      include: { direction: true }
     });
     
     if (!demande) return sendNotFound(res, 'Demande non trouvée');
@@ -237,9 +306,14 @@ export const submitDemande = async (req: Request, res: Response) => {
       return sendError(res, 'Seules les demandes au statut Brouillon peuvent être soumises', 400);
     }
     
-    const circuit = await circuitConfigService.determinerCircuitParBudget(Number(demande.budgetEstime));
-    if (!circuit) return sendError(res, 'Aucun circuit de validation trouvé', 400);
+    // Déterminer le circuit selon le budget
+    const circuit = await determinerCircuitParBudget(Number(demande.budgetEstime));
+    if (!circuit) return sendError(res, 'Aucun circuit de validation trouvé pour ce budget', 400);
     
+    const etapes = circuit.etapes as any[];
+    if (etapes.length === 0) return sendError(res, 'Le circuit ne contient aucune étape', 500);
+    
+    // Mettre à jour la demande avec le circuit
     await prisma.demandeRecrutement.update({
       where: { id },
       data: {
@@ -249,16 +323,15 @@ export const submitDemande = async (req: Request, res: Response) => {
       }
     });
     
-    const etapes = circuit.etapes as any[];
-    if (etapes.length === 0) return sendError(res, 'Le circuit ne contient aucune étape', 500);
-    
+    // Première étape : DIRECTEUR de la BONNE direction
     const premiereEtape = etapes[0];
-    const premierValidateur = await prisma.user.findFirst({
-      where: { role: premiereEtape.role, actif: true }
-    });
+    const premierValidateur = await trouverValidateurParRoleEtDirection(
+      premiereEtape.role, 
+      demande.directionId
+    );
     
     if (!premierValidateur) {
-      return sendError(res, `Aucun validateur trouvé pour le rôle ${premiereEtape.role}`, 500);
+      return sendError(res, `Aucun validateur trouvé pour le rôle ${premiereEtape.role} dans la direction ${demande.direction?.nom || 'inconnue'}`, 500);
     }
     
     const dateLimite = new Date();
@@ -273,23 +346,22 @@ export const submitDemande = async (req: Request, res: Response) => {
       }
     });
     
-    // ✅ Correction: utiliser les valeurs de l'enum
     const nouveauStatut = STATUT_PAR_ROLE[premiereEtape.role] || 'EN_VALIDATION_DIR';
     
     await prisma.demandeRecrutement.update({
       where: { id },
       data: {
-        statut: nouveauStatut as any, // ← Cast en any pour l'enum
+        statut: nouveauStatut as any,
         etapeActuelle: 1
       }
     });
     
     console.log(`
-📧 [VALIDATION] Demande soumise - ${premierValidateur.email}
-   Demande: ${demande.reference}
-   Poste: ${demande.intitulePoste}
-   Budget: ${demande.budgetEstime} DT
-   Délai: ${circuit.delaiParDefaut}h
+📧 [SOUMISSION] Demande soumise par ${(req as any).user.email}
+   📄 Demande: ${demande.reference}
+   🏢 Direction: ${demande.direction?.nom}
+   👤 Validateur: ${premierValidateur.email} (${premiereEtape.role})
+   ⏰ Délai: ${circuit.delaiParDefaut}h
     `);
     
     sendSuccess(res, {
@@ -312,6 +384,15 @@ export const validerDemande = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { decision, commentaire } = req.body;
     const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+    const userDirectionId = (req as any).user.directionId;
+    
+    // ========== LOGS DE DIAGNOSTIC ==========
+    console.log('\n=== 🔍 DIAGNOSTIC VALIDATION ===');
+    console.log('📌 User ID:', userId);
+    console.log('📌 User Role:', userRole);
+    console.log('📌 User DirectionId:', userDirectionId);
+    console.log('📌 Demande ID:', id);
     
     const demande = await prisma.demandeRecrutement.findUnique({
       where: { id },
@@ -320,17 +401,89 @@ export const validerDemande = async (req: Request, res: Response) => {
           where: { decision: 'EN_ATTENTE' },
           orderBy: { niveauEtape: 'desc' }
         },
-        circuitConfig: true
+        circuitConfig: true,
+        direction: true,
+        manager: {
+          include: { direction: true }
+        }
       }
     });
     
-    if (!demande) return sendNotFound(res, 'Demande non trouvée');
+    if (!demande) {
+      console.log('❌ Demande non trouvée');
+      return sendNotFound(res, 'Demande non trouvée');
+    }
+    
+    console.log('\n📄 INFOS DEMANDE:');
+    console.log('   Référence:', demande.reference);
+    console.log('   Statut:', demande.statut);
+    console.log('   DirectionId:', demande.directionId);
+    console.log('   Direction:', demande.direction?.nom);
+    console.log('   Manager:', demande.manager?.email);
+    console.log('   Manager DirectionId:', demande.manager?.directionId);
+    console.log('   Étape actuelle:', demande.etapeActuelle);
+    console.log('   Total étapes:', demande.totalEtapes);
+    
+    console.log('\n📋 VALIDATIONS EN ATTENTE:');
+    demande.validations.forEach(v => {
+      console.log(`   - Niveau ${v.niveauEtape}: acteurId=${v.acteurId}`);
+    });
     
     const validationEnCours = demande.validations[0];
-    if (!validationEnCours || validationEnCours.acteurId !== userId) {
+    if (!validationEnCours) {
+      console.log('❌ Aucune validation en attente');
+      return sendForbidden(res, 'Aucune validation en cours pour cette demande');
+    }
+    
+    console.log('\n✅ Validation en cours trouvée:');
+    console.log('   Niveau:', validationEnCours.niveauEtape);
+    console.log('   ActeurId attendu:', validationEnCours.acteurId);
+    console.log('   ActeurId connecté:', userId);
+    console.log('   Match:', validationEnCours.acteurId === userId);
+    
+    // Récupérer l'acteur attendu pour debug
+    const acteurAttendu = await prisma.user.findUnique({
+      where: { id: validationEnCours.acteurId },
+      select: { id: true, email: true, role: true, directionId: true }
+    });
+    console.log('\n👤 ACTEUR ATTENDU:');
+    console.log('   ID:', acteurAttendu?.id);
+    console.log('   Email:', acteurAttendu?.email);
+    console.log('   Role:', acteurAttendu?.role);
+    console.log('   DirectionId:', acteurAttendu?.directionId);
+    
+    // Récupérer l'utilisateur connecté pour debug
+    const userConnecte = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, directionId: true }
+    });
+    console.log('\n👤 UTILISATEUR CONNECTÉ:');
+    console.log('   ID:', userConnecte?.id);
+    console.log('   Email:', userConnecte?.email);
+    console.log('   Role:', userConnecte?.role);
+    console.log('   DirectionId:', userConnecte?.directionId);
+    
+    if (validationEnCours.acteurId !== userId) {
+      console.log('\n❌ ERREUR: L\'utilisateur connecté n\'est pas le validateur attendu!');
       return sendForbidden(res, 'Vous n\'êtes pas le validateur de cette étape');
     }
     
+    // Vérification supplémentaire pour DIRECTEUR : doit être de la bonne direction
+    if (userRole === 'DIRECTEUR') {
+      console.log('\n🔍 VÉRIFICATION DIRECTION:');
+      console.log('   User DirectionId:', userDirectionId);
+      console.log('   Demande DirectionId:', demande.directionId);
+      console.log('   Match:', userDirectionId === demande.directionId);
+      
+      if (userDirectionId !== demande.directionId) {
+        console.log('❌ ERREUR: Le Directeur n\'est pas de la bonne direction');
+        return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre propre direction');
+      }
+    }
+    
+    console.log('✅ Toutes les vérifications passées, validation en cours...\n');
+    
+    // ... suite du code (inchangé)
     await prisma.validationEtape.update({
       where: { id: validationEnCours.id },
       data: {
@@ -350,7 +503,6 @@ export const validerDemande = async (req: Request, res: Response) => {
     
     // Vérifier si dernière étape
     if (demande.etapeActuelle === demande.totalEtapes) {
-      // Générer l'offre
       const offre = await prisma.offreEmploi.create({
         data: {
           reference: `OFF-${new Date().getFullYear()}-${String(await prisma.offreEmploi.count() + 1).padStart(3, '0')}`,
@@ -362,7 +514,6 @@ export const validerDemande = async (req: Request, res: Response) => {
         }
       });
       
-      // ✅ Correction: utiliser 'offre' au lieu de 'offreId'
       await prisma.demandeRecrutement.update({
         where: { id },
         data: {
@@ -383,9 +534,10 @@ export const validerDemande = async (req: Request, res: Response) => {
       return sendError(res, 'Configuration de circuit invalide', 500);
     }
     
-    const prochainValidateur = await prisma.user.findFirst({
-      where: { role: prochaineEtapeConfig.role, actif: true }
-    });
+    const prochainValidateur = await trouverValidateurParRoleEtDirection(
+      prochaineEtapeConfig.role,
+      demande.directionId
+    );
     
     if (!prochainValidateur) {
       return sendError(res, `Aucun validateur trouvé pour le rôle ${prochaineEtapeConfig.role}`, 500);
@@ -412,12 +564,6 @@ export const validerDemande = async (req: Request, res: Response) => {
         etapeActuelle: demande.etapeActuelle + 1
       }
     });
-    
-    console.log(`
-📧 [VALIDATION] Étape ${demande.etapeActuelle + 1}/${demande.totalEtapes} validée
-   Prochain validateur: ${prochainValidateur.email}
-   Demande: ${demande.reference}
-    `);
     
     sendSuccess(res, null, 'Étape validée avec succès');
     

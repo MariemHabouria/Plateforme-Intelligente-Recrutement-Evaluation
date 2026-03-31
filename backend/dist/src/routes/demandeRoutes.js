@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const demandeController_1 = require("../controllers/demandeController");
+const auth_1 = require("../middlewares/auth");
+const checkValidateur_1 = require("../middlewares/checkValidateur");
+const router = (0, express_1.Router)();
+router.use(auth_1.protect);
+router.get('/', demandeController_1.getDemandes);
+router.get('/:id', demandeController_1.getDemandeById);
+router.post('/', (0, auth_1.authorize)('MANAGER', 'SUPER_ADMIN'), demandeController_1.createDemande);
+router.patch('/:id', (0, auth_1.authorize)('MANAGER', 'SUPER_ADMIN'), demandeController_1.updateDemande);
+router.delete('/:id', (0, auth_1.authorize)('MANAGER', 'SUPER_ADMIN'), demandeController_1.deleteDemande);
+router.post('/:id/submit', (0, auth_1.authorize)('MANAGER', 'SUPER_ADMIN'), demandeController_1.submitDemande);
+router.post('/:id/valider', (0, auth_1.authorize)('DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'), checkValidateur_1.checkValidateur, demandeController_1.validerDemande);
+exports.default = router;

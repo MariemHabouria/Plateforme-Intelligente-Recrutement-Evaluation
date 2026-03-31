@@ -26,7 +26,15 @@ export const getUsers = async (req: Request, res: Response) => {
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
-        createdAt: true
+        createdAt: true,
+        directionId: true,       // ✅ ajouté
+        direction: {             // ✅ ajouté
+          select: {
+            id: true,
+            code: true,
+            nom: true
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -67,7 +75,15 @@ export const getUserById = async (req: Request, res: Response) => {
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
-        createdAt: true
+        createdAt: true,
+        directionId: true,       // ✅ ajouté
+        direction: {             // ✅ ajouté
+          select: {
+            id: true,
+            code: true,
+            nom: true
+          }
+        }
       }
     });
 
@@ -95,7 +111,8 @@ export const getUserById = async (req: Request, res: Response) => {
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { nom, prenom, role, departement, poste, telephone, actif } = req.body;
+    // ✅ directionId ajouté dans la déstructuration
+    const { nom, prenom, role, departement, poste, telephone, actif, directionId } = req.body;
 
     const user = await prisma.user.findUnique({
       where: { id }
@@ -117,7 +134,8 @@ export const updateUser = async (req: Request, res: Response) => {
         departement,
         poste,
         telephone,
-        actif
+        actif,
+        directionId: directionId || null,  // ✅ ajouté, null si vide
       },
       select: {
         id: true,
@@ -130,7 +148,15 @@ export const updateUser = async (req: Request, res: Response) => {
         telephone: true,
         actif: true,
         mustChangePassword: true,
-        dernierConnexion: true
+        dernierConnexion: true,
+        directionId: true,       // ✅ ajouté
+        direction: {             // ✅ ajouté
+          select: {
+            id: true,
+            code: true,
+            nom: true
+          }
+        }
       }
     });
 
@@ -176,7 +202,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: `Utilisateur ${updatedUser.actif ? 'activé' : 'désactivé'}`,
-      actif: updatedUser.actif
+      actif: updatedUser.actif   // ✅ directement à la racine (pas dans data)
     });
 
   } catch (error) {
@@ -200,6 +226,15 @@ export const deleteUser = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: 'Vous ne pouvez pas supprimer votre propre compte'
+      });
+    }
+
+    // ✅ Vérifier que l'utilisateur existe avant suppression
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
       });
     }
 
@@ -239,7 +274,6 @@ export const resendInvite = async (req: Request, res: Response) => {
       });
     }
 
-    // Générer nouveau mot de passe temporaire
     const tempPassword = generateTemporaryPassword();
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
@@ -251,7 +285,6 @@ export const resendInvite = async (req: Request, res: Response) => {
       }
     });
 
-    // Envoyer email d'invitation
     await emailService.sendInvitationEmail({
       nom: user.nom,
       prenom: user.prenom,
@@ -263,7 +296,7 @@ export const resendInvite = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Invitation renvoyée avec succès. Consultez la console.'
+      message: 'Invitation renvoyée avec succès.'
     });
 
   } catch (error) {
@@ -314,7 +347,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Mot de passe réinitialisé. Consultez la console.'
+      message: 'Mot de passe réinitialisé.'
     });
 
   } catch (error) {

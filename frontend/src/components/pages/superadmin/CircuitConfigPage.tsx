@@ -33,8 +33,7 @@ const ROLES_DISPONIBLES = [
   { value: 'DRH', label: 'DRH', color: '#6A7A3A' },
   { value: 'DAF', label: 'DAF', color: '#C07820' },
   { value: 'DGA', label: 'DGA', color: '#7A5A3A' },
-  { value: 'DG', label: 'DG', color: '#7A5A3A' },
-  { value: 'CONSEIL', label: 'Conseil d\'administration', color: '#9A8A50' }
+  { value: 'DG', label: 'DG', color: '#7A5A3A' }
 ];
 
 export const CircuitConfigPage = () => {
@@ -198,9 +197,13 @@ export const CircuitConfigPage = () => {
         </div>
       </div>
 
-      {/* Alertes */}
-      {error && <Alert variant="red" style={{ marginBottom: 20 }}>{error}</Alert>}
-      {success && <Alert variant="green" style={{ marginBottom: 20 }}>{success}</Alert>}
+      {/* Alertes - sans style prop */}
+      <div style={{ marginBottom: 20 }}>
+        {error && <Alert variant="red">{error}</Alert>}
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        {success && <Alert variant="green">{success}</Alert>}
+      </div>
 
       {/* Grille des circuits */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 20 }}>

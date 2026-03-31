@@ -75,7 +75,25 @@ enum CircuitType {
 }
 
 // ============================================
-// MODÈLES
+// MODÈLE DIRECTION (NOUVEAU)
+// ============================================
+
+model Direction {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  nom       String
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  demandes DemandeRecrutement[]
+
+  @@map("directions")
+}
+
+// ============================================
+// MODÈLE USER (MODIFIÉ)
 // ============================================
 
 model User {
@@ -92,6 +110,10 @@ model User {
   mustChangePassword Boolean   @default(true)
   dernierConnexion   DateTime?
 
+ 
+  directionId String?
+  direction   Direction? @relation(fields: [directionId], references: [id])
+
   twoFactorEnabled Boolean @default(false)
   twoFactorSecret  String?
   backupCodes      String?
@@ -107,18 +129,11 @@ model User {
   demandesCrees DemandeRecrutement[] @relation("ManagerDemandes")
   validations   ValidationEtape[]
 
-  // Relations pour EvaluationPE
   evaluationsEmploye EvaluationPE[] @relation("EmployeEvaluations")
   evaluationsManager EvaluationPE[] @relation("ManagerEvaluations")
-
-  // Relations pour Entretien
-  entretiensRealises Entretien[] @relation("InterviewerEntretiens")
-
-  // Relations pour Notification
-  notifications Notification[]
-
-  // Relations pour AuditLog
-  auditLogs AuditLog[]
+  entretiensRealises Entretien[]    @relation("InterviewerEntretiens")
+  notifications      Notification[]
+  auditLogs          AuditLog[]
 
   @@map("users")
 }
@@ -143,6 +158,10 @@ model CircuitConfig {
   @@map("circuit_configs")
 }
 
+// ============================================
+// MODÈLE DEMANDE 
+// ============================================
+
 model DemandeRecrutement {
   id            String        @id @default(uuid())
   reference     String        @unique
@@ -165,8 +184,13 @@ model DemandeRecrutement {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  managerId      String
-  manager        User              @relation("ManagerDemandes", fields: [managerId], references: [id])
+  managerId String
+  manager   User   @relation("ManagerDemandes", fields: [managerId], references: [id])
+
+
+  directionId String?
+  direction   Direction? @relation(fields: [directionId], references: [id])
+
   circuitConfig  CircuitConfig?    @relation(fields: [circuitConfigId], references: [id])
   validations    ValidationEtape[]
   offre          OffreEmploi?
