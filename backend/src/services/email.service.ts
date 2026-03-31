@@ -1,8 +1,21 @@
-import nodemailer from 'nodemailer';
+// backend/src/services/email.service.ts
 
-// ===========================================
-// TYPES
-// ===========================================
+// ============================================
+// INTERFACES
+// ============================================
+
+interface ValidationNotificationData {
+  nom: string;
+  prenom: string;
+  email: string;
+  demandeRef: string;
+  demandePoste: string;
+  etape: number;
+  totalEtapes: number;
+  role: string;
+  dateLimite: Date;
+  actionUrl: string;
+}
 
 interface WelcomeEmailData {
   nom: string;
@@ -18,6 +31,15 @@ interface ResetPasswordEmailData {
   prenom: string;
   email: string;
   tempPassword: string;
+  loginUrl: string;
+}
+
+interface InvitationEmailData {
+  nom: string;
+  prenom: string;
+  email: string;
+  tempPassword: string;
+  role: string;
   loginUrl: string;
 }
 
@@ -55,460 +77,316 @@ interface AccountActivationEmailData {
   activationUrl: string;
 }
 
-interface InvitationEmailData {
-  nom: string;
-  prenom: string;
-  email: string;
-  tempPassword: string;
-  role: string;
-  loginUrl: string;
-}
+// ============================================
+// COULEURS POUR LA CONSOLE
+// ============================================
 
-// ===========================================
-// SMTP TRANSPORTER CONFIGURATION
-// ===========================================
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-// Verify connection on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ SMTP Connection Error:', error.message);
-  } else {
-    console.log('✅ SMTP Server ready to send emails');
-  }
-});
-
-// ===========================================
-// EMAIL TEMPLATES
-// ===========================================
-
-const templates = {
-  /**
-   * Welcome email with temporary password
-   */
-  welcome: (data: WelcomeEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bienvenue sur Kilani RH</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-    <!-- Header -->
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Kilani RH</h1>
-      <p style="color: #EDE5CA; margin: 8px 0 0 0;">Intelligent Recruitment Platform</p>
-    </div>
-    
-    <!-- Content -->
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E; margin-top: 0;">Bonjour ${data.prenom} ${data.nom},</h2>
-      
-      <p style="color: #4B5563; line-height: 1.6;">Votre compte a été créé sur la plateforme Kilani RH avec le rôle : <strong style="color: #9A8A50;">${data.role}</strong>.</p>
-      
-      <!-- Credentials Box -->
-      <div style="background-color: #F7F3E8; border-left: 4px solid #9A8A50; padding: 20px; margin: 25px 0; border-radius: 8px;">
-        <h3 style="color: #1E1A0E; margin: 0 0 12px 0;">🔐 Vos identifiants temporaires</h3>
-        <p style="margin: 8px 0;"><strong style="color: #1E1A0E;">Email:</strong> ${data.email}</p>
-        <p style="margin: 8px 0;"><strong style="color: #1E1A0E;">Mot de passe temporaire:</strong> <code style="background: #ffffff; padding: 4px 8px; border-radius: 4px; font-size: 14px;">${data.tempPassword}</code></p>
-      </div>
-      
-      <!-- Login Button -->
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${data.loginUrl}" style="background-color: #9A8A50; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">Se connecter</a>
-      </div>
-      
-      <!-- Important Note -->
-      <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin: 20px 0;">
-        <p style="color: #92400E; font-size: 13px; margin: 0;">
-          <strong>⚠️ Important :</strong> Ce mot de passe est temporaire. Vous devrez le changer lors de votre première connexion.
-        </p>
-      </div>
-      
-      <hr style="border: none; border-top: 1px solid #EDE5CA; margin: 20px 0;">
-      
-      <p style="color: #9CA3AF; font-size: 12px; text-align: center; margin: 0;">
-        Cet email est automatique, merci de ne pas y répondre.<br>
-        © 2026 Kilani Groupe - Tous droits réservés.
-      </p>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Reset password email
-   */
-  resetPassword: (data: ResetPasswordEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Réinitialisation mot de passe</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-      <p style="color: #EDE5CA; margin: 8px 0 0 0;">Sécurité du compte</p>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E; margin-top: 0;">Bonjour ${data.prenom} ${data.nom},</h2>
-      
-      <p style="color: #4B5563; line-height: 1.6;">Votre mot de passe a été réinitialisé par l'administrateur.</p>
-      
-      <div style="background-color: #F7F3E8; border-left: 4px solid #9A8A50; padding: 20px; margin: 25px 0; border-radius: 8px;">
-        <h3 style="color: #1E1A0E; margin: 0 0 12px 0;">🔐 Nouveau mot de passe temporaire</h3>
-        <p style="margin: 8px 0;"><strong style="color: #1E1A0E;">Email:</strong> ${data.email}</p>
-        <p style="margin: 8px 0;"><strong style="color: #1E1A0E;">Mot de passe temporaire:</strong> <code style="background: #ffffff; padding: 4px 8px; border-radius: 4px; font-size: 14px;">${data.tempPassword}</code></p>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${data.loginUrl}" style="background-color: #9A8A50; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">Se connecter</a>
-      </div>
-      
-      <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin: 20px 0;">
-        <p style="color: #92400E; font-size: 13px; margin: 0;">
-          <strong>⚠️ Important :</strong> Vous devrez changer ce mot de passe à votre prochaine connexion.
-        </p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Profile update confirmation email
-   */
-  profileUpdate: (data: ProfileUpdateEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Confirmation mise à jour</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E;">Bonjour ${data.prenom} ${data.nom},</h2>
-      <p>Votre profil a été mis à jour avec succès.</p>
-      
-      <div style="background: #F7F3E8; padding: 15px; margin: 20px 0; border-radius: 8px;">
-        <p><strong>Modifications effectuées :</strong></p>
-        <ul>
-          ${data.changes.map(change => `<li>${change}</li>`).join('')}
-        </ul>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${data.profileUrl}" style="background: #9A8A50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Voir mon profil</a>
-      </div>
-      
-      <p style="color: #666; font-size: 12px;">Si vous n'êtes pas à l'origine de ces modifications, contactez immédiatement l'administrateur.</p>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Role change notification email
-   */
-  roleChange: (data: RoleChangeEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Changement de rôle</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E;">Bonjour ${data.prenom} ${data.nom},</h2>
-      <p>Votre rôle sur la plateforme a été modifié.</p>
-      
-      <div style="background: #F7F3E8; padding: 15px; margin: 20px 0; border-radius: 8px;">
-        <p><strong>Ancien rôle :</strong> ${data.oldRole}</p>
-        <p><strong>Nouveau rôle :</strong> ${data.newRole}</p>
-        <p><strong>Modifié par :</strong> ${data.changedBy}</p>
-      </div>
-      
-      <p>Vos accès ont été mis à jour en conséquence.</p>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${process.env.FRONTEND_URL}/login" style="background: #9A8A50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Accéder à la plateforme</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Account deactivation email
-   */
-  accountDeactivation: (data: AccountDeactivationEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Compte désactivé</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E;">Bonjour ${data.prenom} ${data.nom},</h2>
-      <p>Votre compte a été désactivé.</p>
-      
-      <div style="background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 8px;">
-        <p><strong>Raison :</strong> ${data.reason}</p>
-        ${data.reactivationDate ? `<p><strong>Réactivation prévue :</strong> ${data.reactivationDate}</p>` : ''}
-      </div>
-      
-      <p>Pour toute question, contactez l'administrateur.</p>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Account activation email (with activation link)
-   */
-  accountActivation: (data: AccountActivationEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Activez votre compte</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E;">Bienvenue ${data.prenom} ${data.nom} !</h2>
-      <p>Votre compte a été créé sur la plateforme Kilani RH.</p>
-      
-      <div style="background: #F7F3E8; padding: 15px; margin: 20px 0; border-radius: 8px;">
-        <p><strong>Email :</strong> ${data.email}</p>
-        <p><strong>Mot de passe temporaire :</strong> <code>${data.tempPassword}</code></p>
-      </div>
-      
-      <div style="text-align: center; margin: 20px 0;">
-        <a href="${data.activationUrl}" style="background: #9A8A50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Activer mon compte</a>
-      </div>
-      
-      <p style="color: #666; font-size: 12px;">⚠️ Ce lien expire dans 24 heures.</p>
-    </div>
-  </div>
-</body>
-</html>
-  `,
-
-  /**
-   * Invitation email (resend welcome)
-   */
-  invitation: (data: InvitationEmailData) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Invitation Kilani RH</title>
-</head>
-<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-    <div style="background-color: #9A8A50; padding: 30px 20px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0;">Kilani RH</h1>
-    </div>
-    
-    <div style="padding: 30px;">
-      <h2 style="color: #1E1A0E;">Bonjour ${data.prenom} ${data.nom},</h2>
-      <p>Vous avez été invité à rejoindre la plateforme Kilani RH.</p>
-      
-      <div style="background: #F7F3E8; padding: 15px; margin: 20px 0; border-radius: 8px;">
-        <p><strong>Rôle :</strong> ${data.role}</p>
-        <p><strong>Email :</strong> ${data.email}</p>
-        <p><strong>Mot de passe temporaire :</strong> <code>${data.tempPassword}</code></p>
-      </div>
-      
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${data.loginUrl}" style="background: #9A8A50; color: white; padding: 12px 32px; text-decoration: none; border-radius: 6px;">Se connecter</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `,
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m'
 };
 
-// ===========================================
-// EMAIL SERVICE EXPORTS
-// ===========================================
+// ============================================
+// EMAIL SERVICE - VERSION SIMULATION
+// ============================================
 
 export const emailService = {
   /**
-   * Send welcome email with temporary password
+   * Email de bienvenue pour les nouveaux utilisateurs
    */
   async sendWelcomeEmail(data: WelcomeEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Bienvenue sur Kilani RH - Vos identifiants de connexion',
-        html: templates.welcome(data),
-      });
-      console.log(`✅ Welcome email sent to ${data.email} - ID: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send welcome email:', error);
-      console.log(`[FALLBACK] Email for ${data.email} would contain password: ${data.tempPassword}`);
-      return { success: false, error };
-    }
+    console.log('\n' + colors.green + '╔' + '═'.repeat(58) + '╗' + colors.reset);
+    console.log(colors.green + '║' + colors.bright + ' 📧 SIMULATION EMAIL DE BIENVENUE ' + ' '.repeat(30) + colors.green + '║' + colors.reset);
+    console.log(colors.green + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(48 - data.email.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Rôle: ${data.role}` + ' '.repeat(50 - data.role.length) + colors.green + '║');
+    console.log(colors.green + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(40) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Votre compte a été créé sur Kilani RH.` + ' '.repeat(30) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(58) + colors.green + '║');
+    console.log(colors.green + '║' + colors.bright + colors.green + ` 🔐 IDENTIFIANTS TEMPORAIRES` + ' '.repeat(32) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Email: ${data.email}` + ' '.repeat(48 - data.email.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Mot de passe: ${colors.bright}${data.tempPassword}${colors.reset}` + ' '.repeat(42 - data.tempPassword.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(58) + colors.green + '║');
+    console.log(colors.green + '║' + colors.bright + colors.cyan + ` 🌐 LIEN DE CONNEXION` + ' '.repeat(37) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` ${data.loginUrl}` + ' '.repeat(54 - data.loginUrl.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(58) + colors.green + '║');
+    console.log(colors.green + '║' + colors.dim + ` ⚠️ Vous devrez changer ce mot de passe à la première connexion.` + ' '.repeat(8) + colors.green + '║');
+    console.log(colors.green + '╚' + '═'.repeat(58) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'welcome' };
   },
 
   /**
-   * Send reset password email
+   * Email de réinitialisation de mot de passe
    */
   async sendResetPasswordEmail(data: ResetPasswordEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Réinitialisation de votre mot de passe Kilani RH',
-        html: templates.resetPassword(data),
-      });
-      console.log(`✅ Reset email sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send reset email:', error);
-      console.log(`[FALLBACK] New password for ${data.email}: ${data.tempPassword}`);
-      return { success: false, error };
-    }
+    console.log('\n' + colors.magenta + '╔' + '═'.repeat(58) + '╗' + colors.reset);
+    console.log(colors.magenta + '║' + colors.bright + ' 🔑 SIMULATION RÉINITIALISATION MOT DE PASSE ' + ' '.repeat(15) + colors.magenta + '║' + colors.reset);
+    console.log(colors.magenta + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.magenta + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(48 - data.email.length) + colors.magenta + '║');
+    console.log(colors.magenta + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.magenta + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(40) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + ` Votre mot de passe a été réinitialisé.` + ' '.repeat(32) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `` + ' '.repeat(58) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.bright + colors.green + ` 🔐 NOUVEAU MOT DE PASSE TEMPORAIRE` + ' '.repeat(22) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + ` ${data.tempPassword}` + ' '.repeat(54 - data.tempPassword.length) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `` + ' '.repeat(58) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.bright + colors.cyan + ` 🌐 LIEN DE CONNEXION` + ' '.repeat(37) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + ` ${data.loginUrl}` + ' '.repeat(54 - data.loginUrl.length) + colors.magenta + '║');
+    console.log(colors.magenta + '╚' + '═'.repeat(58) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'reset' };
   },
 
   /**
-   * Send profile update confirmation email
-   */
-  async sendProfileUpdateConfirmation(data: ProfileUpdateEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Confirmation - Mise à jour de votre profil',
-        html: templates.profileUpdate(data),
-      });
-      console.log(`✅ Profile update confirmation sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send profile update email:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Send role change notification email
-   */
-  async sendRoleChangeNotification(data: RoleChangeEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Changement de rôle - Kilani RH',
-        html: templates.roleChange(data),
-      });
-      console.log(`✅ Role change notification sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send role change email:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Send account deactivation email
-   */
-  async sendAccountDeactivationEmail(data: AccountDeactivationEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Désactivation de votre compte - Kilani RH',
-        html: templates.accountDeactivation(data),
-      });
-      console.log(`✅ Account deactivation email sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send deactivation email:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Send account activation email (with activation link)
-   */
-  async sendAccountActivationEmail(data: AccountActivationEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Activez votre compte - Kilani RH',
-        html: templates.accountActivation(data),
-      });
-      console.log(`✅ Activation email sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send activation email:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Send invitation email (resend welcome)
+   * Email d'invitation
    */
   async sendInvitationEmail(data: InvitationEmailData) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Kilani RH" <noreply@kilani.tn>',
-        to: data.email,
-        subject: 'Invitation à rejoindre Kilani RH',
-        html: templates.invitation(data),
-      });
-      console.log(`✅ Invitation email sent to ${data.email}`);
-      return { success: true, messageId: info.messageId };
-    } catch (error) {
-      console.error('❌ Failed to send invitation email:', error);
-      console.log(`[FALLBACK] Invitation for ${data.email} would contain password: ${data.tempPassword}`);
-      return { success: false, error };
-    }
+    console.log('\n' + colors.blue + '╔' + '═'.repeat(58) + '╗' + colors.reset);
+    console.log(colors.blue + '║' + colors.bright + ' 📨 SIMULATION RENVOI D\'INVITATION ' + ' '.repeat(26) + colors.blue + '║' + colors.reset);
+    console.log(colors.blue + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.blue + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(48 - data.email.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` Rôle: ${data.role}` + ' '.repeat(50 - data.role.length) + colors.blue + '║');
+    console.log(colors.blue + '╠' + '═'.repeat(58) + '╣' + colors.reset);
+    console.log(colors.blue + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(40) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` Vous avez été invité à rejoindre Kilani RH.` + ' '.repeat(25) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.bright + colors.green + ` 🔐 IDENTIFIANTS DE CONNEXION` + ' '.repeat(30) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` Email: ${data.email}` + ' '.repeat(48 - data.email.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` Mot de passe temporaire: ${data.tempPassword}` + ' '.repeat(32 - data.tempPassword.length) + colors.blue + '║');
+    console.log(colors.blue + '╚' + '═'.repeat(58) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'invitation' };
   },
+
+  /**
+   * Notification de validation à envoyer au prochain validateur
+   */
+  async sendValidationNotification(data: ValidationNotificationData) {
+    const dateFormatee = new Date(data.dateLimite).toLocaleString('fr-TN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    console.log('\n' + colors.blue + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.blue + '║' + colors.bright + ' 📢 SIMULATION - NOUVELLE VALIDATION ATTENDUE ' + ' '.repeat(28) + colors.blue + '║' + colors.reset);
+    console.log(colors.blue + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.blue + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` Rôle: ${data.role}` + ' '.repeat(60 - data.role.length) + colors.blue + '║');
+    console.log(colors.blue + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.blue + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `` + ' '.repeat(68) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + ` 📄 Une demande de recrutement est en attente de votre validation :` + ' '.repeat(6) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `` + ' '.repeat(68) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.bright + `    Référence: ${data.demandeRef}` + ' '.repeat(48 - data.demandeRef.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `    Poste: ${data.demandePoste}` + ' '.repeat(52 - data.demandePoste.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `    Étape: ${data.etape}/${data.totalEtapes}` + ' '.repeat(56 - String(data.etape).length - String(data.totalEtapes).length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.yellow + `    Délai: ${dateFormatee} (48h max)` + ' '.repeat(38) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `` + ' '.repeat(68) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.bright + colors.cyan + ` 🌐 LIEN D'ACTION:` + ' '.repeat(52) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `    ${data.actionUrl}` + ' '.repeat(58 - data.actionUrl.length) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.reset + `` + ' '.repeat(68) + colors.blue + '║');
+    console.log(colors.blue + '║' + colors.dim + ` ⚠️ Merci de traiter cette demande dans les meilleurs délais.` + ' '.repeat(15) + colors.blue + '║');
+    console.log(colors.blue + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'validation' };
+  },
+
+  /**
+   * Notification de validation finale (offre générée)
+   */
+  async sendOffreGenereeNotification(data: {
+    nom: string;
+    prenom: string;
+    email: string;
+    demandeRef: string;
+    offreRef: string;
+    poste: string;
+    actionUrl: string;
+  }) {
+    console.log('\n' + colors.green + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.green + '║' + colors.bright + ' 🎉 SIMULATION - OFFRE GÉNÉRÉE ' + ' '.repeat(44) + colors.green + '║' + colors.reset);
+    console.log(colors.green + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.green + '║');
+    console.log(colors.green + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(68) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` ✅ La demande ${data.demandeRef} a été validée !` + ' '.repeat(35) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` 📝 Une offre d'emploi a été générée automatiquement :` + ' '.repeat(11) + colors.green + '║');
+    console.log(colors.green + '║' + colors.bright + `    Référence offre: ${data.offreRef}` + ' '.repeat(45 - data.offreRef.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `    Poste: ${data.poste}` + ' '.repeat(58 - data.poste.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(68) + colors.green + '║');
+    console.log(colors.green + '║' + colors.bright + colors.cyan + ` 🌐 LIEN VERS L'OFFRE:` + ' '.repeat(50) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `    ${data.actionUrl}` + ' '.repeat(58 - data.actionUrl.length) + colors.green + '║');
+    console.log(colors.green + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'offre_generee' };
+  },
+
+  /**
+   * Notification de rejet
+   */
+  async sendRejetNotification(data: {
+    nom: string;
+    prenom: string;
+    email: string;
+    demandeRef: string;
+    poste: string;
+    commentaire?: string;
+    role: string;
+  }) {
+    console.log('\n' + colors.yellow + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.yellow + '║' + colors.bright + ' ⚠️ SIMULATION - DEMANDE REJETÉE ' + ' '.repeat(45) + colors.yellow + '║' + colors.reset);
+    console.log(colors.yellow + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.yellow + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.yellow + '║');
+    console.log(colors.yellow + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.yellow + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + `` + ' '.repeat(68) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + ` ❌ La demande ${data.demandeRef} a été rejetée par ${data.role}.` + ' '.repeat(16) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + `    Poste: ${data.poste}` + ' '.repeat(58 - data.poste.length) + colors.yellow + '║');
+    if (data.commentaire) {
+      console.log(colors.yellow + '║' + colors.reset + `    Commentaire: ${data.commentaire}` + ' '.repeat(52 - data.commentaire.length) + colors.yellow + '║');
+    }
+    console.log(colors.yellow + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'rejet' };
+  },
+
+  /**
+   * Notification de rappel (48h avant deadline)
+   */
+  async sendRappelNotification(data: {
+    nom: string;
+    prenom: string;
+    email: string;
+    demandeRef: string;
+    demandePoste: string;
+    dateLimite: Date;
+    actionUrl: string;
+  }) {
+    const dateFormatee = new Date(data.dateLimite).toLocaleString('fr-TN');
+    
+    console.log('\n' + colors.magenta + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.magenta + '║' + colors.bright + ' ⏰ SIMULATION - RAPPEL DE VALIDATION ' + ' '.repeat(40) + colors.magenta + '║' + colors.reset);
+    console.log(colors.magenta + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.magenta + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.magenta + '║');
+    console.log(colors.magenta + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.magenta + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.yellow + ` ⚠️ RAPPEL : Une demande est en attente de votre validation !` + ' '.repeat(10) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `    Référence: ${data.demandeRef}` + ' '.repeat(58 - data.demandeRef.length) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `    Poste: ${data.demandePoste}` + ' '.repeat(58 - data.demandePoste.length) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.red + `    Délai: ${dateFormatee}` + ' '.repeat(52) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `` + ' '.repeat(68) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.bright + colors.cyan + ` 🌐 VALIDER MAINTENANT:` + ' '.repeat(48) + colors.magenta + '║');
+    console.log(colors.magenta + '║' + colors.reset + `    ${data.actionUrl}` + ' '.repeat(58 - data.actionUrl.length) + colors.magenta + '║');
+    console.log(colors.magenta + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'rappel' };
+  },
+
+  /**
+   * Notification de changement de rôle
+   */
+  async sendRoleChangeNotification(data: RoleChangeEmailData) {
+    console.log('\n' + colors.yellow + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.yellow + '║' + colors.bright + ' 🔄 SIMULATION - CHANGEMENT DE RÔLE ' + ' '.repeat(40) + colors.yellow + '║' + colors.reset);
+    console.log(colors.yellow + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.yellow + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.yellow + '║');
+    console.log(colors.yellow + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.yellow + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + `` + ' '.repeat(68) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + ` Votre rôle a été modifié par ${data.changedBy}.` + ' '.repeat(35) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + `    Ancien rôle: ${data.oldRole}` + ' '.repeat(55 - data.oldRole.length) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.bright + `    Nouveau rôle: ${data.newRole}` + ' '.repeat(55 - data.newRole.length) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.reset + `` + ' '.repeat(68) + colors.yellow + '║');
+    console.log(colors.yellow + '║' + colors.dim + ` ℹ️ Veuillez vous reconnecter pour que les changements prennent effet.` + ' '.repeat(8) + colors.yellow + '║');
+    console.log(colors.yellow + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'role_change' };
+  },
+
+  /**
+   * Email de désactivation de compte
+   */
+  async sendAccountDeactivationEmail(data: AccountDeactivationEmailData) {
+    console.log('\n' + colors.red + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.red + '║' + colors.bright + ' 🔒 SIMULATION - DÉSACTIVATION DE COMPTE ' + ' '.repeat(34) + colors.red + '║' + colors.reset);
+    console.log(colors.red + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.red + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.red + '║');
+    console.log(colors.red + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.red + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.red + '║');
+    console.log(colors.red + '║' + colors.reset + `` + ' '.repeat(68) + colors.red + '║');
+    console.log(colors.red + '║' + colors.reset + ` Votre compte a été désactivé.` + ' '.repeat(46) + colors.red + '║');
+    console.log(colors.red + '║' + colors.reset + ` Raison: ${data.reason}` + ' '.repeat(58 - data.reason.length) + colors.red + '║');
+    if (data.reactivationDate) {
+      console.log(colors.red + '║' + colors.reset + ` Réactivation prévue: ${data.reactivationDate}` + ' '.repeat(45 - data.reactivationDate.length) + colors.red + '║');
+    }
+    console.log(colors.red + '║' + colors.reset + `` + ' '.repeat(68) + colors.red + '║');
+    console.log(colors.red + '║' + colors.dim + ` ℹ️ Contactez l'administrateur pour plus d'informations.` + ' '.repeat(12) + colors.red + '║');
+    console.log(colors.red + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'account_deactivation' };
+  },
+
+  /**
+   * Email d'activation de compte
+   */
+  async sendAccountActivationEmail(data: AccountActivationEmailData) {
+    console.log('\n' + colors.green + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.green + '║' + colors.bright + ' 🔓 SIMULATION - ACTIVATION DE COMPTE ' + ' '.repeat(37) + colors.green + '║' + colors.reset);
+    console.log(colors.green + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.green + '║');
+    console.log(colors.green + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.green + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(68) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Votre compte a été activé !` + ' '.repeat(48) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + ` Mot de passe temporaire: ${colors.bright}${data.tempPassword}${colors.reset}` + ' '.repeat(36 - data.tempPassword.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(68) + colors.green + '║');
+    console.log(colors.green + '║' + colors.bright + colors.cyan + ` 🌐 LIEN D'ACTIVATION:` + ' '.repeat(50) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `    ${data.activationUrl}` + ' '.repeat(58 - data.activationUrl.length) + colors.green + '║');
+    console.log(colors.green + '║' + colors.reset + `` + ' '.repeat(68) + colors.green + '║');
+    console.log(colors.green + '║' + colors.dim + ` ⚠️ Vous devrez changer ce mot de passe à la première connexion.` + ' '.repeat(8) + colors.green + '║');
+    console.log(colors.green + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'account_activation' };
+  },
+
+  /**
+   * Confirmation de mise à jour de profil
+   */
+  async sendProfileUpdateConfirmation(data: ProfileUpdateEmailData) {
+    console.log('\n' + colors.cyan + '╔' + '═'.repeat(68) + '╗' + colors.reset);
+    console.log(colors.cyan + '║' + colors.bright + ' 📝 SIMULATION - MISE À JOUR DU PROFIL ' + ' '.repeat(37) + colors.cyan + '║' + colors.reset);
+    console.log(colors.cyan + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.cyan + '║' + colors.reset + ` À: ${data.email}` + ' '.repeat(58 - data.email.length) + colors.cyan + '║');
+    console.log(colors.cyan + '╠' + '═'.repeat(68) + '╣' + colors.reset);
+    console.log(colors.cyan + '║' + colors.reset + ` Bonjour ${data.prenom} ${data.nom},` + ' '.repeat(48) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.reset + `` + ' '.repeat(68) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.reset + ` Votre profil a été mis à jour avec succès.` + ' '.repeat(38) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.reset + ` Champs modifiés: ${data.changes.join(', ')}` + ' '.repeat(52 - data.changes.join(', ').length) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.reset + `` + ' '.repeat(68) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.bright + colors.cyan + ` 🌐 CONSULTER VOTRE PROFIL:` + ' '.repeat(48) + colors.cyan + '║');
+    console.log(colors.cyan + '║' + colors.reset + `    ${data.profileUrl}` + ' '.repeat(58 - data.profileUrl.length) + colors.cyan + '║');
+    console.log(colors.cyan + '╚' + '═'.repeat(68) + '╝' + colors.reset + '\n');
+    
+    return { success: true, simulated: true, to: data.email, type: 'profile_update' };
+  },
+
+  /**
+   * Version simplifiée pour les logs
+   */
+  logEmail(type: string, to: string, data: any) {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] 📧 EMAIL [${type}] → ${to}`);
+  }
 };

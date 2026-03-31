@@ -13,6 +13,12 @@ export interface User {
   mustChangePassword: boolean;
   dernierConnexion?: string;
   createdAt: string;
+  directionId?: string;      
+  direction?: {              
+    id: string;
+    code: string;
+    nom: string;
+  };
 }
 
 export interface CreateUserData {
@@ -23,6 +29,7 @@ export interface CreateUserData {
   departement?: string;
   poste?: string;
   telephone?: string;
+  directionId?: string;      
 }
 
 export interface UpdateUserData {
@@ -44,26 +51,16 @@ export const userService = {
    * Récupérer tous les utilisateurs
    */
   async getUsers(): Promise<User[]> {
-    try {
-      const response = await api.get('/users');
-      return response.data.users;
-    } catch (error) {
-      console.error('Erreur getUsers:', error);
-      throw error;
-    }
+    const response = await api.get('/users');
+    return response.data.users || response.data.data || [];
   },
 
   /**
    * Récupérer un utilisateur par ID
    */
   async getUserById(id: string): Promise<User> {
-    try {
-      const response = await api.get(`/users/${id}`);
-      return response.data.user;
-    } catch (error) {
-      console.error('Erreur getUserById:', error);
-      throw error;
-    }
+    const response = await api.get(`/users/${id}`);
+    return response.data.user || response.data.data;
   },
 
   /**
@@ -83,40 +80,21 @@ export const userService = {
    * Créer un nouvel utilisateur (Super Admin uniquement)
    */
   async createUser(data: CreateUserData): Promise<User> {
-    try {
-      const response = await api.post('/auth/register', data);
-      return response.data.user;
-    } catch (error) {
-      console.error('Erreur createUser:', error);
-      throw error;
-    }
+    const response = await api.post('/auth/register', data);
+    return response.data.user || response.data.data;
   },
 
-  /**
-   * Mettre à jour un utilisateur
-   */
-  async updateUser(id: string, data: UpdateUserData): Promise<User> {
-    try {
-      const response = await api.put(`/users/${id}`, data);
-      return response.data.user;
-    } catch (error) {
-      console.error('Erreur updateUser:', error);
-      throw error;
-    }
-  },
+  // Mettre à jour un utilisateur
+async updateUser(id: string, data: Partial<CreateUserData>): Promise<User> {
+  const response = await api.put(`/users/${id}`, data);  // PATCH → PUT
+  return response.data.user || response.data.data;
+},
 
-  /**
-   * Activer/Désactiver un utilisateur
-   */
-  async toggleUserStatus(id: string): Promise<{ actif: boolean }> {
-    try {
-      const response = await api.patch(`/users/${id}/toggle-status`);
-      return response.data;
-    } catch (error) {
-      console.error('Erreur toggleUserStatus:', error);
-      throw error;
-    }
-  },
+// Activer/Désactiver
+async toggleUserStatus(id: string): Promise<{ actif: boolean }> {
+  const response = await api.patch(`/users/${id}/toggle-status`);
+  return { actif: response.data.actif };  // extraire directement actif
+},
 
   /**
    * Renvoyer l'invitation (nouveau mot de passe temporaire)

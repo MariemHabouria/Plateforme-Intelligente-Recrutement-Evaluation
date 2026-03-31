@@ -5,6 +5,7 @@ import prisma from '../config/prisma';
 interface JwtPayload {
   id: string;
   role: string;
+  directionId?: string;
 }
 
 declare global {
@@ -15,7 +16,6 @@ declare global {
   }
 }
 
-// Vérifie que l'utilisateur est authentifié
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token;
@@ -41,7 +41,11 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         nom: true,
         prenom: true,
         role: true,
-        actif: true
+        actif: true,
+        directionId: true,
+        direction: {
+          select: { id: true, code: true, nom: true }
+        }
       }
     });
 
@@ -62,7 +66,6 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-// Vérifie que l'utilisateur a le bon rôle
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -71,11 +74,11 @@ export const authorize = (...roles: string[]) => {
         message: 'Non autorisé' 
       });
     }
-
+    
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ 
         success: false,
-        message: `Accès interdit - Rôle ${req.user.role} non autorisé` 
+        message: `Accès interdit - Rôle ${req.user.role} non autorisé. Rôles requis: ${roles.join(', ')}` 
       });
     }
 

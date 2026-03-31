@@ -14,9 +14,12 @@ import {
   Cpu, 
   Shield,
   LogOut,
-  User
+  User,
+  CheckCircle,
+  Clock,
+  XCircle
 } from 'lucide-react'
-import { NAV_CONFIG } from '@/lib/data'
+import { NAV_CONFIG, ROLES } from '@/lib/data'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Role } from '@/types'
 
@@ -33,6 +36,9 @@ const iconMap: Record<string, LucideIcon> = {
   GitBranch, 
   Cpu, 
   Shield,
+  CheckCircle,
+  Clock,
+  XCircle
 }
 
 interface SidebarProps {
@@ -42,14 +48,30 @@ interface SidebarProps {
 }
 
 export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
-  const { logout, user } = useAuth() // ← Récupérer l'utilisateur connecté
+  const { user, logout } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
   
-  // Normalisation du rôle (SUPER_ADMIN → superadmin)
+  // Normalisation du rôle
   let normalizedRole = role?.toLowerCase() as string
   if (normalizedRole === 'super_admin') {
     normalizedRole = 'superadmin'
   }
+  
+  // ✅ CORRECTION : Importer ROLES depuis data.ts
+  const roleConfig = ROLES[normalizedRole as keyof typeof ROLES]
+  
+  const roleDisplay = {
+    color: roleConfig?.color || 'var(--gold)',
+    label: roleConfig?.label || normalizedRole || 'Rôle inconnu',
+    initials: roleConfig?.initials || normalizedRole?.slice(0,2).toUpperCase() || 'U',
+    name: roleConfig?.name || normalizedRole || 'Utilisateur',
+    sub: roleConfig?.sub || ''
+  }
+  
+  // Récupérer les informations de l'utilisateur
+  const userInitials = (user?.prenom?.[0]?.toUpperCase() || '') + (user?.nom?.[0]?.toUpperCase() || '') || 
+                        roleDisplay.initials
+  const userFullName = user ? `${user.prenom} ${user.nom}` : roleDisplay.name
   
   // Récupérer les items de navigation pour ce rôle
   const nav = NAV_CONFIG[normalizedRole] || []
@@ -58,35 +80,32 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
     logout()
   }
 
-  // Obtenir les initiales de l'utilisateur connecté
-  const getUserInitials = () => {
-    if (user?.prenom && user?.nom) {
-      return (user.prenom[0] + user.nom[0]).toUpperCase()
-    }
-    return normalizedRole?.slice(0,2).toUpperCase() || 'U'
+  const handleNavigate = (pageId: string) => {
+    setShowUserMenu(false)
+    onNavigate(pageId)
   }
 
-  // Obtenir le nom complet de l'utilisateur connecté
-  const getUserFullName = () => {
-    if (user?.prenom && user?.nom) {
-      return `${user.prenom} ${user.nom}`
+  // Fonction pour obtenir le titre de section en français
+  const getSectionTitle = (section: string): string => {
+    const sectionMap: Record<string, string> = {
+      'main': 'Principal',
+      'recruitment': 'Recrutement',
+      'validation': 'À valider',
+      'hr': 'RH',
+      'finance': 'Finances',
+      'admin': 'Administration',
+      'superadmin': 'Super Admin',
+      'profile': 'Profil',
+      'principal': 'Principal',
+      'a_valider': 'À valider',
+      'periode_essai': 'Période d\'essai',
+      'recrutement': 'Recrutement',
+      'gestion_rh': 'Gestion RH',
+      'paie_admin': 'Paie & Administration',
+      'administration': 'Administration',
+      'supervision': 'Supervision'
     }
-    return normalizedRole || 'Utilisateur'
-  }
-
-  // Obtenir le label du rôle pour l'affichage
-  const getRoleLabel = () => {
-    const roleLabels: Record<string, string> = {
-      superadmin: 'Super Admin',
-      manager: 'Manager (N+1)',
-      directeur: 'Directeur (N+2)',
-      rh: 'RH / DRH',
-      daf: 'DAF',
-      dga: 'DGA / DG',
-      paie: 'Responsable Paie',
-      candidat: 'Candidat'
-    }
-    return roleLabels[normalizedRole] || normalizedRole
+    return sectionMap[section] || section
   }
 
   return (
@@ -135,7 +154,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             textTransform: 'uppercase', 
             opacity: .7 
           }}>
-            Platform
+            Plateforme RH
           </div>
         </div>
       </div>
@@ -151,7 +170,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             // Si c'est une section (titre)
             if (item.section) {
               return (
-                <div key={idx} style={{ padding: '18px 20px 4px' }}>
+                <div key={`section-${idx}`} style={{ padding: '18px 20px 4px' }}>
                   <div style={{ 
                     fontSize: 10, 
                     fontWeight: 600, 
@@ -159,22 +178,25 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
                     letterSpacing: 1.2, 
                     color: 'rgba(184,168,120,.4)' 
                   }}>
-                    {item.section}
+                    {getSectionTitle(item.section)}
                   </div>
                 </div>
               )
             }
             
             // Si c'est un item de menu
-            const Icon = item.icon ? iconMap[item.icon] : LayoutDashboard
+            const Icon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : LayoutDashboard
             const isActive = currentPage === item.id
+            
+            // Couleur du badge
             const badgeColor = item.badgeColor === 'amber' ? 'var(--amber)' : 
-                              item.badgeColor === 'gold' ? 'var(--gold)' : 'var(--red)'
+                              item.badgeColor === 'green' ? 'var(--green)' :
+                              item.badgeColor === 'red' ? 'var(--red)' : 'var(--gold)'
 
             return (
               <div
                 key={item.id}
-                onClick={() => item.id && onNavigate(item.id)}
+                onClick={() => item.id && handleNavigate(item.id)}
                 style={{
                   display: 'flex', 
                   alignItems: 'center', 
@@ -231,13 +253,12 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
         )}
       </nav>
 
-      {/* ===== FOOTER UTILISATEUR AVEC NOM RÉEL ===== */}
+      {/* ===== FOOTER UTILISATEUR ===== */}
       <div style={{ 
         padding: 12, 
         borderTop: '1px solid rgba(154,138,80,.15)',
         position: 'relative'
       }}>
-        {/* Bouton utilisateur - Affiche les données RÉELLES de l'utilisateur connecté */}
         <div 
           style={{ 
             display: 'flex', 
@@ -254,7 +275,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             width: 32, 
             height: 32, 
             borderRadius: '50%', 
-            background: 'var(--gold)', // Couleur fixe ou basée sur le rôle
+            background: roleDisplay.color,
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
@@ -263,7 +284,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             color: '#fff', 
             flexShrink: 0 
           }}>
-            {getUserInitials()} {/* ← Initiales réelles de l'utilisateur */}
+            {userInitials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ 
@@ -274,7 +295,7 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               overflow: 'hidden', 
               textOverflow: 'ellipsis' 
             }}>
-              {getUserFullName()} {/* ← Nom réel de l'utilisateur */}
+              {userFullName}
             </div>
             <div style={{ 
               fontSize: 10, 
@@ -284,13 +305,12 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               textOverflow: 'ellipsis', 
               opacity: .7 
             }}>
-              {getRoleLabel()} {/* ← Label du rôle */}
+              {roleDisplay.label}
             </div>
           </div>
           <Settings size={13} style={{ color: 'var(--sidebar-text)', opacity: .5 }} />
         </div>
 
-        {/* Menu déroulant utilisateur */}
         {showUserMenu && (
           <div style={{
             position: 'absolute',
@@ -302,13 +322,11 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
             borderRadius: 8,
             marginBottom: 8,
             overflow: 'hidden',
-            boxShadow: '0 -4px 12px rgba(0,0,0,0.3)'
+            boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
+            zIndex: 101
           }}>
             <button
-              onClick={() => {
-                setShowUserMenu(false)
-                onNavigate('profile')
-              }}
+              onClick={() => handleNavigate('profile')}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -330,30 +348,27 @@ export function Sidebar({ role, currentPage, onNavigate }: SidebarProps) {
               Mon profil
             </button>
             <button
-  onClick={() => {
-    setShowUserMenu(false)
-    onNavigate('settings')  // ← AJOUTER CETTE LIGNE
-  }}
-  style={{
-    width: '100%',
-    padding: '10px 12px',
-    background: 'transparent',
-    border: 'none',
-    color: '#d6c89a',
-    textAlign: 'left',
-    fontSize: 12,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    borderBottom: '1px solid rgba(154,138,80,.2)',
-  }}
-  onMouseEnter={e => (e.currentTarget.style.background = 'var(--sidebar-hover)')}
-  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
->
-  <Settings size={14} />
-  Paramètres
-</button>
+              onClick={() => handleNavigate('settings')}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                background: 'transparent',
+                border: 'none',
+                color: '#d6c89a',
+                textAlign: 'left',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                borderBottom: '1px solid rgba(154,138,80,.2)',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--sidebar-hover)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Settings size={14} />
+              Paramètres
+            </button>
             <button
               onClick={() => {
                 setShowUserMenu(false)
