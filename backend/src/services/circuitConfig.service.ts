@@ -74,10 +74,10 @@ export const circuitConfigService = {
    */
   async updateCircuit(id: string, data: any, userId: string) {
     if (data.etapes) {
-      const rolesValides = ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG', 'CONSEIL'];
+      const rolesValides = ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'];
       for (const etape of data.etapes) {
         if (!rolesValides.includes(etape.role)) {
-          throw new Error(`Rôle invalide: ${etape.role}`);
+          throw new Error(`Rôle invalide: ${etape.role}. Rôles supportés: DIRECTEUR, DRH, DAF, DGA, DG`);
         }
         if (!etape.label || !etape.niveau) {
           throw new Error('Chaque étape doit avoir un niveau et un label');

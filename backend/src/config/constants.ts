@@ -148,10 +148,9 @@ export const CIRCUITS_PAR_DEFAUT = {
       { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 },
       { niveau: 3, role: 'DAF', label: 'DAF', delai: 48 },
       { niveau: 4, role: 'DGA', label: 'DGA', delai: 48 },
-      { niveau: 5, role: 'DG', label: 'DG', delai: 48 },
-      { niveau: 6, role: 'CONSEIL', label: 'Conseil d\'administration', delai: 72 }
+      { niveau: 5, role: 'DG', label: 'DG', delai: 48 }
     ],
-    totalEtapes: 7,
+    totalEtapes: 6,
     delaiParDefaut: 48
   }
 } as const;

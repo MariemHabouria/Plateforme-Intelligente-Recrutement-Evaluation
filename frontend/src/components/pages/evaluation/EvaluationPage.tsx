@@ -1,3 +1,4 @@
+import { useAuth } from '../../../contexts/AuthContext';
 import { Eye, Check, X } from 'lucide-react'
 import { EVALUATIONS_PE } from '@/lib/data'
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/Card'
@@ -7,7 +8,7 @@ import { Alert } from '@/components/ui/Alert'
 import { Avatar } from '@/components/ui/Avatar'
 import { FormGroup, FormLabel, FormRow, Input, Select, Textarea } from '@/components/ui/FormField'
 import { PE_WORKFLOW } from '@/types'
-import type { Role, EvaluationPE } from '@/types'
+import type { EvaluationPE } from '@/types'
 
 // ── Workflow steps visualizer ──────────────────────────────
 function WorkflowSteps({ etapeActuelle }: { etapeActuelle: string }) {
@@ -48,7 +49,7 @@ function WorkflowSteps({ etapeActuelle }: { etapeActuelle: string }) {
 }
 
 // ── Table listing all PE evaluations ──────────────────────
-function PETable({ evals, role }: { evals: EvaluationPE[], role: Role }) {
+function PETable({ evals, role }: { evals: EvaluationPE[], role: string }) {
   // Filter by what's relevant to each role
   const filtered = evals.filter(e => {
     if (role === 'superadmin') return true
@@ -362,7 +363,10 @@ function ViewDGA({ ev }: { ev: EvaluationPE }) {
 // ══════════════════════════════════════════════════════════
 //  PAGE PRINCIPALE
 // ══════════════════════════════════════════════════════════
-export function EvaluationPage({ role }: { role: Role }) {
+export const EvaluationPage = () => {
+  const { user } = useAuth();
+  const role = user?.role as string;
+
   // Pick the evaluation that matches the current role's step
   const myEval = EVALUATIONS_PE.find(e => e.etapeActuelle === role)
   const alertPerRole: Record<string, { v: any; msg: string }> = {

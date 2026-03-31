@@ -2,6 +2,23 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendError, sendNotFound } from '../utils/helpers';
 
+const VALID_WORKFLOW_ROLES = new Set(['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG']);
+
+const validateEtapes = (etapes: any[]): null | string => {
+  if (!Array.isArray(etapes) || etapes.length === 0) {
+    return 'Circuit doit contenir au moins une étape';
+  }
+  for (const etape of etapes) {
+    if (!etape.role || !VALID_WORKFLOW_ROLES.has(etape.role)) {
+      return `Rôle invalide: "${etape.role}". Rôles supportés: DIRECTEUR, DRH, DAF, DGA, DG`;
+    }
+    if (!etape.niveau || !etape.label) {
+      return 'Étape doit avoir un niveau et un label';
+    }
+  }
+  return null;
+};
+
 // ============================================
 // GET /api/admin/circuits - Récupérer tous les circuits
 // ============================================
@@ -43,8 +60,16 @@ export const updateCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const data = req.body;
+
+    if (data.etapes) {
+      const etapesError = validateEtapes(data.etapes);
+      if (etapesError) {
+        return sendError(res, etapesError, 400);
+      }
+    }
     
     const circuit = await prisma.circuitConfig.update({
+
       where: { id },
       data: { ...data, updatedAt: new Date() }
     });
@@ -61,6 +86,13 @@ export const updateCircuit = async (req: Request, res: Response) => {
 export const createCircuit = async (req: Request, res: Response) => {
   try {
     const data = req.body;
+
+    if (data.etapes) {
+      const etapesError = validateEtapes(data.etapes);
+      if (etapesError) {
+        return sendError(res, etapesError, 400);
+      }
+    }
     
     // Vérifier si un circuit avec le même type existe déjà
     if (data.type) {

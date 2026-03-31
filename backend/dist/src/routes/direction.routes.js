@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const direction_controller_1 = require("../controllers/direction.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.use(auth_1.protect);
+router.get('/', direction_controller_1.getDirections);
+router.get('/:id', direction_controller_1.getDirectionById);
+exports.default = router;
