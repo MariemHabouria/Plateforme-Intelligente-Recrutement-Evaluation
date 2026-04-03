@@ -20,15 +20,14 @@ export const getUsers = async (req: Request, res: Response) => {
         nom: true,
         prenom: true,
         role: true,
-        departement: true,
         poste: true,
         telephone: true,
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
         createdAt: true,
-        directionId: true,       // ✅ ajouté
-        direction: {             // ✅ ajouté
+        directionId: true,
+        direction: {
           select: {
             id: true,
             code: true,
@@ -69,15 +68,14 @@ export const getUserById = async (req: Request, res: Response) => {
         nom: true,
         prenom: true,
         role: true,
-        departement: true,
         poste: true,
         telephone: true,
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
         createdAt: true,
-        directionId: true,       // ✅ ajouté
-        direction: {             // ✅ ajouté
+        directionId: true,
+        direction: {
           select: {
             id: true,
             code: true,
@@ -107,13 +105,11 @@ export const getUserById = async (req: Request, res: Response) => {
 
 /**
  * Mettre à jour un utilisateur (Super Admin uniquement)
- * ✅ AJOUT: Email de notification si le rôle change
  */
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    // ✅ directionId ajouté dans la déstructuration
-    const { nom, prenom, role, departement, poste, telephone, actif, directionId } = req.body;
+    const { nom, prenom, role, poste, telephone, actif, directionId } = req.body;
 
     const user = await prisma.user.findUnique({
       where: { id }
@@ -135,11 +131,10 @@ export const updateUser = async (req: Request, res: Response) => {
         nom,
         prenom,
         role,
-        departement,
         poste,
         telephone,
         actif,
-        directionId: directionId || null,  // ✅ ajouté, null si vide
+        directionId: directionId || null,
       },
       select: {
         id: true,
@@ -147,14 +142,13 @@ export const updateUser = async (req: Request, res: Response) => {
         nom: true,
         prenom: true,
         role: true,
-        departement: true,
         poste: true,
         telephone: true,
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
-        directionId: true,       // ✅ ajouté
-        direction: {             // ✅ ajouté
+        directionId: true,
+        direction: {
           select: {
             id: true,
             code: true,
@@ -164,7 +158,7 @@ export const updateUser = async (req: Request, res: Response) => {
       }
     });
 
-    // ✅ ENVOYER EMAIL SI LE RÔLE A CHANGÉ
+    // Envoyer email si le rôle a changé
     if (oldRole !== role) {
       await emailService.sendRoleChangeNotification({
         nom: updatedUser.nom,
@@ -194,7 +188,6 @@ export const updateUser = async (req: Request, res: Response) => {
 
 /**
  * Activer/Désactiver un utilisateur
- * ✅ AJOUT: Email de notification lors de la désactivation
  */
 export const toggleUserStatus = async (req: Request, res: Response) => {
   try {
@@ -218,7 +211,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
       select: { actif: true }
     });
 
-    // ✅ ENVOYER EMAIL SI LE COMPTE EST DÉSACTIVÉ
+    // Envoyer email si le compte est désactivé
     if (!newStatus) {
       await emailService.sendAccountDeactivationEmail({
         nom: user.nom,
@@ -233,7 +226,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: `Utilisateur ${updatedUser.actif ? 'activé' : 'désactivé'}`,
-      actif: updatedUser.actif   // ✅ directement à la racine (pas dans data)
+      actif: updatedUser.actif
     });
 
   } catch (error) {
@@ -260,7 +253,6 @@ export const deleteUser = async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ Vérifier que l'utilisateur existe avant suppression
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       return res.status(404).json({
@@ -289,7 +281,6 @@ export const deleteUser = async (req: Request, res: Response) => {
 
 /**
  * Renvoyer l'invitation (nouveau mot de passe temporaire)
- * ✅ AJOUT: Email d'invitation avec nouveau mot de passe
  */
 export const resendInvite = async (req: Request, res: Response) => {
   try {
@@ -342,7 +333,6 @@ export const resendInvite = async (req: Request, res: Response) => {
 
 /**
  * Réinitialiser le mot de passe (par Super Admin)
- * ✅ AJOUT: Email avec nouveau mot de passe temporaire
  */
 export const resetPassword = async (req: Request, res: Response) => {
   try {
@@ -370,7 +360,6 @@ export const resetPassword = async (req: Request, res: Response) => {
       }
     });
 
-    // ✅ ENVOYER EMAIL DE RÉINITIALISATION
     await emailService.sendResetPasswordEmail({
       nom: user.nom,
       prenom: user.prenom,
@@ -399,12 +388,11 @@ export const resetPassword = async (req: Request, res: Response) => {
 
 /**
  * Mettre à jour son propre profil (utilisateur connecté)
- * ✅ AJOUT: Email de confirmation des modifications
  */
 export const updateOwnProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { nom, prenom, telephone, departement, poste } = req.body;
+    const { nom, prenom, telephone, poste } = req.body;
 
     // Validation basique
     if (nom === '' || prenom === '') {
@@ -417,7 +405,7 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
     // Récupérer l'ancien profil pour comparer les changements
     const oldUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { nom: true, prenom: true, telephone: true, departement: true, poste: true, email: true }
+      select: { nom: true, prenom: true, telephone: true, poste: true, email: true }
     });
 
     // Seuls ces champs peuvent être modifiés par l'utilisateur
@@ -435,10 +423,6 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
     if (telephone !== undefined && telephone !== oldUser?.telephone) {
       updateData.telephone = telephone;
       changes.push(`Téléphone : "${oldUser?.telephone || 'Non renseigné'}" → "${telephone}"`);
-    }
-    if (departement !== undefined && departement !== oldUser?.departement) {
-      updateData.departement = departement;
-      changes.push(`Département : "${oldUser?.departement || 'Non renseigné'}" → "${departement}"`);
     }
     if (poste !== undefined && poste !== oldUser?.poste) {
       updateData.poste = poste;
@@ -461,17 +445,20 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
         nom: true,
         prenom: true,
         role: true,
-        departement: true,
         poste: true,
         telephone: true,
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,
-        createdAt: true
+        createdAt: true,
+        directionId: true,
+        direction: {
+          select: { id: true, code: true, nom: true }
+        }
       }
     });
 
-    // ✅ ENVOYER EMAIL DE CONFIRMATION SI DES CHANGEMENTS ONT ÉTÉ FAITS
+    // Envoyer email de confirmation si des changements ont été faits
     if (changes.length > 0) {
       await emailService.sendProfileUpdateConfirmation({
         nom: updatedUser.nom,

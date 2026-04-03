@@ -16,7 +16,7 @@ const generateToken = (id: string, role: string): string => {
   return jwt.sign(
     { id, role },
     secret,
-    { expiresIn } as jwt.SignOptions  // ← Correction avec "as jwt.SignOptions"
+    { expiresIn } as jwt.SignOptions
   );
 };
 
@@ -30,7 +30,7 @@ const generateToken = (id: string, role: string): string => {
  */
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, nom, prenom, role, departement, poste, telephone } = req.body;
+    const { email, nom, prenom, role, poste, telephone, directionId } = req.body;
 
     // Validation des champs requis
     if (!email || !nom || !prenom || !role) {
@@ -64,12 +64,12 @@ export const register = async (req: Request, res: Response) => {
         nom,
         prenom,
         role,
-        departement,
-        poste,
-        telephone,
+        poste: poste || null,
+        telephone: telephone || null,
+        directionId: directionId || null,
         mustChangePassword: true,
         actif: true,
-        createdById: (req as any).user?.id
+        
       }
     });
 
@@ -87,10 +87,10 @@ export const register = async (req: Request, res: Response) => {
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({
-  success: true,
-  message: 'Utilisateur créé avec succès. Un email a été envoyé avec ses identifiants.', // ← Changed!
-  user: userWithoutPassword
-});
+      success: true,
+      message: 'Utilisateur créé avec succès. Un email a été envoyé avec ses identifiants.',
+      user: userWithoutPassword
+    });
 
   } catch (error) {
     console.error('❌ Erreur register:', error);
@@ -120,7 +120,12 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
+      include: {
+        direction: {
+          select: { id: true, code: true, nom: true }
+        }
+      }
     });
 
     if (!user) {
@@ -158,8 +163,9 @@ export const login = async (req: Request, res: Response) => {
       nom: user.nom,
       prenom: user.prenom,
       role: user.role,
-      departement: user.departement,
       poste: user.poste,
+      directionId: user.directionId,
+      direction: user.direction,
       mustChangePassword: user.mustChangePassword
     };
 
@@ -278,9 +284,12 @@ export const getMe = async (req: Request, res: Response) => {
         nom: true,
         prenom: true,
         role: true,
-        departement: true,
         poste: true,
         telephone: true,
+        directionId: true,
+        direction: {
+          select: { id: true, code: true, nom: true }
+        },
         actif: true,
         mustChangePassword: true,
         dernierConnexion: true,

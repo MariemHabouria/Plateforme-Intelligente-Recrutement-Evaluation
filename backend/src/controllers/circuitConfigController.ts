@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendError, sendNotFound } from '../utils/helpers';
+import { CircuitType } from '@prisma/client';
 
 const VALID_WORKFLOW_ROLES = new Set(['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG']);
+
 
 const validateEtapes = (etapes: any[]): null | string => {
   if (!Array.isArray(etapes) || etapes.length === 0) {
@@ -20,12 +22,13 @@ const validateEtapes = (etapes: any[]): null | string => {
 };
 
 // ============================================
-// GET /api/admin/circuits - Récupérer tous les circuits
+// GET /api/admin/circuits
 // ============================================
 export const getCircuits = async (req: Request, res: Response) => {
   try {
     const circuits = await prisma.circuitConfig.findMany({
-      orderBy: { seuilMin: 'asc' }
+      orderBy: { nom: 'asc' },
+      where: { actif: true }
     });
     sendSuccess(res, circuits);
   } catch (error) {
@@ -35,17 +38,13 @@ export const getCircuits = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// GET /api/admin/circuits/:id - Récupérer un circuit par ID
+// GET /api/admin/circuits/:id
 // ============================================
 export const getCircuitById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const circuit = await prisma.circuitConfig.findUnique({
-      where: { id }
-    });
-    if (!circuit) {
-      return sendNotFound(res, 'Circuit non trouvé');
-    }
+    const circuit = await prisma.circuitConfig.findUnique({ where: { id } });
+    if (!circuit) return sendNotFound(res, 'Circuit non trouvé');
     sendSuccess(res, circuit);
   } catch (error) {
     console.error('❌ getCircuitById error:', error);
@@ -54,7 +53,24 @@ export const getCircuitById = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// PUT /api/admin/circuits/:id - Mettre à jour un circuit
+// GET /api/admin/circuits/type/:type
+// ============================================
+export const getCircuitByType = async (req: Request, res: Response) => {
+  try {
+    const { type } = req.params;
+    const circuit = await prisma.circuitConfig.findFirst({
+      where: { type: type as any, actif: true }
+    });
+    if (!circuit) return sendNotFound(res, 'Circuit non trouvé pour ce type');
+    sendSuccess(res, circuit);
+  } catch (error) {
+    console.error('❌ getCircuitByType error:', error);
+    sendError(res, 'Erreur lors de la récupération du circuit');
+  }
+};
+
+// ============================================
+// PUT /api/admin/circuits/:id
 // ============================================
 export const updateCircuit = async (req: Request, res: Response) => {
   try {
@@ -63,13 +79,10 @@ export const updateCircuit = async (req: Request, res: Response) => {
 
     if (data.etapes) {
       const etapesError = validateEtapes(data.etapes);
-      if (etapesError) {
-        return sendError(res, etapesError, 400);
-      }
+      if (etapesError) return sendError(res, etapesError, 400);
     }
-    
-    const circuit = await prisma.circuitConfig.update({
 
+    const circuit = await prisma.circuitConfig.update({
       where: { id },
       data: { ...data, updatedAt: new Date() }
     });
@@ -81,35 +94,32 @@ export const updateCircuit = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// POST /api/admin/circuits - Créer un nouveau circuit
+// POST /api/admin/circuits
 // ============================================
 export const createCircuit = async (req: Request, res: Response) => {
   try {
     const data = req.body;
+    console.log('📥 createCircuit body:', JSON.stringify(data, null, 2));
 
     if (data.etapes) {
       const etapesError = validateEtapes(data.etapes);
-      if (etapesError) {
-        return sendError(res, etapesError, 400);
-      }
+      if (etapesError) return sendError(res, etapesError, 400);
     }
-    
-    // Vérifier si un circuit avec le même type existe déjà
+
     if (data.type) {
-      const existing = await prisma.circuitConfig.findUnique({
-        where: { type: data.type as any }
-      });
-      if (existing) {
-        return sendError(res, 'Un circuit avec ce type existe déjà', 400);
-      }
+      const existing = await prisma.circuitConfig.findUnique({ where: { type: data.type as any } });
+      if (existing) return sendError(res, 'Un circuit avec ce type existe déjà', 400);
     }
-    
+
     const circuit = await prisma.circuitConfig.create({
       data: {
-        ...data,
-        actif: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        type:          data.type,
+        nom:           data.nom,
+        description:   data.description,
+        etapes:        data.etapes,
+        totalEtapes:   data.totalEtapes,
+        delaiParDefaut: data.delaiParDefaut || 48,
+        actif:         data.actif !== undefined ? data.actif : true
       }
     });
     sendSuccess(res, circuit, 'Circuit créé avec succès', 201);
@@ -120,16 +130,16 @@ export const createCircuit = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// PATCH /api/admin/circuits/:id/toggle - Activer/Désactiver un circuit
+// PATCH /api/admin/circuits/:id/toggle
 // ============================================
 export const toggleCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { actif } = req.body;
-    
+
     const circuit = await prisma.circuitConfig.update({
       where: { id },
-      data: { actif }
+      data: { actif, updatedAt: new Date() }
     });
     sendSuccess(res, circuit, `Circuit ${actif ? 'activé' : 'désactivé'} avec succès`);
   } catch (error) {
@@ -139,13 +149,102 @@ export const toggleCircuit = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// POST /api/admin/circuits/reset - Réinitialiser les circuits par défaut
+// POST /api/admin/circuits/reset
+// ✅ FIX: STRATEGIQUE n'inclut plus CONSEIL (logique sans conseil)
 // ============================================
 export const resetCircuits = async (req: Request, res: Response) => {
   try {
-    // Cette fonction peut être implémentée plus tard avec les circuits par défaut
-    // Pour l'instant, on retourne un succès
-    sendSuccess(res, null, 'Circuits réinitialisés avec succès');
+    const defaultCircuits = [
+      {
+        type: CircuitType.TECHNICIEN,
+        nom: 'Technicien / Ouvrier',
+        description: 'Postes techniques et ouvriers',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 }
+        ],
+        totalEtapes: 2, delaiParDefaut: 48, actif: true
+      },
+      {
+        type: CircuitType.EMPLOYE,
+        nom: 'Employé / Agent',
+        description: 'Postes administratifs',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 }
+        ],
+        totalEtapes: 2, delaiParDefaut: 48, actif: true
+      },
+      {
+        type: CircuitType.CADRE_DEBUTANT,
+        nom: 'Cadre débutant',
+        description: 'Cadres juniors',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
+          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 }
+        ],
+        totalEtapes: 3, delaiParDefaut: 48, actif: true
+      },
+      {
+        type: CircuitType.CADRE_CONFIRME,
+        nom: 'Cadre confirmé',
+        description: 'Cadres seniors',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
+          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
+          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 }
+        ],
+        totalEtapes: 4, delaiParDefaut: 48, actif: true
+      },
+      {
+        type: CircuitType.CADRE_SUPERIEUR,
+        nom: 'Cadre supérieur',
+        description: 'Directeurs de département',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
+          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
+          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 },
+          { niveau: 5, role: 'DG',        label: 'DG',        delai: 48 }
+        ],
+        totalEtapes: 5, delaiParDefaut: 48, actif: true
+      },
+      {
+        // ✅ FIX: STRATEGIQUE = même circuit que CADRE_SUPERIEUR (sans CONSEIL)
+        type: CircuitType.STRATEGIQUE,
+        nom: 'Poste stratégique',
+        description: 'Postes de direction',
+        etapes: [
+          { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
+          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
+          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
+          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 },
+          { niveau: 5, role: 'DG',        label: 'DG',        delai: 48 }
+        ],
+        totalEtapes: 5, delaiParDefaut: 48, actif: true
+      }
+    ];
+
+    await prisma.circuitConfig.updateMany({ where: {}, data: { actif: false } });
+
+    let created = 0;
+    for (const circuit of defaultCircuits) {
+      await prisma.circuitConfig.upsert({
+        where: { type: circuit.type },
+        update: {
+          nom: circuit.nom, description: circuit.description,
+          etapes: circuit.etapes, totalEtapes: circuit.totalEtapes,
+          delaiParDefaut: circuit.delaiParDefaut, actif: true,
+          updatedAt: new Date()
+        },
+        create: circuit
+      });
+      created++;
+    }
+
+    sendSuccess(res, { created }, `${created} circuits réinitialisés avec succès`);
   } catch (error) {
     console.error('❌ resetCircuits error:', error);
     sendError(res, 'Erreur lors de la réinitialisation des circuits');
@@ -153,12 +252,11 @@ export const resetCircuits = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// DELETE /api/admin/circuits/:id - Supprimer un circuit (soft delete)
+// DELETE /api/admin/circuits/:id (soft delete)
 // ============================================
 export const deleteCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
     const circuit = await prisma.circuitConfig.update({
       where: { id },
       data: { actif: false, updatedAt: new Date() }

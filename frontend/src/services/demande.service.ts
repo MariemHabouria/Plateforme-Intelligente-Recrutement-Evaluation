@@ -6,17 +6,19 @@ export interface Demande {
   intitulePoste: string;
   description?: string;
   justification: string;
-  motif: 'CREATION' | 'REMPLACEMENT' | 'RENFORCEMENT' | 'NOUVEAU_POSTE' | 'EXPANSION';
-  typeContrat: 'CDI' | 'CDD' | 'STAGE' | 'ALTERNANCE' | 'FREELANCE';
-  priorite: 'HAUTE' | 'MOYENNE' | 'BASSE';
-  budgetEstime: number;
+  motif: string;
+  typeContrat: string;
+  priorite: string;
+  budgetMin?: number;
+  budgetMax?: number;
   dateSouhaitee: string;
   statut: string;
   etapeActuelle: number;
   totalEtapes?: number;
   circuitType?: string;
-  managerId: string;
+  createur?: { id: string; nom: string; prenom: string; email: string; role: string };
   manager?: { id: string; nom: string; prenom: string; email: string };
+  typePoste?: { id: string; nom: string; circuitType: string };
   validations?: Validation[];
   disponibilites?: Disponibilite[];
   createdAt: string;
@@ -41,54 +43,52 @@ export interface Disponibilite {
 
 export interface CreateDemandeData {
   intitulePoste: string;
+  typePosteId: string;
   justification: string;
   motif: string;
+  commentaireMotif?: string;
+  personneRemplaceeNom?: string;
+  fonctionRemplacee?: string;
   typeContrat: string;
   priorite: string;
-  budgetEstime: number;
+  budgetMin: number;
+  budgetMax: number;
   dateSouhaitee: string;
   description?: string;
   disponibilites?: { date: string; heureDebut: string; heureFin: string }[];
 }
 
 export const demandeService = {
-  // Récupérer toutes les demandes
   async getDemandes(params?: { page?: number; limit?: number; statut?: string; priorite?: string }) {
     const response = await api.get('/demandes', { params });
     return response.data;
   },
 
-  // Récupérer une demande par ID
   async getDemandeById(id: string) {
     const response = await api.get(`/demandes/${id}`);
     return response.data;
   },
 
-  // Créer une demande
   async createDemande(data: CreateDemandeData) {
     const response = await api.post('/demandes', data);
     return response.data;
   },
 
-  // Modifier une demande
   async updateDemande(id: string, data: Partial<CreateDemandeData>) {
     const response = await api.patch(`/demandes/${id}`, data);
     return response.data;
   },
 
-  // Supprimer une demande
   async deleteDemande(id: string) {
     const response = await api.delete(`/demandes/${id}`);
     return response.data;
   },
 
-  // Soumettre une demande au circuit
   async submitDemande(id: string) {
     const response = await api.post(`/demandes/${id}/submit`);
     return response.data;
   },
 
-  // Valider une étape
   async validerDemande(id: string, decision: 'Validee' | 'Refusee', commentaire?: string) {
     const response = await api.post(`/demandes/${id}/valider`, { decision, commentaire });
     return response.data;

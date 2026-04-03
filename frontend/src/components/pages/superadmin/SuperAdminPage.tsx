@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Shield, Eye } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
-import { Avatar } from '@/components/ui/Avatar';
-import { Modal } from '@/components/ui/Modal';
-import { Input, FormGroup, FormLabel, FormRow, Select } from '@/components/ui/FormField';
-import { userService, User } from '@/services/user.service';
-import { useAuth } from '@/contexts/AuthContext';
+import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '../../ui/Card';
+import { Badge } from '../../ui/Badge';
+import { Button } from '../../ui/Button';
+import { Alert } from '../../ui/Alert';
+import { Avatar } from '../../ui/Avatar';
+import { Modal } from '../../ui/Modal';
+import { Input, FormGroup, FormLabel, FormRow, Select } from '../../ui/FormField';
+import { userService, User } from '../../../services/user.service';
+import { useAuth } from '../../../contexts/AuthContext';
+import { TypePosteConfigPage } from './TypePosteConfigPage';
 import { CircuitConfigPage } from './CircuitConfigPage';
-import api from '@/services/api';
+import api from '../../../services/api';
+
+interface TypePoste {
+  id: string;
+  code: string;
+  nom: string;
+  description?: string;
+  circuitType: string;
+  directionId: string;
+}
 
 const ROLE_OPTIONS = [
   { value: 'SUPER_ADMIN', label: 'Super Admin', color: '#1E1A0E', hasDirection: false },
@@ -30,17 +40,80 @@ interface Direction {
 }
 
 export function SuperAdminPage({ page }: { page: string }) {
+  if (page === 'dashboard') return <DashboardPage />;
   if (page === 'audit') return <AuditPage />;
   if (page === 'utilisateurs') return <UtilisateursPage />;
+  if (page === 'type_postes') return <TypePosteConfigPage />;
   if (page === 'workflows') return <CircuitConfigPage />;
   if (page === 'ia_config') return <IAConfigPage />;
-  return <UtilisateursPage />;
+  return <DashboardPage />;
 }
 
+// Dashboard
+function DashboardPage() {
+  return (
+    <div className="page-fade">
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord</h1>
+        <p style={{ color: 'var(--text-muted)' }}>Bienvenue sur la plateforme RH Kilani</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
+        {[
+          { label: 'Utilisateurs actifs', value: '28', delta: '+3', icon: '👥' },
+          { label: 'Demandes en cours', value: '12', delta: '+2', icon: '📋' },
+          { label: 'Offres publiées', value: '7', delta: '+1', icon: '📢' },
+          { label: 'Candidatures', value: '124', delta: '+18', icon: '📬' },
+        ].map((stat, i) => (
+          <Card key={i}>
+            <CardBody>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{stat.label}</div>
+                  <div style={{ fontSize: 32, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}>{stat.delta} ce mois</div>
+                </div>
+                <div style={{ fontSize: 32 }}>{stat.icon}</div>
+              </div>
+            </CardBody>
+          </Card>
+        ))}
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Activité récente</CardTitle>
+          <CardSubtitle>Dernières actions sur la plateforme</CardSubtitle>
+        </CardHeader>
+        <CardBody>
+          {[
+            { time: 'Il y a 2h', user: 'M. Kilani', action: 'Demande soumise', detail: 'DEM-2026-018' },
+            { time: 'Il y a 5h', user: 'S. Karoui', action: 'Offre publiée', detail: 'OFF-2026-011' },
+            { time: 'Hier', user: 'A. Kilani', action: 'Validation', detail: 'DEM-2026-015' },
+          ].map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 0',
+              borderBottom: i < 2 ? '1px solid var(--border-light)' : 'none'
+            }}>
+              <div style={{ width: 80, fontSize: 12, color: 'var(--text-muted)' }}>{item.time}</div>
+              <div style={{ fontWeight: 500 }}>{item.user}</div>
+              <div style={{ color: 'var(--text-muted)' }}>•</div>
+              <div>{item.action}</div>
+              <div style={{ color: 'var(--text-muted)' }}>{item.detail}</div>
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+// UtilisateursPage
 function UtilisateursPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [directions, setDirections] = useState<Direction[]>([]);
+  const [typePostes, setTypePostes] = useState<TypePoste[]>([]);
+  const [filteredTypePostes, setFilteredTypePostes] = useState<TypePoste[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -56,17 +129,28 @@ function UtilisateursPage() {
     prenom: '',
     role: 'MANAGER',
     directionId: '',
-    departement: '',
-    poste: '',
+    typePosteId: '',
     telephone: ''
   });
 
   useEffect(() => {
     fetchUsers();
     fetchDirections();
+    fetchTypePostes();
   }, []);
 
-  // ✅ Feedback avec auto-clear
+  useEffect(() => {
+    if (formData.directionId) {
+      const filtered = typePostes.filter(tp => tp.directionId === formData.directionId);
+      setFilteredTypePostes(filtered);
+      if (!filtered.find(tp => tp.id === formData.typePosteId)) {
+        setFormData(prev => ({ ...prev, typePosteId: '' }));
+      }
+    } else {
+      setFilteredTypePostes([]);
+    }
+  }, [formData.directionId, typePostes]);
+
   const showSuccess = (message: string) => {
     setSuccess(message);
     setError('');
@@ -86,7 +170,6 @@ function UtilisateursPage() {
       setUsers(data);
     } catch (err) {
       showError('Erreur lors du chargement des utilisateurs');
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -97,7 +180,16 @@ function UtilisateursPage() {
       const response = await api.get('/directions');
       setDirections(response.data.data || []);
     } catch (err) {
-      console.error('Erreur chargement directions:', err);
+      console.error(err);
+    }
+  };
+
+  const fetchTypePostes = async () => {
+    try {
+      const response = await api.get('/type-postes');
+      setTypePostes(response.data.data || []);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -106,8 +198,7 @@ function UtilisateursPage() {
     setFormData(prev => ({
       ...prev,
       [name]: name === 'role' ? value.toUpperCase() : value,
-      // ✅ Reset directionId quand on change de rôle
-      ...(name === 'role' && { directionId: '' })
+      ...(name === 'role' && { directionId: '', typePosteId: '' })
     }));
   };
 
@@ -128,7 +219,15 @@ function UtilisateursPage() {
 
     try {
       setSubmitting(true);
-      const newUser = await userService.createUser(formData);
+      const newUser = await userService.createUser({
+        email: formData.email,
+        nom: formData.nom,
+        prenom: formData.prenom,
+        role: formData.role,
+        directionId: formData.directionId,
+        typePosteId: formData.typePosteId || undefined,
+        telephone: formData.telephone
+      });
       setUsers(prev => [newUser, ...prev]);
       showSuccess('Utilisateur créé avec succès.');
       setShowModal(false);
@@ -149,7 +248,14 @@ function UtilisateursPage() {
 
     try {
       setSubmitting(true);
-      const updatedUser = await userService.updateUser(selectedUser.id, formData);
+      const updatedUser = await userService.updateUser(selectedUser.id, {
+        nom: formData.nom,
+        prenom: formData.prenom,
+        role: formData.role,
+        directionId: formData.directionId,
+        typePosteId: formData.typePosteId || undefined,
+        telephone: formData.telephone
+      });
       setUsers(prev => prev.map(u => u.id === selectedUser.id ? updatedUser : u));
       showSuccess('Utilisateur mis à jour avec succès');
       setShowModal(false);
@@ -161,12 +267,12 @@ function UtilisateursPage() {
     }
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
+  const handleToggleStatus = async (userId: string) => {
     try {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
       const { actif } = await userService.toggleUserStatus(userId);
-      setUsers(prev => prev.map(u =>
-        u.id === userId ? { ...u, actif } : u
-      ));
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, actif } : u));
       showSuccess(`Utilisateur ${actif ? 'activé' : 'désactivé'} avec succès`);
     } catch (err: any) {
       showError(err.response?.data?.message || 'Erreur lors du changement de statut');
@@ -184,7 +290,6 @@ function UtilisateursPage() {
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
-
     try {
       await userService.deleteUser(userId);
       setUsers(prev => prev.filter(u => u.id !== userId));
@@ -210,12 +315,9 @@ function UtilisateursPage() {
       prenom: user.prenom,
       role: user.role.toUpperCase(),
       directionId: user.directionId || '',
-      departement: user.departement || '',
-      poste: user.poste || '',
+      typePosteId: (user as any).typePosteId || '',
       telephone: user.telephone || ''
     });
-    setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -226,8 +328,7 @@ function UtilisateursPage() {
       prenom: '',
       role: 'MANAGER',
       directionId: '',
-      departement: '',
-      poste: '',
+      typePosteId: '',
       telephone: ''
     });
     setError('');
@@ -248,6 +349,11 @@ function UtilisateursPage() {
     return direction?.nom || '-';
   };
 
+  const getTypePosteNom = (typePosteId: string) => {
+    const typePoste = typePostes.find(tp => tp.id === typePosteId);
+    return typePoste?.nom || '-';
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Jamais';
     return new Date(dateString).toLocaleDateString('fr-FR', {
@@ -257,102 +363,74 @@ function UtilisateursPage() {
   };
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-        Chargement des utilisateurs...
-      </div>
-    );
+    return <div style={{ textAlign: 'center', padding: 40 }}>Chargement...</div>;
   }
 
   return (
     <div className="page-fade">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>Utilisateurs & Rôles</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            Gestion des accès et affectation des rôles • {users.length} utilisateur(s)
-          </div>
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>Utilisateurs & Rôles</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{users.length} utilisateur(s)</p>
         </div>
         <Button size="sm" onClick={openCreateModal}>
           <Plus size={13} /> Ajouter utilisateur
         </Button>
       </div>
 
-      {error && (
-        <div style={{ marginBottom: 20 }}>
-          <Alert variant="red">{error}</Alert>
-        </div>
-      )}
+      {error && <Alert variant="red">{error}</Alert>}
+      {success && <Alert variant="green">{success}</Alert>}
 
-      {success && (
-        <div style={{ marginBottom: 20 }}>
-          <Alert variant="green">{success}</Alert>
-        </div>
-      )}
-
-      {/* Tableau */}
       <Card>
         <CardBody style={{ padding: 0 }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Utilisateur', 'Rôle', 'Email', 'Statut', 'Dernière activité', 'Actions'].map(col => (
-                    <th key={col} style={{
-                      fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-                      letterSpacing: .6, color: 'var(--text-muted)', padding: '10px 16px', textAlign: 'left'
-                    }}>{col}</th>
-                  ))}
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Utilisateur</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Rôle</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Direction</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Poste</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Email</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Statut</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => {
                   const roleColor = getRoleColor(user.role);
                   return (
-                    <tr key={user.id}
-                      style={{ borderBottom: '1px solid var(--border-light)', transition: 'background .15s' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--gold-wash)'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}
-                    >
+                    <tr key={user.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <Avatar name={`${user.prenom} ${user.nom}`} size="sm" color={roleColor} />
-                          <span style={{ fontSize: 13, fontWeight: 500 }}>{user.prenom} {user.nom}</span>
+                          <span>{user.prenom} {user.nom}</span>
                         </div>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: roleColor, flexShrink: 0 }} />
-                          <span style={{ fontSize: 12 }}>{getRoleLabel(user.role)}</span>
-                        </div>
+                        <Badge variant="gold">{getRoleLabel(user.role)}</Badge>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
-                        {user.email}
+                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                        {user.directionId ? getDirectionName(user.directionId) : '-'}
                       </td>
+                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                        {getTypePosteNom((user as any).typePosteId)}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 12 }}>{user.email}</td>
                       <td style={{ padding: '12px 16px' }}>
                         <Badge variant={user.actif ? 'green' : 'red'}>
                           {user.actif ? 'Actif' : 'Inactif'}
                         </Badge>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
-                        {formatDate(user.dernierConnexion)}
-                      </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <Button variant="ghost" size="xs" onClick={() => openEditModal(user)}>
-                            <Edit size={11} /> Rôle
-                          </Button>
-                          <Button variant="ghost" size="xs" onClick={() => handleResetPassword(user.id)} title="Réinitialiser mot de passe">
-                            🔑
-                          </Button>
-                          <Button variant="ghost" size="xs" onClick={() => handleToggleStatus(user.id, user.actif)} title={user.actif ? 'Désactiver' : 'Activer'}>
+                          <Button variant="ghost" size="xs" onClick={() => openEditModal(user)}>Modifier</Button>
+                          <Button variant="ghost" size="xs" onClick={() => handleResetPassword(user.id)}>🔑</Button>
+                          <Button variant="ghost" size="xs" onClick={() => handleToggleStatus(user.id)}>
                             {user.actif ? '🔴' : '🟢'}
                           </Button>
                           {user.id !== currentUser?.id && (
-                            <Button variant="danger" size="xs" onClick={() => handleDeleteUser(user.id)}>
-                              <Trash2 size={11} />
-                            </Button>
+                            <Button variant="danger" size="xs" onClick={() => handleDeleteUser(user.id)}>🗑️</Button>
                           )}
                         </div>
                       </td>
@@ -361,12 +439,6 @@ function UtilisateursPage() {
                 })}
               </tbody>
             </table>
-
-            {users.length === 0 && (
-              <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Aucun utilisateur trouvé
-              </div>
-            )}
           </div>
         </CardBody>
       </Card>
@@ -379,86 +451,65 @@ function UtilisateursPage() {
         maxWidth={600}
         footer={
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-            <Button variant="ghost" onClick={() => { setShowModal(false); resetForm(); }}>
-              Annuler
-            </Button>
-            <Button
-              variant="primary"
-              onClick={modalMode === 'create' ? handleCreateUser : handleUpdateUser}
-              disabled={submitting}
-            >
+            <Button variant="ghost" onClick={() => { setShowModal(false); resetForm(); }}>Annuler</Button>
+            <Button variant="primary" onClick={modalMode === 'create' ? handleCreateUser : handleUpdateUser} disabled={submitting}>
               {submitting ? 'En cours...' : (modalMode === 'create' ? 'Créer' : 'Mettre à jour')}
             </Button>
           </div>
         }
       >
         <div style={{ padding: '8px 0' }}>
-
-          {/* ✅ Erreurs dans le modal */}
-          {error && showModal && (
-            <div style={{ marginBottom: 16 }}>
-              <Alert variant="red">{error}</Alert>
-            </div>
-          )}
-
           <FormRow>
             <FormGroup>
               <FormLabel required>Prénom</FormLabel>
-              <Input name="prenom" value={formData.prenom} onChange={handleInputChange} placeholder="Prénom" />
+              <Input name="prenom" value={formData.prenom} onChange={handleInputChange} />
             </FormGroup>
             <FormGroup>
               <FormLabel required>Nom</FormLabel>
-              <Input name="nom" value={formData.nom} onChange={handleInputChange} placeholder="Nom" />
+              <Input name="nom" value={formData.nom} onChange={handleInputChange} />
             </FormGroup>
           </FormRow>
 
           <FormGroup>
             <FormLabel required>Email</FormLabel>
-            <Input
-              name="email" type="email" value={formData.email}
-              onChange={handleInputChange} placeholder="email@kilani.tn"
-              disabled={modalMode === 'edit'}
-            />
+            <Input name="email" type="email" value={formData.email} onChange={handleInputChange} disabled={modalMode === 'edit'} />
           </FormGroup>
 
           <FormGroup>
             <FormLabel required>Rôle</FormLabel>
             <Select name="role" value={formData.role} onChange={handleInputChange}>
-              {ROLE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
+              {ROLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </Select>
           </FormGroup>
 
-          {/* ✅ Direction — seulement pour MANAGER et DIRECTEUR */}
           {requiresDirection() && (
             <FormGroup>
               <FormLabel required>Direction</FormLabel>
               <Select name="directionId" value={formData.directionId} onChange={handleInputChange}>
                 <option value="">Sélectionner une direction</option>
-                {directions.map(dir => (
-                  <option key={dir.id} value={dir.id}>{dir.nom}</option>
-                ))}
+                {directions.map(dir => <option key={dir.id} value={dir.id}>{dir.nom}</option>)}
               </Select>
             </FormGroup>
           )}
 
-          <FormRow>
-            <FormGroup>
-              <FormLabel>Département</FormLabel>
-              <Input name="departement" value={formData.departement} onChange={handleInputChange} placeholder="ex: Direction Industrielle" />
-            </FormGroup>
-            <FormGroup>
-              <FormLabel>Poste</FormLabel>
-              <Input name="poste" value={formData.poste} onChange={handleInputChange} placeholder="ex: Chef de service" />
-            </FormGroup>
-          </FormRow>
+          <FormGroup>
+            <FormLabel>Poste</FormLabel>
+            <Select name="typePosteId" value={formData.typePosteId} onChange={handleInputChange} disabled={requiresDirection() && !formData.directionId}>
+              <option value="">Sélectionner un poste</option>
+              {filteredTypePostes.map(tp => <option key={tp.id} value={tp.id}>{tp.nom}</option>)}
+            </Select>
+          </FormGroup>
 
           <FormGroup>
             <FormLabel>Téléphone</FormLabel>
             <Input name="telephone" value={formData.telephone} onChange={handleInputChange} placeholder="+216 XX XXX XXX" />
           </FormGroup>
 
+          {modalMode === 'create' && (
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--gold-pale)', borderRadius: 6, fontSize: 12 }}>
+              ℹ️ Le mot de passe sera généré automatiquement
+            </div>
+          )}
         </div>
       </Modal>
     </div>
@@ -467,40 +518,25 @@ function UtilisateursPage() {
 
 // AuditPage
 function AuditPage() {
-  const AUDIT_LOG = [
-    { time: '14:32', user: 'S. Karoui',  action: 'Candidature acceptée',       detail: 'Aymen Bouslama — Chef projet IT' },
-    { time: '13:18', user: 'M. Kilani',  action: 'Demande soumise au circuit', detail: 'DEM-2026-018 — Ingénieur Qualité' },
-    { time: '12:05', user: 'L. Marzouk', action: 'Données PE saisies',         detail: 'Amira Ben Salah — CDD' },
-    { time: '11:40', user: 'A. Kilani',  action: 'Évaluation PE validée',      detail: 'Hana Missaoui — Confirmation' },
-    { time: '10:22', user: 'R. Ben Ali', action: 'Demande refusée (budget)',    detail: 'DEM-2026-014 — Budget dépassé' },
+  const auditLog = [
+    { time: '14:32', user: 'S. Karoui', action: 'Candidature acceptée', detail: 'Aymen Bouslama' },
+    { time: '13:18', user: 'M. Kilani', action: 'Demande soumise', detail: 'DEM-2026-018' },
+    { time: '12:05', user: 'L. Marzouk', action: 'Données PE saisies', detail: 'Amira Ben Salah' },
   ];
 
   return (
     <div className="page-fade">
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Journal d'audit</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-          Toutes les actions tracées en temps réel
-        </div>
-      </div>
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>Journal d'audit</h2>
       <Card>
-        <CardHeader>
-          <CardTitle>Activité du jour</CardTitle>
-          <CardSubtitle>{new Date().toLocaleDateString('fr-FR')}</CardSubtitle>
-        </CardHeader>
         <CardBody>
-          {AUDIT_LOG.map((l, i) => (
-            <div key={i} style={{
-              display: 'flex', gap: 14, alignItems: 'flex-start',
-              paddingBottom: i < AUDIT_LOG.length - 1 ? 16 : 0,
-              marginBottom: i < AUDIT_LOG.length - 1 ? 16 : 0,
-              borderBottom: i < AUDIT_LOG.length - 1 ? '1px solid var(--border-light)' : 'none'
-            }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 40, paddingTop: 2 }}>{l.time}</div>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)', marginTop: 5, flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{l.action}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{l.user} · {l.detail}</div>
+          {auditLog.map((log, i) => (
+            <div key={i} style={{ padding: '12px 0', borderBottom: i < auditLog.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{log.time}</span>
+                <span style={{ fontWeight: 500 }}>{log.user}</span>
+                <span>•</span>
+                <span>{log.action}</span>
+                <span style={{ color: 'var(--text-muted)' }}>{log.detail}</span>
               </div>
             </div>
           ))}
@@ -514,32 +550,25 @@ function AuditPage() {
 function IAConfigPage() {
   return (
     <div className="page-fade">
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Configuration IA</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-          Paramètres du moteur de matching et scoring
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>Configuration IA</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
         {[
-          { title: 'Seuil présélection IA', value: '70%', desc: 'Score minimum pour pré-sélection automatique', color: 'var(--gold)' },
-          { title: 'Poids expérience', value: '40%', desc: "Pondération du score d'expérience", color: 'var(--green)' },
-          { title: 'Poids compétences', value: '35%', desc: 'Pondération des mots-clés techniques', color: 'var(--olive)' },
-          { title: 'Poids formation', value: '25%', desc: 'Pondération du niveau de formation', color: 'var(--umber)' },
+          { title: 'Seuil présélection IA', value: '70%', desc: 'Score minimum pour pré-sélection' },
+          { title: 'Poids expérience', value: '40%', desc: 'Pondération de l\'expérience' },
+          { title: 'Poids compétences', value: '35%', desc: 'Pondération des compétences' },
+          { title: 'Poids formation', value: '25%', desc: 'Pondération de la formation' },
         ].map((c, i) => (
           <Card key={i}>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.title}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: c.color }}>{c.value}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>{c.title}</span>
+                <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--gold)' }}>{c.value}</span>
               </div>
-              <div style={{ height: 6, background: 'var(--surface-alt)', borderRadius: 10, overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{ width: c.value, height: '100%', background: c.color, borderRadius: 10, transition: 'width .5s' }} />
+              <div style={{ height: 6, background: '#eee', borderRadius: 10, margin: '12px 0' }}>
+                <div style={{ width: c.value, height: '100%', background: 'var(--gold)', borderRadius: 10 }} />
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.desc}</div>
-              <Button variant="secondary" size="xs" style={{ marginTop: 10 }}>
-                <Edit size={11} />Modifier
-              </Button>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.desc}</p>
+              <Button variant="secondary" size="xs" style={{ marginTop: 10 }}>Modifier</Button>
             </CardBody>
           </Card>
         ))}

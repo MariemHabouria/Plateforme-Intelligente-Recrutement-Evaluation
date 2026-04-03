@@ -16,10 +16,10 @@ router.use(protect);
 
 router.get('/', getDemandes);
 router.get('/:id', getDemandeById);
-router.post('/', authorize('MANAGER', 'SUPER_ADMIN'), createDemande);
-router.patch('/:id', authorize('MANAGER', 'SUPER_ADMIN'), updateDemande);
-router.delete('/:id', authorize('MANAGER', 'SUPER_ADMIN'), deleteDemande);
-router.post('/:id/submit', authorize('MANAGER', 'SUPER_ADMIN'), submitDemande);
+router.post('/', createDemande);  // Tous les rôles (sauf Paie) peuvent créer
+router.patch('/:id', updateDemande);
+router.delete('/:id', deleteDemande);
+router.post('/:id/submit', submitDemande);
 router.post('/:id/valider', authorize('DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'), validerDemande);
 
 export default router;

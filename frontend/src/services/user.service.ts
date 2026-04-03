@@ -13,7 +13,8 @@ export interface User {
   mustChangePassword: boolean;
   dernierConnexion?: string;
   createdAt: string;
-  directionId?: string;      
+  directionId?: string;    
+    typePosteId?: string;     
   direction?: {              
     id: string;
     code: string;
@@ -30,6 +31,7 @@ export interface CreateUserData {
   poste?: string;
   telephone?: string;
   directionId?: string;      
+   typePosteId?: string; 
 }
 
 export interface UpdateUserData {

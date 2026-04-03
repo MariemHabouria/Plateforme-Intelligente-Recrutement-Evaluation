@@ -13,18 +13,18 @@ export const ROLES: Record<Role, RoleConfig> = {
   candidat:   { label: 'Candidat (public)', color: '#A04030', initials: 'CA', name: 'Candidat Externe',sub: 'Formulaire public' },
 }
 
-// ✅ EXPORTER NAV_CONFIG
 export const NAV_CONFIG: Record<string, NavItem[]> = {
   superadmin: [
     { section: 'administration' },
-    { id: 'dashboard',   label: 'Tableau de bord',     icon: 'LayoutDashboard' },
-    { id: 'utilisateurs',label: 'Utilisateurs & Rôles', icon: 'Users',          badge: '2', badgeColor: 'amber' },
-    { id: 'workflows',   label: 'Workflows PE',         icon: 'GitBranch' },
-    { id: 'ia_config',   label: 'Configuration IA',     icon: 'Cpu' },
+    { id: 'dashboard',      label: 'Tableau de bord',        icon: 'LayoutDashboard' },
+    { id: 'utilisateurs',   label: 'Utilisateurs & Rôles',   icon: 'Users', badge: '2', badgeColor: 'amber' },
+    { id: 'type_postes',    label: 'Types de poste',         icon: 'Briefcase', badge: '84', badgeColor: 'gold' },  // ← AJOUTER
+    { id: 'workflows',      label: 'Circuits de validation', icon: 'GitBranch' },
+    { id: 'ia_config',      label: 'Configuration IA',       icon: 'Cpu' },
     { section: 'supervision' },
-    { id: 'demandes',    label: 'Toutes les demandes',  icon: 'FileText' },
-    { id: 'evaluation',  label: 'Évaluations PE',       icon: 'Star',           badge: '3', badgeColor: 'amber' },
-    { id: 'audit',       label: 'Journal d\'audit',     icon: 'Shield' },
+    { id: 'demandes',       label: 'Toutes les demandes',    icon: 'FileText' },
+    { id: 'evaluation',     label: 'Évaluations PE',         icon: 'Star', badge: '3', badgeColor: 'amber' },
+    { id: 'audit',          label: 'Journal d\'audit',       icon: 'Shield' },
   ],
   manager: [
     { section: 'principal' },

@@ -3,6 +3,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardPage } from './components/pages/dashboard/DashboardPage';
 import { DemandesPage } from './components/pages/demandes/DemandesPage';
+import { DemandeDetailsPage } from './components/pages/demandes/DemandeDetailsPage';
 import { OffresPage } from './components/pages/offres/OffresPage';
 import { CandidatsPage } from './components/pages/candidats/CandidatsPage';
 import { EntretiensPage } from './components/pages/entretiens/EntretiensPage';
@@ -18,86 +19,131 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import type { Role } from './types';
 
 const PAGES_PER_ROLE: Record<Role, string> = {
-  superadmin: 'utilisateurs',
+  superadmin: 'dashboard',
   manager: 'dashboard',
   directeur: 'dashboard',
   rh: 'dashboard',
   daf: 'dashboard',
   dga: 'dashboard',
-  dg: 'dashboard',  
+  dg: 'dashboard',
   paie: 'contrats',
   candidat: 'candidature',
 };
 
-const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config'];
+const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config', 'type_postes'];
+
+const getDemandeIdFromPath = (): string | null => {
+  const match = window.location.pathname.match(/^\/demandes\/([^/]+)$/);
+  return match ? match[1] : null;
+};
+
+const getInitialPage = (): string => {
+  const path = window.location.pathname;
+  if (path === '/candidature') return 'candidature';
+  if (path === '/change-password') return 'change-password';
+  if (path === '/profile') return 'profile';
+  if (path === '/settings') return 'settings';
+  if (getDemandeIdFromPath()) return 'demande-details';
+  return 'login';
+};
+
+const navigateTo = (path: string, setPage: (p: string) => void, pageName: string) => {
+  window.history.pushState({}, '', path);
+  setPage(pageName);
+};
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [page, setPage] = useState<string>(() => {
-    const currentPath = window.location.pathname;
-    if (currentPath === '/candidature') return 'candidature';
-    if (currentPath === '/change-password') return 'change-password';
-    if (currentPath === '/profile') return 'profile';
-    if (currentPath === '/settings') return 'settings';
-    return 'login';
-  });
+  const [page, setPage] = useState<string>(getInitialPage);
 
   useEffect(() => {
-    const currentPath = window.location.pathname;
-    
-    if (currentPath === '/candidature') {
-      setPage('candidature');
-      return;
-    }
-    
-    if (currentPath === '/change-password') {
-      setPage('change-password');
-      return;
-    }
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/candidature') return setPage('candidature');
+      if (path === '/change-password') return setPage('change-password');
+      if (path === '/profile') return setPage('profile');
+      if (path === '/settings') return setPage('settings');
+      if (getDemandeIdFromPath()) return setPage('demande-details');
+      if (user) {
+        setPage(PAGES_PER_ROLE[user.role as Role] || 'dashboard');
+      } else {
+        setPage('login');
+      }
+    };
 
-    if (currentPath === '/profile') {
-      setPage('profile');
-      return;
-    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user]);
 
-    if (currentPath === '/settings') {
-      setPage('settings');
+  useEffect(() => {
+    const path = window.location.pathname;
+
+    if (
+      path === '/candidature' ||
+      path === '/change-password' ||
+      path === '/profile' ||
+      path === '/settings' ||
+      getDemandeIdFromPath()
+    ) {
       return;
     }
 
     if (user) {
-      if (user.mustChangePassword && currentPath !== '/change-password') {
+      if (user.mustChangePassword) {
         window.location.href = '/change-password';
         return;
       }
       setPage(PAGES_PER_ROLE[user.role as Role] || 'dashboard');
-    } else {
+    } else if (!loading) {
       setPage('login');
     }
-  }, [user]);
+  }, [user, loading]);
 
+  // Pages publiques (sans sidebar)
   if (page === 'candidature') return <CandidatFormPage />;
   if (page === 'change-password') return <ChangePasswordPage />;
-  if (page === 'profile') return <ProfilePage />;
-  if (page === 'settings') return <SettingsPage />;
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Chargement...</div>;
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        Chargement...
+      </div>
+    );
+  }
+
   if (!user) return <LoginPage />;
+
   if (user.mustChangePassword) {
     window.location.href = '/change-password';
     return null;
   }
 
-  const renderPage = () => {
-    const role = user.role as Role;
-    const currentPage = page;
+  // Navigation
+  const handleNavigate = (newPage: string) => {
+    navigateTo(`/${newPage}`, setPage, newPage);
+  };
 
-    // Super Admin pages
-    if (role === 'superadmin' && SUPERADMIN_PAGES.includes(currentPage)) {
-      return <SuperAdminPage page={currentPage} />;
+  const renderPageContent = () => {
+    if (page === 'demande-details') {
+      const demandeId = getDemandeIdFromPath();
+      if (!demandeId) {
+        navigateTo('/demandes', setPage, 'demandes');
+        return null;
+      }
+      return <DemandeDetailsPage id={demandeId} />;
     }
 
-    // Pages standards
-    switch (currentPage) {
+    // ✅ Profile et Settings sont maintenant dans le layout avec sidebar
+    if (page === 'profile') return <ProfilePage />;
+    if (page === 'settings') return <SettingsPage />;
+
+    const role = user.role as Role;
+
+    if (role === 'superadmin' && SUPERADMIN_PAGES.includes(page)) {
+      return <SuperAdminPage page={page} />;
+    }
+
+    switch (page) {
       case 'dashboard':
         return <DashboardPage />;
       case 'demandes':
@@ -119,11 +165,11 @@ function AppContent() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar role={user.role as Role} currentPage={page} onNavigate={setPage} />
+      <Sidebar role={user.role as Role} currentPage={page} onNavigate={handleNavigate} />
       <div style={{ marginLeft: 248, flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
         <Header page={page} />
         <main style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#f8f9fa' }}>
-          {renderPage()}
+          {renderPageContent()}
         </main>
       </div>
     </div>
