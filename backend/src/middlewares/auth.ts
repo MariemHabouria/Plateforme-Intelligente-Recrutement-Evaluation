@@ -1,3 +1,5 @@
+// backend/src/middlewares/auth.ts
+
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
@@ -11,15 +13,32 @@ interface JwtPayload {
 declare global {
   namespace Express {
     interface Request {
-      user?: any;
+      user?: {
+        id: string;
+        email: string;
+        nom: string;
+        prenom: string;
+        role: string;
+        actif: boolean;
+        directionId: string | null;
+        direction?: {
+          id: string;
+          code: string;
+          nom: string;
+        } | null;
+      };
     }
   }
 }
 
+// ============================================
+// MIDDLEWARE D'AUTHENTIFICATION
+// ============================================
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token;
 
+    // Récupérer le token du header Authorization
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
@@ -31,8 +50,10 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
       });
     }
 
+    // Vérifier le token
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
     
+    // Récupérer l'utilisateur
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {
@@ -59,6 +80,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     req.user = user;
     next();
   } catch (error) {
+    console.error('Auth error:', error);
     return res.status(401).json({ 
       success: false,
       message: 'Non autorisé - Token invalide' 
@@ -66,12 +88,15 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
+// ============================================
+// MIDDLEWARE D'AUTORISATION (RBAC)
+// ============================================
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ 
         success: false,
-        message: 'Non autorisé' 
+        message: 'Non autorisé - Utilisateur non authentifié' 
       });
     }
     
