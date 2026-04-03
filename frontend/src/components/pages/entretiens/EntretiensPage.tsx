@@ -1,12 +1,15 @@
+import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Eye, Check, X } from 'lucide-react'
 import { ENTRETIENS } from '@/lib/data'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
-import type { Role } from '@/types'
 
-export function EntretiensPage({ role }: { role: Role }) {
+export const EntretiensPage = () => {
+  const { user } = useAuth();
+  const role = user?.role as string;
+
   const sb = (s: string) => s === 'Confirmé' ? 'green' : s === 'En attente confirmation' ? 'amber' : 'red'
 
   return (
@@ -28,7 +31,7 @@ export function EntretiensPage({ role }: { role: Role }) {
                   {['Candidat','Poste','Type','Date','Heure','Lieu','Statut','Actions'].map(h => (
                     <th key={h} style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .6, color: 'var(--text-muted)', padding: '10px 16px', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {ENTRETIENS.map(e => (
