@@ -13,10 +13,24 @@ interface Props {
   id: string;
 }
 
+// ✅ Fonction pour obtenir le libellé du niveau
+const getNiveauLabel = (niveau: string): string => {
+  const labels: Record<string, string> = {
+    'TECHNICIEN': '🔧 Technicien',
+    'EMPLOYE': '📋 Employé',
+    'CADRE_DEBUTANT': '🎓 Cadre débutant',
+    'CADRE_CONFIRME': '⭐ Cadre confirmé',
+    'CADRE_SUPERIEUR': '👔 Cadre supérieur',
+    'STRATEGIQUE': '🎯 Stratégique'
+  };
+  return labels[niveau] || niveau;
+};
+
 interface DemandeDetail {
   id: string;
   reference: string;
   intitulePoste: string;
+  niveau: string;  
   description?: string;
   justification: string;
   motif: string;
@@ -48,11 +62,6 @@ interface DemandeDetail {
     code: string;
     nom: string;
   };
-  typePoste?: {
-    id: string;
-    nom: string;
-    circuitType: string;
-  };
   validations?: {
     id: string;
     niveauEtape: number;
@@ -82,6 +91,7 @@ const buildMockDemande = (id: string): DemandeDetail => ({
   id,
   reference: 'DEM-2026-001',
   intitulePoste: 'Développeur Full Stack',
+  niveau: 'CADRE_CONFIRME',  // ← NOUVEAU
   description: "Développement d'applications web avec React et Node.js",
   justification: "Besoin de renforcer l'équipe technique pour le nouveau projet",
   motif: 'RENFORCEMENT',
@@ -111,11 +121,6 @@ const buildMockDemande = (id: string): DemandeDetail => ({
     id: '1',
     code: 'DIR_SI',
     nom: "Direction Systèmes d'Information",
-  },
-  typePoste: {
-    id: '1',
-    nom: 'Lead développeur',
-    circuitType: 'CADRE_CONFIRME'
   },
   validations: [
     {
@@ -588,7 +593,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Intitulé du poste</div><div style={{ fontWeight: 500 }}>{demande.intitulePoste}</div></div>
-                  <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Type de poste</div><div>{demande.typePoste?.nom || '-'}</div></div>
+                  <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Niveau du poste</div><div>{getNiveauLabel(demande.niveau)}</div></div>
                   <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Motif</div><div>{getMotifLabel(demande.motif)}</div></div>
                   <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Type de contrat</div><div>{getTypeContratLabel(demande.typeContrat)}</div></div>
                   <div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Budget mensuel</div><div>{budgetText}</div></div>
@@ -662,7 +667,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                       <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: 12 }}>Commentaire</th>
                       <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: 12 }}>Date</th>
                       <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: 12 }}>Délai</th>
-                     </tr>
+                    </tr>
                   </thead>
                   <tbody>
                     {demande.validations?.map((validation) => {

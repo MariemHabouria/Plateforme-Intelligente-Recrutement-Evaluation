@@ -1,3 +1,4 @@
+// backend/src/services/linkedin.service.ts
 
 interface LinkedInJobPost {
   title: string;
@@ -12,17 +13,13 @@ export class LinkedInService {
   private accessToken: string | null = null;
   
   constructor() {
-    // Récupérer token depuis variables d'environnement
     this.accessToken = process.env.LINKEDIN_ACCESS_TOKEN || null;
   }
 
-  /**
-   * Publier une offre sur LinkedIn Jobs
-   */
   async publierOffre(offre: any, offreDetail: any): Promise<{ success: boolean; jobId?: string; error?: string }> {
     if (!this.accessToken) {
       console.log('⚠️ LinkedIn: Pas de token configuré, mode simulation');
-      return this.simulerPublication(offre);
+      return this.simulerPublication(offre, offreDetail?.lienCandidature);
     }
 
     try {
@@ -36,13 +33,12 @@ export class LinkedInService {
 
       if (offre.budgetMin && offre.budgetMax) {
         jobPost.salaryRange = {
-          min: offre.budgetMin,
-          max: offre.budgetMax,
+          min: Number(offre.budgetMin),
+          max: Number(offre.budgetMax),
           currency: 'TND'
         };
       }
 
-      // Appel réel API LinkedIn
       const response = await fetch('https://api.linkedin.com/v2/jobs', {
         method: 'POST',
         headers: {
@@ -77,36 +73,39 @@ export class LinkedInService {
 
     } catch (error) {
       console.error('❌ LinkedIn publication error:', error);
-      return this.simulerPublication(offre);
+      return this.simulerPublication(offre, offreDetail?.lienCandidature);
     }
   }
 
-  private simulerPublication(offre: any): { success: boolean; jobId: string; error?: string } {
-    const mockJobId = `LINKEDIN_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  private simulerPublication(offre: any, lienCandidature?: string): { success: boolean; jobId: string } {
+    const mockJobId = `LINKEDIN_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     console.log(`
     ========================================
-    📢 SIMULATION LINKEDIN JOBS
+    SIMULATION LINKEDIN JOBS
     ========================================
     Titre: ${offre.intitule}
     Type: ${offre.typeContrat}
+    Lien candidature: ${lienCandidature || 'Non généré'}
     URL simulée: https://www.linkedin.com/jobs/view/${mockJobId}
-    Statut: Publié (mode démo)
+    Statut: Publie (mode demo)
     ========================================
     `);
     return { success: true, jobId: mockJobId };
   }
 
   private formatterDescriptionLinkedIn(offreDetail: any): string {
+    const lienCandidature = offreDetail.lienCandidature || process.env.FRONTEND_URL + '/candidature';
+    
     return `
 ${offreDetail.description || ''}
 
-🎯 Profil recherché :
+Profil recherche :
 ${offreDetail.profilRecherche || ''}
 
-💼 Compétences requises :
-${(offreDetail.competences || []).map((c: string) => `• ${c}`).join('\n')}
+Competences requises :
+${(offreDetail.competences || []).map((c: string) => `- ${c}`).join('\n')}
 
-📅 Postuler sur : ${process.env.FRONTEND_URL || 'http://localhost:5173'}/candidature
+Postuler sur : ${lienCandidature}
     `.trim();
   }
 

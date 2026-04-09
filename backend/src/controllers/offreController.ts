@@ -1,4 +1,4 @@
-
+// backend/src/controllers/offreController.ts
 
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
@@ -7,30 +7,21 @@ import { iaOffreService } from '../services/iaOffre.service';
 import { linkedinService } from '../services/linkedin.service';
 import { tanitjobsService } from '../services/tanitjobs.service';
 import { TypeContrat } from '@prisma/client';
+import crypto from 'crypto';
+
 // ============================================
-// FONCTION UTILITAIRE
+// FONCTIONS UTILITAIRES
 // ============================================
 
-// Fonction pour générer une référence unique
-const generateUniqueOffreReference = async (): Promise<string> => {
-  const year = new Date().getFullYear();
-  let attempt = 0;
-  let reference = '';
-  let exists = true;
-  
-  while (exists && attempt < 10) {
-    const randomNum = Math.floor(Math.random() * 10000);
-    const sequential = await prisma.offreEmploi.count();
-    reference = `OFF-${year}-${String(sequential + attempt + 1).padStart(4, '0')}-${randomNum}`;
-    
-    const existing = await prisma.offreEmploi.findUnique({
-      where: { reference }
-    });
-    exists = !!existing;
-    attempt++;
-  }
-  
-  return reference;
+const generateLienCandidature = (offreId: string, reference: string): string => {
+  const token = crypto
+    .createHash('sha256')
+    .update(`${offreId}-${Date.now()}-${Math.random()}`)
+    .digest('hex')
+    .substring(0, 16);
+
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  return `${frontendUrl}/candidature/${token}?ref=${encodeURIComponent(reference)}`;
 };
 
 // ============================================
@@ -45,38 +36,44 @@ export const getOffres = async (req: Request, res: Response) => {
 
     const where: any = {};
 
-    if (userRole === 'DRH') {
-      where.rhId = userId;
-      console.log('Filtre DRH - rhId:', userId);
+    // ✅ AJOUTER CE FILTRE : Uniquement les offres avec une demande associée
+    where.demandeId = { not: null };
+
+    if (userRole === 'DRH' || userRole === 'SUPER_ADMIN') {
+      console.log('✅ DRH/SuperAdmin - affichage de toutes les offres (avec demande)');
     } else if (userRole === 'MANAGER') {
       where.demande = { managerId: userId };
-      console.log('Filtre MANAGER - managerId:', userId);
+    } else {
+      where.rhId = userId;
     }
 
     if (statut) {
       where.statut = statut;
-      console.log('Filtre statut:', statut);
     }
 
-    console.log('Where clause:', JSON.stringify(where, null, 2));
+    const skip = (Number(page) - 1) * Number(limit);
 
-    const offres = await prisma.offreEmploi.findMany({
-      where,
-      include: {
-        demande: {
-          select: { reference: true, intitulePoste: true, manager: { select: { nom: true, prenom: true } } }
+    const [offres, total] = await Promise.all([
+      prisma.offreEmploi.findMany({
+        where,
+        include: {
+          demande: {
+            select: {
+              reference: true,
+              intitulePoste: true,
+              manager: { select: { nom: true, prenom: true } }
+            }
+          },
+          _count: { select: { candidatures: true } }
         },
-        _count: { select: { candidatures: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: Number(limit)
+      }),
+      prisma.offreEmploi.count({ where })
+    ]);
 
-    console.log(`📊 ${offres.length} offre(s) trouvée(s)`);
-    offres.forEach(o => {
-      console.log(`  - ${o.reference}: rhId=${o.rhId}, demandeId=${o.demandeId}`);
-    });
-
-    const total = await prisma.offreEmploi.count({ where });
+    console.log(`📊 ${offres.length} offre(s) trouvée(s) (uniquement celles avec demande)`);
 
     sendSuccess(res, {
       offres,
@@ -89,8 +86,8 @@ export const getOffres = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ getOffres error:', error);
-    sendError(res, 'Erreur lors de la récupération des offres');
+    console.error('getOffres error:', error);
+    sendError(res, 'Erreur lors de la recuperation des offres');
   }
 };
 
@@ -109,18 +106,89 @@ export const getOffreById = async (req: Request, res: Response) => {
       }
     });
 
-    if (!offre) return sendNotFound(res, 'Offre non trouvée');
+    if (!offre) return sendNotFound(res, 'Offre non trouvee');
 
     sendSuccess(res, { offre });
 
   } catch (error) {
-    console.error('❌ getOffreById error:', error);
-    sendError(res, 'Erreur lors de la récupération de l\'offre');
+    console.error('getOffreById error:', error);
+    sendError(res, 'Erreur lors de la recuperation de l offre');
+  }
+};
+
+export const getOffreParToken = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+
+    const offre = await prisma.offreEmploi.findFirst({
+      where: {
+        lienCandidature: { contains: token },
+        statut: 'PUBLIEE'
+      },
+      select: {
+        id: true,
+        reference: true,
+        intitule: true,
+        description: true,
+        profilRecherche: true,
+        competences: true,
+        fourchetteSalariale: true,
+        typeContrat: true
+      }
+    });
+
+    if (!offre) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offre non trouvee ou non publiee'
+      });
+    }
+
+    sendSuccess(res, { offre });
+
+  } catch (error) {
+    console.error('getOffreParToken error:', error);
+    sendError(res, 'Erreur lors de la recuperation de l offre');
   }
 };
 
 // ============================================
-// GÉNÉRATION IA (MAISON) + CRÉATION
+// DEMANDES SANS OFFRE
+// ✅ Retourne UNIQUEMENT les demandes VALIDEES sans offre associée
+// ============================================
+
+export const getDemandesSansOffre = async (req: Request, res: Response) => {
+  try {
+    // ✅ offre: null = seulement les demandes qui n'ont PAS d'offre liée
+    const demandes = await prisma.demandeRecrutement.findMany({
+      where: {
+        statut: 'VALIDEE',
+        offre: null
+      },
+      select: {
+        id: true,
+        reference: true,
+        intitulePoste: true,
+        typeContrat: true,
+        budgetMin: true,
+        budgetMax: true,
+        direction: { select: { nom: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    console.log(`📋 ${demandes.length} demande(s) validée(s) sans offre`);
+
+    sendSuccess(res, { demandes });
+
+  } catch (error) {
+    console.error('getDemandesSansOffre error:', error);
+    sendError(res, 'Erreur lors de la recuperation des demandes');
+  }
+};
+
+// ============================================
+// GENERATION IA
 // ============================================
 
 export const genererOffreAvecIA = async (req: Request, res: Response) => {
@@ -129,10 +197,10 @@ export const genererOffreAvecIA = async (req: Request, res: Response) => {
 
     const demande = await prisma.demandeRecrutement.findUnique({
       where: { id: demandeId },
-      include: { direction: true, typePoste: true, createur: true }
+      include: { direction: true, createur: true }
     });
 
-    if (!demande) return sendNotFound(res, 'Demande non trouvée');
+    if (!demande) return sendNotFound(res, 'Demande non trouvee');
 
     const offreGeneree = await iaOffreService.genererOffre({
       intitulePoste: demande.intitulePoste,
@@ -144,31 +212,27 @@ export const genererOffreAvecIA = async (req: Request, res: Response) => {
       justification: demande.justification
     });
 
-    sendSuccess(res, offreGeneree, 'Offre générée avec succès par IA');
+    // ✅ Retourne juste les données générées, ne crée RIEN en base
+    sendSuccess(res, offreGeneree, 'Offre generee avec succes par IA');
 
   } catch (error) {
-    console.error('❌ genererOffreAvecIA error:', error);
-    sendError(res, 'Erreur lors de la génération IA');
+    console.error('genererOffreAvecIA error:', error);
+    sendError(res, 'Erreur lors de la generation IA');
   }
 };
 
+// ============================================
+// CREATION OFFRE
+// ✅ Crée UNIQUEMENT une nouvelle offre, ne met plus à jour l'existante
+// ============================================
+
 export const createOffre = async (req: Request, res: Response) => {
   try {
-    console.log('========== DÉBUT CREATE OFFRE ==========');
-    console.log('1. User info:', {
-      id: (req as any).user?.id,
-      email: (req as any).user?.email,
-      role: (req as any).user?.role
-    });
-    
     const userId = (req as any).user?.id;
     const userRole = (req as any).user?.role;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'Utilisateur non authentifié'
-      });
+      return res.status(401).json({ success: false, message: 'Utilisateur non authentifie' });
     }
 
     const {
@@ -182,118 +246,77 @@ export const createOffre = async (req: Request, res: Response) => {
       canauxPublication
     } = req.body;
 
-    console.log('2. Body reçu:', { demandeId, intitule, typeContrat });
+    if (!demandeId) return res.status(400).json({ success: false, message: 'demandeId requis' });
+    if (!intitule) return res.status(400).json({ success: false, message: 'intitule requis' });
+    if (!typeContrat) return res.status(400).json({ success: false, message: 'typeContrat requis' });
 
-    // Validation
-    if (!demandeId) {
-      return res.status(400).json({ success: false, message: 'demandeId requis' });
-    }
-    if (!intitule) {
-      return res.status(400).json({ success: false, message: 'intitule requis' });
-    }
-    if (!typeContrat) {
-      return res.status(400).json({ success: false, message: 'typeContrat requis' });
-    }
-
-    // Vérifier le rôle
     if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
       return res.status(403).json({
         success: false,
-        message: `Seul le DRH peut modifier les offres. Votre rôle: ${userRole}`
+        message: `Seul le DRH peut gerer les offres. Votre role: ${userRole}`
       });
     }
 
-    // Vérifier la demande
-    const demande = await prisma.demandeRecrutement.findUnique({
-      where: { id: demandeId }
-    });
+    const demande = await prisma.demandeRecrutement.findUnique({ where: { id: demandeId } });
 
     if (!demande) {
-      return res.status(404).json({
-        success: false,
-        message: `Demande ${demandeId} non trouvée`
-      });
+      return res.status(404).json({ success: false, message: `Demande ${demandeId} non trouvee` });
     }
 
     if (demande.statut !== 'VALIDEE') {
       return res.status(400).json({
         success: false,
-        message: `La demande doit être validée. Statut actuel: ${demande.statut}`
+        message: `La demande doit etre validee. Statut actuel: ${demande.statut}`
       });
     }
 
-    // Chercher l'offre existante (créée automatiquement à la validation)
-    let offre = await prisma.offreEmploi.findFirst({
-      where: { demandeId }
+    // ✅ Vérifier qu'il n'existe pas déjà une offre pour cette demande
+    const offreExistante = await prisma.offreEmploi.findFirst({ where: { demandeId } });
+    if (offreExistante) {
+      return res.status(400).json({
+        success: false,
+        message: `Une offre existe déjà pour cette demande (${offreExistante.reference}). Veuillez la modifier depuis le tableau.`
+      });
+    }
+
+    // ✅ Création d'une nouvelle offre uniquement
+    const year = new Date().getFullYear();
+    const timestamp = Date.now();
+    const reference = `OFF-${year}-${timestamp}`;
+    const newId = crypto.randomUUID();
+    const lienCandidature = generateLienCandidature(newId, reference);
+
+    const offre = await prisma.offreEmploi.create({
+      data: {
+        id: newId,
+        reference,
+        intitule,
+        description: description || '',
+        profilRecherche: profilRecherche || '',
+        competences: competences || [],
+        fourchetteSalariale: fourchetteSalariale || '',
+        typeContrat: typeContrat as TypeContrat,
+        statut: 'BROUILLON',
+        canauxPublication: canauxPublication || ['Kilani'],
+        rhId: userId,
+        lienCandidature,
+        demande: { connect: { id: demandeId } }
+      }
     });
-if (offre) {
-  console.log('📝 Offre existante trouvée, mise à jour:', offre.reference);
-  console.log('   - Ancien rhId:', offre.rhId);
-  console.log('   - Nouveau rhId:', userId);
-  
-  offre = await prisma.offreEmploi.update({
-    where: { id: offre.id },
-    data: {
-      intitule,
-      description: description || '',
-      profilRecherche: profilRecherche || '',
-      competences: competences || [],
-      fourchetteSalariale: fourchetteSalariale || '',
-      typeContrat: typeContrat as TypeContrat,
-      canauxPublication: canauxPublication || ['Kilani'],
-      rhId: userId  // ← FORCER la mise à jour du rhId
-    }
-  });
 
-      
-      console.log('✅ Offre mise à jour avec succès:', offre.reference);
-      
-      return res.status(200).json({
-        success: true,
-        data: offre,
-        message: 'Offre mise à jour avec succès'
-      });
-    } else {
-      // CRÉATION d'une nouvelle offre (cas rare)
-      const year = new Date().getFullYear();
-      const timestamp = Date.now();
-      const reference = `OFF-${year}-${timestamp}`;
-      
-      console.log('📝 Création nouvelle offre:', reference);
-      
-      offre = await prisma.offreEmploi.create({
-        data: {
-          reference,
-          intitule,
-          description: description || '',
-          profilRecherche: profilRecherche || '',
-          competences: competences || [],
-          fourchetteSalariale: fourchetteSalariale || '',
-          typeContrat: typeContrat as TypeContrat,
-          statut: 'BROUILLON',
-          canauxPublication: canauxPublication || ['Kilani'],
-          demandeId,
-          rhId: userId
-        }
-      });
-      
-      console.log('✅ Offre créée avec succès:', offre.reference);
-      
-      return res.status(201).json({
-        success: true,
-        data: offre,
-        message: 'Offre créée avec succès'
-      });
-    }
+    console.log(`✅ Offre créée: ${offre.reference}`);
+
+    return res.status(201).json({
+      success: true,
+      data: offre,
+      message: 'Offre creee avec succes'
+    });
 
   } catch (error: any) {
-    console.error('❌ Erreur détaillée:', error);
-    console.error('❌ Code:', error.code);
-    console.error('❌ Message:', error.message);
-    
+    console.error('createOffre error:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Erreur lors de la création/mise à jour de l\'offre'
+      message: error.message || 'Erreur lors de la creation de l offre'
     });
   }
 };
@@ -308,15 +331,21 @@ export const publierOffre = async (req: Request, res: Response) => {
     const { canaux } = req.body;
     const userId = (req as any).user.id;
 
-    const offre = await prisma.offreEmploi.findUnique({
+    let offre = await prisma.offreEmploi.findUnique({
       where: { id },
       include: { demande: true }
     });
 
-    if (!offre) return sendNotFound(res, 'Offre non trouvée');
+    if (!offre) return sendNotFound(res, 'Offre non trouvee');
 
     if (offre.statut !== 'BROUILLON') {
-      return sendError(res, 'Seules les offres au statut Brouillon peuvent être publiées', 400);
+      return sendError(res, 'Seules les offres au statut Brouillon peuvent etre publiees', 400);
+    }
+
+    let lienCandidature = offre.lienCandidature;
+    if (!lienCandidature) {
+      lienCandidature = generateLienCandidature(offre.id, offre.reference);
+      await prisma.offreEmploi.update({ where: { id }, data: { lienCandidature } });
     }
 
     const resultatsPublication = [];
@@ -325,7 +354,8 @@ export const publierOffre = async (req: Request, res: Response) => {
       const result = await linkedinService.publierOffre(offre, {
         description: offre.description,
         profilRecherche: offre.profilRecherche,
-        competences: offre.competences
+        competences: offre.competences,
+        lienCandidature
       });
       resultatsPublication.push({ canal: 'LinkedIn', ...result });
     }
@@ -333,7 +363,8 @@ export const publierOffre = async (req: Request, res: Response) => {
     if (canaux.includes('TanitJobs')) {
       const result = await tanitjobsService.publierOffre(offre, {
         description: offre.description,
-        competences: offre.competences
+        competences: offre.competences,
+        lienCandidature
       });
       resultatsPublication.push({ canal: 'TanitJobs', ...result });
     }
@@ -359,11 +390,12 @@ export const publierOffre = async (req: Request, res: Response) => {
 
     sendSuccess(res, {
       offre: offreMaj,
-      publication: resultatsPublication
-    }, 'Offre publiée avec succès');
+      publication: resultatsPublication,
+      lienCandidature
+    }, 'Offre publiee avec succes');
 
   } catch (error) {
-    console.error('❌ publierOffre error:', error);
+    console.error('publierOffre error:', error);
     sendError(res, 'Erreur lors de la publication');
   }
 };
@@ -380,14 +412,14 @@ export const updateOffre = async (req: Request, res: Response) => {
 
     const offre = await prisma.offreEmploi.findUnique({ where: { id } });
 
-    if (!offre) return sendNotFound(res, 'Offre non trouvée');
+    if (!offre) return sendNotFound(res, 'Offre non trouvee');
 
     if (offre.rhId !== userId && (req as any).user.role !== 'SUPER_ADMIN') {
-      return sendForbidden(res, 'Non autorisé');
+      return sendForbidden(res, 'Non autorise');
     }
 
     if (offre.statut !== 'BROUILLON') {
-      return sendError(res, 'Seules les offres au statut Brouillon peuvent être modifiées', 400);
+      return sendError(res, 'Seules les offres au statut Brouillon peuvent etre modifiees', 400);
     }
 
     const offreMaj = await prisma.offreEmploi.update({
@@ -398,17 +430,22 @@ export const updateOffre = async (req: Request, res: Response) => {
         profilRecherche: data.profilRecherche,
         competences: data.competences,
         fourchetteSalariale: data.fourchetteSalariale,
-        typeContrat: data.typeContrat
+        typeContrat: data.typeContrat as TypeContrat,
+        canauxPublication: data.canauxPublication || ['Kilani']
       }
     });
 
-    sendSuccess(res, offreMaj, 'Offre modifiée avec succès');
+    sendSuccess(res, offreMaj, 'Offre modifiee avec succes');
 
   } catch (error) {
-    console.error('❌ updateOffre error:', error);
+    console.error('updateOffre error:', error);
     sendError(res, 'Erreur lors de la modification');
   }
 };
+
+// ============================================
+// SUPPRESSION OFFRE
+// ============================================
 
 export const deleteOffre = async (req: Request, res: Response) => {
   try {
@@ -420,10 +457,10 @@ export const deleteOffre = async (req: Request, res: Response) => {
       include: { candidatures: true }
     });
 
-    if (!offre) return sendNotFound(res, 'Offre non trouvée');
+    if (!offre) return sendNotFound(res, 'Offre non trouvee');
 
     if (offre.rhId !== userId && (req as any).user.role !== 'SUPER_ADMIN') {
-      return sendForbidden(res, 'Non autorisé');
+      return sendForbidden(res, 'Non autorise');
     }
 
     if (offre.candidatures.length > 0) {
@@ -432,10 +469,10 @@ export const deleteOffre = async (req: Request, res: Response) => {
 
     await prisma.offreEmploi.delete({ where: { id } });
 
-    sendSuccess(res, null, 'Offre supprimée avec succès');
+    sendSuccess(res, null, 'Offre supprimee avec succes');
 
   } catch (error) {
-    console.error('❌ deleteOffre error:', error);
+    console.error('deleteOffre error:', error);
     sendError(res, 'Erreur lors de la suppression');
   }
 };

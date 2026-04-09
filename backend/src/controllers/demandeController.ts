@@ -1,3 +1,5 @@
+// backend/src/controllers/demandeController.ts
+
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from '../utils/helpers';
@@ -12,70 +14,100 @@ const STATUT_PAR_ROLE: Record<string, string> = {
   DG: 'EN_VALIDATION_DG',
 };
 
-// Ordre hiérarchique des rôles (MANAGER n'est pas une étape du circuit)
+// Ordre hiérarchique des rôles
 const ROLE_ORDER = ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'];
 
-const generateReference = async (): Promise<string> => {
-  const year = new Date().getFullYear();
-  const count = await prisma.demandeRecrutement.count({
-    where: { reference: { startsWith: `DEM-${year}` } }
-  });
-  return `DEM-${year}-${String(count + 1).padStart(3, '0')}`;
+// ============================================
+// DÉFINITION DES VALIDATEURS NATURELS PAR NIVEAU DE POSTE
+// ============================================
+
+const VALIDATEURS_PAR_NIVEAU: Record<string, string[]> = {
+  TECHNICIEN: ['MANAGER', 'DIRECTEUR', 'DRH'],
+  EMPLOYE: ['MANAGER', 'DIRECTEUR', 'DRH'],
+  CADRE_DEBUTANT: ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF'],
+  CADRE_CONFIRME: ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA'],
+  CADRE_SUPERIEUR: ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
+  STRATEGIQUE: ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
 };
 
 // ============================================
-// DÉTERMINER LE CIRCUIT SELON LE TYPE DE POSTE
+// DÉTERMINER LE CIRCUIT SELON LE NIVEAU ET LE CRÉATEUR
 // ============================================
-const determinerCircuitParTypePoste = async (typePosteId: string) => {
-  const typePoste = await prisma.typePoste.findUnique({
-    where: { id: typePosteId }
-  });
 
-  if (!typePoste) return null;
-
-  const circuit = await prisma.circuitConfig.findFirst({
-    where: { actif: true, type: typePoste.circuitType }
-  });
-
-  return circuit;
+const determinerCircuit = (
+  niveau: string,
+  createurRole: string
+): { etapes: any[]; totalEtapes: number } => {
+  // Récupérer les validateurs naturels pour ce niveau
+  const validateursNaturels = VALIDATEURS_PAR_NIVEAU[niveau] || ['DIRECTEUR', 'DRH'];
+  
+  console.log(`📋 Validateurs naturels pour niveau ${niveau}: ${validateursNaturels.join(' → ')}`);
+  console.log(`👤 Créateur: ${createurRole}`);
+  
+  // Filtrer pour enlever le créateur s'il est dans la liste
+  const validateursFiltres = validateursNaturels.filter(role => role !== createurRole);
+  
+  console.log(`✅ Circuit final: ${validateursFiltres.join(' → ') || '(aucun - validation directe)'}`);
+  
+  // Construire les étapes avec niveaux
+  const etapes = validateursFiltres.map((role, index) => ({
+    niveau: index + 1,
+    role: role,
+    label: getRoleLabel(role),
+    delai: 48
+  }));
+  
+  return {
+    etapes,
+    totalEtapes: etapes.length
+  };
 };
 
-// ============================================
-// DÉTERMINER LES ÉTAPES APRÈS LE CRÉATEUR
-// ============================================
-const determinerEtapesApresCreateur = (
-  createurRole: string,
-  etapesOriginales: any[]
-): any[] => {
-  const createurIndex = ROLE_ORDER.indexOf(createurRole);
-
-  if (createurIndex === -1) return etapesOriginales;
-
-  // Garder uniquement les étapes dont le rôle est STRICTEMENT après le créateur
-  return etapesOriginales.filter(etape => {
-    const etapeIndex = ROLE_ORDER.indexOf(etape.role);
-    return etapeIndex > createurIndex;
-  });
+const getRoleLabel = (role: string): string => {
+  const labels: Record<string, string> = {
+    'MANAGER': 'Manager',
+    'DIRECTEUR': 'Directeur',
+    'DRH': 'DRH',
+    'DAF': 'DAF',
+    'DGA': 'DGA',
+    'DG': 'DG'
+  };
+  return labels[role] || role;
 };
 
 // ============================================
 // TROUVER LE VALIDATEUR
 // ============================================
 const trouverValidateur = async (role: string, directionId: string | null) => {
+  console.log(`🔍 Recherche validateur pour rôle: ${role}, directionId: ${directionId}`);
+  
   const rolesTransversaux = ['DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'];
 
   if (rolesTransversaux.includes(role)) {
-    return await prisma.user.findFirst({
+    const validateur = await prisma.user.findFirst({
       where: { role: role as any, actif: true }
     });
+    console.log(`📌 Validateur transversal trouvé: ${validateur?.email || 'aucun'}`);
+    return validateur;
+  }
+
+  if (role === 'MANAGER' && directionId) {
+    const validateur = await prisma.user.findFirst({
+      where: { role: 'MANAGER', actif: true, directionId }
+    });
+    console.log(`📌 Validateur MANAGER trouvé: ${validateur?.email || 'aucun'}`);
+    return validateur;
   }
 
   if (role === 'DIRECTEUR' && directionId) {
-    return await prisma.user.findFirst({
+    const validateur = await prisma.user.findFirst({
       where: { role: 'DIRECTEUR', actif: true, directionId }
     });
+    console.log(`📌 Validateur DIRECTEUR trouvé: ${validateur?.email || 'aucun'}`);
+    return validateur;
   }
 
+  console.log(`❌ Aucun validateur trouvé pour le rôle: ${role}`);
   return null;
 };
 
@@ -105,6 +137,35 @@ const createAuditLog = async (
 };
 
 // ============================================
+// NOTIFIER LE VALIDATEUR
+// ============================================
+const notifierValidateur = async (
+  validateur: any,
+  demandeRef: string,
+  demandePoste: string,
+  etape: number,
+  totalEtapes: number,
+  role: string,
+  dateLimite: Date,
+  demandeId: string
+) => {
+  if (!validateur) return;
+  
+  await emailService.sendValidationNotification({
+    nom: validateur.nom,
+    prenom: validateur.prenom,
+    email: validateur.email,
+    demandeRef,
+    demandePoste,
+    etape,
+    totalEtapes,
+    role,
+    dateLimite,
+    actionUrl: `${process.env.FRONTEND_URL}/validations/${demandeId}`
+  });
+};
+
+// ============================================
 // NOTIFIER LE MANAGER
 // ============================================
 const notifierManager = async (managerId: string, createurNom: string, demandeRef: string) => {
@@ -122,16 +183,16 @@ const notifierManager = async (managerId: string, createurNom: string, demandeRe
 };
 
 // ============================================
-// VÉRIFIER LES DROITS DU CRÉATEUR
+// VÉRIFIER LES DROITS DU CRÉATEUR SELON LE NIVEAU
 // ============================================
 const verifierDroitsCreateur = (
   createurRole: string,
-  circuitType: string
+  niveau: string
 ): { valid: boolean; message?: string } => {
   // DAF : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DAF') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
-    if (!allowedTypes.includes(circuitType)) {
+    if (!allowedTypes.includes(niveau)) {
       return {
         valid: false,
         message: 'Le DAF ne peut créer que des demandes pour des postes de cadre supérieur ou stratégique'
@@ -142,7 +203,7 @@ const verifierDroitsCreateur = (
   // DGA : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DGA') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
-    if (!allowedTypes.includes(circuitType)) {
+    if (!allowedTypes.includes(niveau)) {
       return {
         valid: false,
         message: 'Le DGA ne peut créer que des demandes pour des postes de cadre supérieur ou stratégique'
@@ -153,7 +214,7 @@ const verifierDroitsCreateur = (
   // DG : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DG') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
-    if (!allowedTypes.includes(circuitType)) {
+    if (!allowedTypes.includes(niveau)) {
       return {
         valid: false,
         message: 'Le DG ne peut créer que des demandes pour des postes de cadre supérieur ou stratégique'
@@ -162,6 +223,17 @@ const verifierDroitsCreateur = (
   }
 
   return { valid: true };
+};
+
+// ============================================
+// GÉNÉRER UNE RÉFÉRENCE UNIQUE
+// ============================================
+const generateReference = async (): Promise<string> => {
+  const year = new Date().getFullYear();
+  const count = await prisma.demandeRecrutement.count({
+    where: { reference: { startsWith: `DEM-${year}` } }
+  });
+  return `DEM-${year}-${String(count + 1).padStart(3, '0')}`;
 };
 
 // ============================================
@@ -197,7 +269,6 @@ export const getDemandes = async (req: Request, res: Response) => {
           createur: { select: { id: true, nom: true, prenom: true, email: true, role: true } },
           manager: { select: { id: true, nom: true, prenom: true, email: true } },
           direction: { select: { id: true, code: true, nom: true } },
-          typePoste: { select: { id: true, nom: true, circuitType: true } },
           validations: {
             include: { acteur: { select: { id: true, nom: true, prenom: true, role: true } } },
             orderBy: { niveauEtape: 'asc' }
@@ -223,7 +294,7 @@ export const getDemandes = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ getDemandes error:', error);
+    console.error('getDemandes error:', error);
     sendError(res, 'Erreur lors de la récupération des demandes');
   }
 };
@@ -238,7 +309,6 @@ export const getDemandeById = async (req: Request, res: Response) => {
         createur: { select: { id: true, nom: true, prenom: true, email: true, role: true } },
         manager: { select: { id: true, nom: true, prenom: true, email: true } },
         direction: { select: { id: true, code: true, nom: true } },
-        typePoste: { select: { id: true, nom: true, circuitType: true } },
         validations: {
           include: { acteur: { select: { id: true, nom: true, prenom: true, email: true, role: true } } },
           orderBy: { niveauEtape: 'asc' }
@@ -254,7 +324,7 @@ export const getDemandeById = async (req: Request, res: Response) => {
     sendSuccess(res, { demande });
 
   } catch (error) {
-    console.error('❌ getDemandeById error:', error);
+    console.error('getDemandeById error:', error);
     sendError(res, 'Erreur lors de la récupération de la demande');
   }
 };
@@ -267,12 +337,24 @@ export const createDemande = async (req: Request, res: Response) => {
     const userPrenom = (req as any).user.prenom;
 
     const {
-      intitulePoste, typePosteId, justification, motif, commentaireMotif,
-      personneRemplaceeNom, fonctionRemplacee, typeContrat, priorite,
-      budgetMin, budgetMax, dateSouhaitee, description, disponibilites, directionId
+      intitulePoste,
+      niveau,
+      justification,
+      motif,
+      commentaireMotif,
+      personneRemplaceeNom,
+      fonctionRemplacee,
+      typeContrat,
+      priorite,
+      budgetMin,
+      budgetMax,
+      dateSouhaitee,
+      description,
+      disponibilites,
+      directionId
     } = req.body;
 
-    if (!intitulePoste || !typePosteId || !justification || !motif || !typeContrat || !priorite || !budgetMin || !budgetMax || !dateSouhaitee) {
+    if (!intitulePoste || !niveau || !justification || !motif || !typeContrat || !priorite || !budgetMin || !budgetMax || !dateSouhaitee) {
       return sendError(res, 'Tous les champs obligatoires doivent être remplis', 400);
     }
 
@@ -307,13 +389,8 @@ export const createDemande = async (req: Request, res: Response) => {
       targetDirectionId = createur.directionId;
     }
 
-    const typePoste = await prisma.typePoste.findFirst({
-      where: { id: typePosteId, directionId: targetDirectionId, actif: true }
-    });
-
-    if (!typePoste) return sendError(res, 'Type de poste non valide pour cette direction', 400);
-
-    const droits = verifierDroitsCreateur(userRole, typePoste.circuitType);
+    // ✅ Vérifier les droits du créateur selon le niveau
+    const droits = verifierDroitsCreateur(userRole, niveau);
     if (!droits.valid) return sendError(res, droits.message!, 403);
 
     const reference = await generateReference();
@@ -340,6 +417,11 @@ export const createDemande = async (req: Request, res: Response) => {
         break;
     }
 
+    // ✅ Récupérer le circuit config pour ce niveau
+    const circuitConfig = await prisma.circuitConfig.findFirst({
+      where: { type: niveau as any, actif: true }
+    });
+
     const demande = await prisma.demandeRecrutement.create({
       data: {
         reference,
@@ -353,20 +435,23 @@ export const createDemande = async (req: Request, res: Response) => {
         budgetMax: Number(budgetMax),
         dateSouhaitee: new Date(dateSouhaitee),
         statut: 'BROUILLON',
+        niveau,
+        circuitType: niveau as any,
+        totalEtapes: circuitConfig?.totalEtapes || 0,
         createur: { connect: { id: userId } },
         manager: manager ? { connect: { id: manager.id } } : undefined,
         direction: { connect: { id: targetDirectionId! } },
-        typePoste: { connect: { id: typePosteId } },
+        circuitConfig: circuitConfig ? { connect: { id: circuitConfig.id } } : undefined,
         disponibilites: disponibilites?.length > 0
           ? { create: disponibilites.map((d: any) => ({ date: new Date(d.date), heureDebut: d.heureDebut, heureFin: d.heureFin })) }
           : undefined
       },
-      include: { disponibilites: true, direction: true, typePoste: true, manager: true }
+      include: { disponibilites: true, direction: true, circuitConfig: true, manager: true }
     });
 
     await createAuditLog(
       userId, 'CREATE_DEMANDE', 'DemandeRecrutement', demande.id,
-      `Création de la demande ${reference} pour le poste ${intitulePoste} (direction: ${targetDirectionId})`
+      `Création de la demande ${reference} pour le poste ${intitulePoste} (niveau: ${niveau})`
     );
 
     if (manager && manager.id !== userId && userRole !== 'MANAGER') {
@@ -376,7 +461,7 @@ export const createDemande = async (req: Request, res: Response) => {
     sendCreated(res, demande, 'Demande créée avec succès');
 
   } catch (error) {
-    console.error('❌ createDemande error:', error);
+    console.error('createDemande error:', error);
     sendError(res, 'Erreur lors de la création de la demande');
   }
 };
@@ -444,7 +529,7 @@ export const updateDemande = async (req: Request, res: Response) => {
     sendSuccess(res, updatedDemande, 'Demande modifiée avec succès');
 
   } catch (error) {
-    console.error('❌ updateDemande error:', error);
+    console.error('updateDemande error:', error);
     sendError(res, 'Erreur lors de la modification');
   }
 };
@@ -491,7 +576,7 @@ export const deleteDemande = async (req: Request, res: Response) => {
     sendSuccess(res, null, 'Demande supprimée avec succès');
 
   } catch (error) {
-    console.error('❌ deleteDemande error:', error);
+    console.error('deleteDemande error:', error);
     sendError(res, 'Erreur lors de la suppression');
   }
 };
@@ -507,7 +592,7 @@ export const submitDemande = async (req: Request, res: Response) => {
 
     const demande = await prisma.demandeRecrutement.findUnique({
       where: { id },
-      include: { direction: true, typePoste: true, createur: true }
+      include: { direction: true, createur: true }
     });
 
     if (!demande) return sendNotFound(res, 'Demande non trouvée');
@@ -520,29 +605,25 @@ export const submitDemande = async (req: Request, res: Response) => {
       return sendError(res, `Seules les demandes au statut Brouillon peuvent être soumises. Statut actuel: ${demande.statut}`, 400);
     }
 
-    if (!demande.typePosteId) {
-      return sendError(res, 'La demande doit avoir un type de poste', 400);
+    if (!demande.niveau) {
+      return sendError(res, 'La demande doit avoir un niveau de poste', 400);
     }
 
-    const circuit = await determinerCircuitParTypePoste(demande.typePosteId);
-    if (!circuit) {
-      return sendError(res, 'Aucun circuit de validation trouvé pour ce type de poste', 400);
-    }
+    // ✅ Utiliser le niveau directement
+    const { etapes, totalEtapes } = determinerCircuit(
+      demande.niveau,
+      demande.createur.role
+    );
 
-    const etapesOriginales = circuit.etapes as any[];
-    const etapes = determinerEtapesApresCreateur(demande.createur.role, etapesOriginales);
-
-    console.log(`🔧 Créateur: ${demande.createur.role} → Étapes: ${etapes.map((e: any) => e.role).join(' → ') || '(aucune)'}`);
+    console.log(`🔧 Circuit déterminé: ${etapes.map((e: any) => e.role).join(' → ') || '(aucune)'}`);
 
     if (etapes.length === 0) {
+      // Validation directe
       await prisma.demandeRecrutement.update({
         where: { id },
         data: {
           statut: 'VALIDEE',
           valideeAt: new Date(),
-          circuitType: circuit.type,
-          totalEtapes: 0,
-          circuitConfigId: circuit.id,
           etapeActuelle: 0
         }
       });
@@ -553,16 +634,16 @@ export const submitDemande = async (req: Request, res: Response) => {
       return sendSuccess(res, null, 'Demande validée automatiquement');
     }
 
+    // Mettre à jour la demande avec les infos du circuit
     await prisma.demandeRecrutement.update({
       where: { id },
       data: {
-        circuitType: circuit.type,
-        totalEtapes: etapes.length,
-        circuitConfigId: circuit.id,
+        totalEtapes: totalEtapes,
         etapeActuelle: 0
       }
     });
 
+    // Créer la première validation
     const premiereEtape = etapes[0];
     const premierValidateur = await trouverValidateur(premiereEtape.role, demande.directionId);
 
@@ -571,7 +652,7 @@ export const submitDemande = async (req: Request, res: Response) => {
     }
 
     const dateLimite = new Date();
-    dateLimite.setHours(dateLimite.getHours() + (circuit.delaiParDefaut || 48));
+    dateLimite.setHours(dateLimite.getHours() + 48);
 
     await prisma.validationEtape.create({
       data: {
@@ -592,30 +673,27 @@ export const submitDemande = async (req: Request, res: Response) => {
     await createAuditLog(userId, 'SUBMIT_DEMANDE', 'DemandeRecrutement', demande.id,
       `Soumission de la demande ${demande.reference}`);
 
-    await emailService.sendValidationNotification({
-      nom: premierValidateur.nom,
-      prenom: premierValidateur.prenom,
-      email: premierValidateur.email,
-      demandeRef: demande.reference,
-      demandePoste: demande.intitulePoste,
-      etape: 1,
-      totalEtapes: etapes.length,
-      role: premiereEtape.role,
+    await notifierValidateur(
+      premierValidateur,
+      demande.reference,
+      demande.intitulePoste,
+      1,
+      totalEtapes,
+      premiereEtape.role,
       dateLimite,
-      actionUrl: `${process.env.FRONTEND_URL}/validations/${demande.id}`
-    });
+      demande.id
+    );
 
     sendSuccess(res, {
       demande: {
         ...demande,
-        circuitType: circuit.type,
-        totalEtapes: etapes.length,
+        totalEtapes: totalEtapes,
         prochaineEtape: premiereEtape
       }
     }, 'Demande soumise avec succès');
 
   } catch (error) {
-    console.error('❌ submitDemande error:', error);
+    console.error('submitDemande error:', error);
     sendError(res, 'Erreur lors de la soumission');
   }
 };
@@ -635,7 +713,6 @@ export const validerDemande = async (req: Request, res: Response) => {
           where: { decision: 'EN_ATTENTE' },
           orderBy: { niveauEtape: 'desc' }
         },
-        circuitConfig: true,
         direction: true,
         manager: true,
         createur: true
@@ -649,8 +726,14 @@ export const validerDemande = async (req: Request, res: Response) => {
       return sendForbidden(res, "Vous n'êtes pas le validateur de cette étape");
     }
 
+    // Vérification spécifique pour DIRECTEUR
     if (userRole === 'DIRECTEUR' && userDirectionId !== demande.directionId) {
       return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre propre direction');
+    }
+
+    // Vérification spécifique pour MANAGER
+    if (userRole === 'MANAGER' && demande.managerId !== userId) {
+      return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre équipe');
     }
 
     await prisma.validationEtape.update({
@@ -678,6 +761,7 @@ export const validerDemande = async (req: Request, res: Response) => {
         data: { statut: 'REJETEE' as any }
       });
 
+      // Notifier le créateur et le manager du refus
       await emailService.sendRejetNotification({
         nom: demande.createur.nom, prenom: demande.createur.prenom,
         email: demande.createur.email, demandeRef: demande.reference,
@@ -697,50 +781,40 @@ export const validerDemande = async (req: Request, res: Response) => {
 
     const nouvellesEtapesValidees = demande.etapeActuelle + 1;
 
-    if (nouvellesEtapesValidees === demande.totalEtapes) {
-      const offre = await prisma.offreEmploi.create({
-        data: {
-          reference: `OFF-${new Date().getFullYear()}-${String(await prisma.offreEmploi.count() + 1).padStart(3, '0')}`,
-          intitule: demande.intitulePoste,
-          typeContrat: demande.typeContrat,
-          statut: 'BROUILLON',
-          rhId: userId,
-          demandeId: demande.id
-        }
-      });
-
+    // Vérifier si c'est la dernière étape
+    if (nouvellesEtapesValidees >= (demande.totalEtapes || 0)) {
+      console.log('✅ Dernière étape - Validation finale de la demande');
+      
       await prisma.demandeRecrutement.update({
         where: { id },
         data: {
           statut: 'VALIDEE' as any,
           valideeAt: new Date(),
-          offre: { connect: { id: offre.id } },
           etapeActuelle: nouvellesEtapesValidees
         }
       });
 
       await createAuditLog(userId, 'VALIDATE_DEMANDE_FINAL', 'DemandeRecrutement', demande.id,
-        `Validation finale de la demande ${demande.reference}, offre ${offre.reference} générée`);
+        `Validation finale de la demande ${demande.reference}`);
 
-      const notifPayload = {
-        demandeRef: demande.reference, offreRef: offre.reference,
-        poste: demande.intitulePoste,
-        actionUrl: `${process.env.FRONTEND_URL}/offres/${offre.id}`
-      };
-
-      await emailService.sendOffreGenereeNotification({ ...notifPayload, nom: demande.createur.nom, prenom: demande.createur.prenom, email: demande.createur.email });
-
-      if (demande.manager && demande.manager.id !== demande.createur.id) {
-        await emailService.sendOffreGenereeNotification({ ...notifPayload, nom: demande.manager.nom, prenom: demande.manager.prenom, email: demande.manager.email });
+      // Notifier le DRH qu'il peut créer l'offre
+      const drh = await prisma.user.findFirst({ where: { role: 'DRH', actif: true } });
+      if (drh) {
+        await emailService.sendNotificationEmail({
+          nom: drh.nom,
+          prenom: drh.prenom,
+          email: drh.email,
+          message: `La demande ${demande.reference} (${demande.intitulePoste}) a été validée. Vous pouvez maintenant créer l'offre.`,
+          actionUrl: `${process.env.FRONTEND_URL}/offres`
+        });
       }
 
-      return sendSuccess(res, { offre }, 'Demande validée, offre générée');
+      return sendSuccess(res, null, 'Demande validée avec succès');
     }
 
-    const etapesOriginales = demande.circuitConfig?.etapes as any[] || [];
-    const etapesFiltrees = determinerEtapesApresCreateur(demande.createur.role, etapesOriginales);
-
-    const prochaineEtapeConfig = etapesFiltrees[nouvellesEtapesValidees];
+    // Passer à l'étape suivante
+    const { etapes } = determinerCircuit(demande.niveau, demande.createur.role);
+    const prochaineEtapeConfig = etapes[nouvellesEtapesValidees];
 
     if (!prochaineEtapeConfig) {
       return sendError(res, 'Configuration de circuit invalide', 500);
@@ -753,7 +827,7 @@ export const validerDemande = async (req: Request, res: Response) => {
     }
 
     const dateLimite = new Date();
-    dateLimite.setHours(dateLimite.getHours() + (demande.circuitConfig?.delaiParDefaut || 48));
+    dateLimite.setHours(dateLimite.getHours() + 48);
 
     await prisma.validationEtape.create({
       data: {
@@ -768,26 +842,27 @@ export const validerDemande = async (req: Request, res: Response) => {
 
     await prisma.demandeRecrutement.update({
       where: { id },
-      data: { statut: nouveauStatut as any, etapeActuelle: nouvellesEtapesValidees }
+      data: { 
+        statut: nouveauStatut as any, 
+        etapeActuelle: nouvellesEtapesValidees 
+      }
     });
 
-    await emailService.sendValidationNotification({
-      nom: prochainValidateur.nom,
-      prenom: prochainValidateur.prenom,
-      email: prochainValidateur.email,
-      demandeRef: demande.reference,
-      demandePoste: demande.intitulePoste,
-      etape: nouvellesEtapesValidees + 1,
-      totalEtapes: demande.totalEtapes!,
-      role: prochaineEtapeConfig.role,
+    await notifierValidateur(
+      prochainValidateur,
+      demande.reference,
+      demande.intitulePoste,
+      nouvellesEtapesValidees + 1,
+      demande.totalEtapes!,
+      prochaineEtapeConfig.role,
       dateLimite,
-      actionUrl: `${process.env.FRONTEND_URL}/validations/${demande.id}`
-    });
+      demande.id
+    );
 
     sendSuccess(res, null, 'Étape validée avec succès');
 
   } catch (error) {
-    console.error('❌ validerDemande error:', error);
+    console.error('validerDemande error:', error);
     sendError(res, 'Erreur lors de la validation');
   }
 };

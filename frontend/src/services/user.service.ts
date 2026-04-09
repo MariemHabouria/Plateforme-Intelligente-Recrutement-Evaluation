@@ -13,9 +13,9 @@ export interface User {
   mustChangePassword: boolean;
   dernierConnexion?: string;
   createdAt: string;
-  directionId?: string;    
-    typePosteId?: string;     
-  direction?: {              
+  directionId?: string;
+  
+  direction?: {
     id: string;
     code: string;
     nom: string;
@@ -30,8 +30,7 @@ export interface CreateUserData {
   departement?: string;
   poste?: string;
   telephone?: string;
-  directionId?: string;      
-   typePosteId?: string; 
+  directionId?: string;
 }
 
 export interface UpdateUserData {
@@ -41,6 +40,7 @@ export interface UpdateUserData {
   poste?: string;
   telephone?: string;
   actif?: boolean;
+  directionId?: string;
 }
 
 export interface ChangePasswordData {
@@ -86,17 +86,21 @@ export const userService = {
     return response.data.user || response.data.data;
   },
 
-  // Mettre à jour un utilisateur
-async updateUser(id: string, data: Partial<CreateUserData>): Promise<User> {
-  const response = await api.put(`/users/${id}`, data);  // PATCH → PUT
-  return response.data.user || response.data.data;
-},
+  /**
+   * Mettre à jour un utilisateur
+   */
+  async updateUser(id: string, data: Partial<CreateUserData>): Promise<User> {
+    const response = await api.put(`/users/${id}`, data);
+    return response.data.user || response.data.data;
+  },
 
-// Activer/Désactiver
-async toggleUserStatus(id: string): Promise<{ actif: boolean }> {
-  const response = await api.patch(`/users/${id}/toggle-status`);
-  return { actif: response.data.actif };  // extraire directement actif
-},
+  /**
+   * Activer/Désactiver un utilisateur
+   */
+  async toggleUserStatus(id: string): Promise<{ actif: boolean }> {
+    const response = await api.patch(`/users/${id}/toggle-status`);
+    return { actif: response.data.actif };
+  },
 
   /**
    * Renvoyer l'invitation (nouveau mot de passe temporaire)
@@ -145,14 +149,18 @@ async toggleUserStatus(id: string): Promise<{ actif: boolean }> {
       throw error;
     }
   },
+
+  /**
+   * Mettre à jour son propre profil
+   */
   async updateOwnProfile(data: {
-  nom?: string;
-  prenom?: string;
-  telephone?: string;
-  departement?: string;
-  poste?: string;
-}): Promise<User> {
-  const response = await api.patch('/users/profile', data);
-  return response.data.user;
-}
+    nom?: string;
+    prenom?: string;
+    telephone?: string;
+    departement?: string;
+    poste?: string;
+  }): Promise<User> {
+    const response = await api.patch('/users/profile', data);
+    return response.data.user;
+  }
 };

@@ -13,6 +13,19 @@ import { ValidationModal } from './ValidationModal';
 
 type Role = 'superadmin' | 'manager' | 'directeur' | 'rh' | 'daf' | 'dga' | 'dg' | 'paie' | 'candidat';
 
+// ✅ Fonction pour obtenir le libellé du niveau
+const getNiveauLabel = (niveau: string): string => {
+  const labels: Record<string, string> = {
+    'TECHNICIEN': ' Technicien',
+    'EMPLOYE': ' Employé',
+    'CADRE_DEBUTANT': ' Cadre débutant',
+    'CADRE_CONFIRME': ' Cadre confirmé',
+    'CADRE_SUPERIEUR': ' Cadre supérieur',
+    'STRATEGIQUE': ' Stratégique'
+  };
+  return labels[niveau] || niveau;
+};
+
 export const DemandesPage = () => {
   const { user } = useAuth();
   const [demandes, setDemandes] = useState<Demande[]>([]);
@@ -95,8 +108,9 @@ export const DemandesPage = () => {
     return (isCreator || isSuperAdmin) && demande.statut === 'BROUILLON';
   };
 
+  // ✅ Fonction corrigée : filtre UNIQUEMENT le rôle du créateur, garde toutes les autres étapes
   const getCircuitLabels = (demande: Demande): string[] => {
-    const circuitType = demande.typePoste?.circuitType || demande.circuitType;
+    const circuitType = demande.circuitType;
     
     const circuits: Record<string, string[]> = {
       TECHNICIEN:      ['DIR', 'RH'],
@@ -107,47 +121,56 @@ export const DemandesPage = () => {
       STRATEGIQUE:     ['DIR', 'RH', 'DAF', 'DGA', 'DG']
     };
     
-    const defaultCircuit = ['DIR', 'RH', 'DAF', 'DGA'];
-    
-    if (!circuitType) return defaultCircuit;
-    
-    const circuitComplet = circuits[circuitType] || defaultCircuit;
-    const createurRole = demande.createur?.role;
-    
-    if (!createurRole) return circuitComplet;
-    
-    const roleToBackend: Record<string, string> = {
-      'manager': 'MANAGER',
-      'directeur': 'DIRECTEUR',
-      'rh': 'DRH',
-      'daf': 'DAF',
-      'dga': 'DGA',
-      'dg': 'DG',
-      'superadmin': 'SUPER_ADMIN'
-    };
-    
-    const backendRole = roleToBackend[createurRole] || createurRole.toUpperCase();
-    const roleToLabel: Record<string, string> = {
+    const circuitComplet = circuits[circuitType as string] || ['DIR', 'RH', 'DAF', 'DGA'];
+    const createurRole = demande.createur?.role?.toUpperCase();
+
+    // Mapping en MAJUSCULES pour correspondre aux données API
+    const roleToCircuitLabel: Record<string, string> = {
       'DIRECTEUR': 'DIR',
-      'DRH': 'RH',
-      'DAF': 'DAF',
-      'DGA': 'DGA',
-      'DG': 'DG'
+      'DRH':       'RH',
+      'DAF':       'DAF',
+      'DGA':       'DGA',
+      'DG':        'DG',
     };
-    
-    if (backendRole === 'MANAGER' || backendRole === 'SUPER_ADMIN') {
-      return circuitComplet;
-    }
-    
-    const createurLabel = roleToLabel[backendRole];
+
+    const createurLabel = createurRole ? roleToCircuitLabel[createurRole] : undefined;
     if (!createurLabel) return circuitComplet;
+
+    return circuitComplet.filter((label: string) => label !== createurLabel);
+  };
+
+  const getCurrentStep = (demande: Demande, circuitLabels: string[]): number => {
+    // Cas terminal : validée → toutes les bulles vertes
+    if (demande.statut === 'VALIDEE') return circuitLabels.length;
     
-    const createurIndex = circuitComplet.indexOf(createurLabel);
-    if (createurIndex === -1) return circuitComplet;
-    
-    const filteredCircuit = circuitComplet.filter((_, index) => index > createurIndex);
-    
-    return filteredCircuit.length === 0 ? [] : filteredCircuit;
+    // Cas terminal : rejetée → on affiche jusqu'à l'étape où ça a bloqué
+    if (demande.statut === 'REJETEE') {
+      const refusee = demande.validations?.find(v => v.decision === 'REFUSEE');
+      if (refusee) {
+        const roleToLabel: Record<string, string> = {
+          'DIRECTEUR': 'DIR', 'DRH': 'RH', 'DAF': 'DAF', 'DGA': 'DGA', 'DG': 'DG'
+        };
+        const label = roleToLabel[refusee.acteur?.role?.toUpperCase()];
+        const idx = label ? circuitLabels.indexOf(label) : -1;
+        return idx >= 0 ? idx : 0;
+      }
+      return 0;
+    }
+
+    // Cas normal : trouver la validation EN_ATTENTE
+    const validationEnCours = demande.validations?.find(v => v.decision === 'EN_ATTENTE');
+    if (!validationEnCours) return 0;
+
+    const roleToLabel: Record<string, string> = {
+      'DIRECTEUR': 'DIR', 'DRH': 'RH', 'DAF': 'DAF', 'DGA': 'DGA', 'DG': 'DG'
+    };
+
+    const acteurRole = validationEnCours.acteur?.role?.toUpperCase();
+    const currentLabel = acteurRole ? roleToLabel[acteurRole] : undefined;
+    if (!currentLabel) return 0;
+
+    const currentIndex = circuitLabels.indexOf(currentLabel);
+    return currentIndex >= 0 ? currentIndex : 0;
   };
 
   const handleSubmit = async (demande: Demande) => {
@@ -265,18 +288,17 @@ export const DemandesPage = () => {
                   <th style={{ padding: '16px', textAlign: 'left' }}>Statut</th>
                   <th style={{ padding: '16px', textAlign: 'left' }}>Circuit</th>
                   <th style={{ padding: '16px', textAlign: 'left' }}>Actions</th>
-                  </tr>
+                </tr>
               </thead>
               <tbody>
                 {demandes.map((demande) => {
                   const status = getStatusBadge(demande.statut);
                   const priorite = getPrioriteBadge(demande.priorite);
                   const circuitLabels = getCircuitLabels(demande);
-                  const currentStep = demande.etapeActuelle;
+                  const currentStep = getCurrentStep(demande, circuitLabels);
                   const isSubmittable = demande.statut === 'BROUILLON';
                   const isValidable = canUserValidate(demande);
                   const isDeletable = canDelete(demande);
-                  const isRejected = demande.statut === 'REJETEE';
 
                   return (
                     <tr key={demande.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
@@ -286,7 +308,7 @@ export const DemandesPage = () => {
                       <td style={{ padding: '16px' }}>
                         <div style={{ fontWeight: 500 }}>{demande.intitulePoste}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          {demande.createur?.prenom} {demande.createur?.nom} • {demande.typePoste?.nom}
+                          {demande.createur?.prenom} {demande.createur?.nom} • {getNiveauLabel(demande.niveau)}
                         </div>
                       </td>
                       <td style={{ padding: '16px' }}>
@@ -310,7 +332,6 @@ export const DemandesPage = () => {
                           )}
                           {isValidable && (
                             <>
-                              {/* ✅ Bouton Refuser */}
                               <Button
                                 variant="danger"
                                 size="xs"
@@ -319,7 +340,6 @@ export const DemandesPage = () => {
                               >
                                 <XCircle size={14} />
                               </Button>
-                              {/* ✅ Bouton Valider */}
                               <Button
                                 variant="success"
                                 size="xs"
@@ -360,7 +380,6 @@ export const DemandesPage = () => {
         onSuccess={() => { setShowCreateModal(false); fetchDemandes(); setSuccess('Demande créée avec succès'); }}
       />
 
-      {/* Modal de validation (unique pour Valider et Refuser) */}
       <ValidationModal
         open={showValidationModal}
         demande={selectedDemande}

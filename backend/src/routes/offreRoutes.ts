@@ -1,10 +1,12 @@
 // backend/src/routes/offreRoutes.ts
 
 import { Router } from 'express';
-import { protect, authorize } from '../middlewares/auth';  // ← CORRECTION : utiliser protect et authorize
+import { protect, authorize } from '../middlewares/auth';
 import {
   getOffres,
   getOffreById,
+  getOffreParToken,
+  getDemandesSansOffre,
   genererOffreAvecIA,
   createOffre,
   publierOffre,
@@ -14,22 +16,30 @@ import {
 
 const router = Router();
 
-// 🔐 Toutes les routes nécessitent authentification
+// ============================================
+// ROUTES PUBLIQUES
+// ============================================
+router.get('/public/:token', getOffreParToken);
+
+// ============================================
+// ROUTES PROTEGEES
+// ============================================
 router.use(protect);
 
-// 👁️ Routes de visualisation
-router.get('/', getOffres);
-router.get('/:id', getOffreById);
+// ✅ Routes statiques EN PREMIER (avant /:id)
+router.get('/demandes-sans-offre', authorize('DRH', 'SUPER_ADMIN'), getDemandesSansOffre);
 
-// 🤖 Génération IA (seulement RH et SUPER_ADMIN)
+// ✅ Routes POST statiques EN PREMIER (avant /:id/publier)
 router.post('/generer-ia', authorize('DRH', 'SUPER_ADMIN'), genererOffreAvecIA);
 
-// ✏️ CRUD complet (seulement RH et SUPER_ADMIN)
+// Routes génériques
+router.get('/', getOffres);
 router.post('/', authorize('DRH', 'SUPER_ADMIN'), createOffre);
+
+// ✅ Routes avec :id EN DERNIER
+router.get('/:id', getOffreById);
 router.put('/:id', authorize('DRH', 'SUPER_ADMIN'), updateOffre);
 router.delete('/:id', authorize('DRH', 'SUPER_ADMIN'), deleteOffre);
-
-// 📢 Publication multi-canaux (seulement RH et SUPER_ADMIN)
 router.post('/:id/publier', authorize('DRH', 'SUPER_ADMIN'), publierOffre);
 
 export default router;
