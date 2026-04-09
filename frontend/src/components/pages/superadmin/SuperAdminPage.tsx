@@ -9,18 +9,9 @@ import { Modal } from '../../ui/Modal';
 import { Input, FormGroup, FormLabel, FormRow, Select } from '../../ui/FormField';
 import { userService, User } from '../../../services/user.service';
 import { useAuth } from '../../../contexts/AuthContext';
-import { TypePosteConfigPage } from './TypePosteConfigPage';
+
 import { CircuitConfigPage } from './CircuitConfigPage';
 import api from '../../../services/api';
-
-interface TypePoste {
-  id: string;
-  code: string;
-  nom: string;
-  description?: string;
-  circuitType: string;
-  directionId: string;
-}
 
 const ROLE_OPTIONS = [
   { value: 'SUPER_ADMIN', label: 'Super Admin', color: '#1E1A0E', hasDirection: false },
@@ -43,7 +34,6 @@ export function SuperAdminPage({ page }: { page: string }) {
   if (page === 'dashboard') return <DashboardPage />;
   if (page === 'audit') return <AuditPage />;
   if (page === 'utilisateurs') return <UtilisateursPage />;
-  if (page === 'type_postes') return <TypePosteConfigPage />;
   if (page === 'workflows') return <CircuitConfigPage />;
   if (page === 'ia_config') return <IAConfigPage />;
   return <DashboardPage />;
@@ -112,8 +102,6 @@ function UtilisateursPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [directions, setDirections] = useState<Direction[]>([]);
-  const [typePostes, setTypePostes] = useState<TypePoste[]>([]);
-  const [filteredTypePostes, setFilteredTypePostes] = useState<TypePoste[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -129,27 +117,13 @@ function UtilisateursPage() {
     prenom: '',
     role: 'MANAGER',
     directionId: '',
-    typePosteId: '',
     telephone: ''
   });
 
   useEffect(() => {
     fetchUsers();
     fetchDirections();
-    fetchTypePostes();
   }, []);
-
-  useEffect(() => {
-    if (formData.directionId) {
-      const filtered = typePostes.filter(tp => tp.directionId === formData.directionId);
-      setFilteredTypePostes(filtered);
-      if (!filtered.find(tp => tp.id === formData.typePosteId)) {
-        setFormData(prev => ({ ...prev, typePosteId: '' }));
-      }
-    } else {
-      setFilteredTypePostes([]);
-    }
-  }, [formData.directionId, typePostes]);
 
   const showSuccess = (message: string) => {
     setSuccess(message);
@@ -184,21 +158,12 @@ function UtilisateursPage() {
     }
   };
 
-  const fetchTypePostes = async () => {
-    try {
-      const response = await api.get('/type-postes');
-      setTypePostes(response.data.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: name === 'role' ? value.toUpperCase() : value,
-      ...(name === 'role' && { directionId: '', typePosteId: '' })
+      ...(name === 'role' && { directionId: '' })
     }));
   };
 
@@ -225,7 +190,6 @@ function UtilisateursPage() {
         prenom: formData.prenom,
         role: formData.role,
         directionId: formData.directionId,
-        typePosteId: formData.typePosteId || undefined,
         telephone: formData.telephone
       });
       setUsers(prev => [newUser, ...prev]);
@@ -253,7 +217,6 @@ function UtilisateursPage() {
         prenom: formData.prenom,
         role: formData.role,
         directionId: formData.directionId,
-        typePosteId: formData.typePosteId || undefined,
         telephone: formData.telephone
       });
       setUsers(prev => prev.map(u => u.id === selectedUser.id ? updatedUser : u));
@@ -315,7 +278,6 @@ function UtilisateursPage() {
       prenom: user.prenom,
       role: user.role.toUpperCase(),
       directionId: user.directionId || '',
-      typePosteId: (user as any).typePosteId || '',
       telephone: user.telephone || ''
     });
     setShowModal(true);
@@ -328,7 +290,6 @@ function UtilisateursPage() {
       prenom: '',
       role: 'MANAGER',
       directionId: '',
-      typePosteId: '',
       telephone: ''
     });
     setError('');
@@ -347,11 +308,6 @@ function UtilisateursPage() {
   const getDirectionName = (directionId: string) => {
     const direction = directions.find(d => d.id === directionId);
     return direction?.nom || '-';
-  };
-
-  const getTypePosteNom = (typePosteId: string) => {
-    const typePoste = typePostes.find(tp => tp.id === typePosteId);
-    return typePoste?.nom || '-';
   };
 
   const formatDate = (dateString?: string) => {
@@ -390,7 +346,6 @@ function UtilisateursPage() {
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Utilisateur</th>
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Rôle</th>
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Direction</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Poste</th>
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Email</th>
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Statut</th>
                   <th style={{ padding: '10px 16px', textAlign: 'left' }}>Actions</th>
@@ -406,22 +361,19 @@ function UtilisateursPage() {
                           <Avatar name={`${user.prenom} ${user.nom}`} size="sm" color={roleColor} />
                           <span>{user.prenom} {user.nom}</span>
                         </div>
-                      </td>
+                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <Badge variant="gold">{getRoleLabel(user.role)}</Badge>
-                      </td>
+                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12 }}>
                         {user.directionId ? getDirectionName(user.directionId) : '-'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
-                        {getTypePosteNom((user as any).typePosteId)}
-                      </td>
+                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12 }}>{user.email}</td>
                       <td style={{ padding: '12px 16px' }}>
                         <Badge variant={user.actif ? 'green' : 'red'}>
                           {user.actif ? 'Actif' : 'Inactif'}
                         </Badge>
-                      </td>
+                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <Button variant="ghost" size="xs" onClick={() => openEditModal(user)}>Modifier</Button>
@@ -433,7 +385,7 @@ function UtilisateursPage() {
                             <Button variant="danger" size="xs" onClick={() => handleDeleteUser(user.id)}>🗑️</Button>
                           )}
                         </div>
-                      </td>
+                       </td>
                     </tr>
                   );
                 })}
@@ -491,14 +443,6 @@ function UtilisateursPage() {
               </Select>
             </FormGroup>
           )}
-
-          <FormGroup>
-            <FormLabel>Poste</FormLabel>
-            <Select name="typePosteId" value={formData.typePosteId} onChange={handleInputChange} disabled={requiresDirection() && !formData.directionId}>
-              <option value="">Sélectionner un poste</option>
-              {filteredTypePostes.map(tp => <option key={tp.id} value={tp.id}>{tp.nom}</option>)}
-            </Select>
-          </FormGroup>
 
           <FormGroup>
             <FormLabel>Téléphone</FormLabel>

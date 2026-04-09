@@ -1,12 +1,11 @@
 // frontend/src/components/pages/offres/OffresPage.tsx
 
 import { useState, useEffect } from 'react';
-import { Eye, Send, Trash2, Edit, Sparkles, Filter } from 'lucide-react';
+import { Eye, Send, Trash2, Edit, Sparkles, RefreshCw } from 'lucide-react';
 import { offreService, Offre } from '@/services/offre.service';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
 import { OffreFormModal } from './OffreFormModal';
 import { OffreDetailModal } from './OffreDetailModal';
 
@@ -24,7 +23,7 @@ export function OffresPage() {
     try {
       const params = filterStatut ? { statut: filterStatut } : {};
       const response = await offreService.getOffres(params);
-      setOffres(response.data.offres);
+      setOffres(response.data?.offres || response.offres || []);
     } catch (error) {
       console.error('Erreur chargement offres:', error);
     } finally {
@@ -38,31 +37,27 @@ export function OffresPage() {
 
   const getStatutBadge = (statut: string) => {
     switch (statut) {
-      case 'PUBLIEE': return { variant: 'green', label: 'Publiée' };
-      case 'BROUILLON': return { variant: 'amber', label: 'Brouillon' };
-      case 'CLOTUREE': return { variant: 'gray', label: 'Clôturée' };
-      default: return { variant: 'gray', label: statut };
+      case 'PUBLIEE': return { variant: 'green' as const, label: 'Publiée' };
+      case 'BROUILLON': return { variant: 'amber' as const, label: 'Brouillon' };
+      case 'CLOTUREE': return { variant: 'gray' as const, label: 'Clôturée' };
+      default: return { variant: 'gray' as const, label: statut };
     }
   };
 
   const handlePublier = async (offre: Offre) => {
-    if (!confirm(`Publier l'offre ${offre.reference} sur LinkedIn et TanitJobs ?`)) return;
-    
+    if (!confirm(`Publier l'offre "${offre.intitule}" sur LinkedIn et TanitJobs ?`)) return;
     try {
-      const response = await offreService.publierOffre(offre.id, ['LinkedIn', 'TanitJobs']);
-      if (response.success) {
-        alert(`✅ Offre publiée avec succès sur ${response.data.publication.map((p: any) => p.canal).join(', ')}`);
-        await loadOffres();
-      }
+      await offreService.publierOffre(offre.id, ['LinkedIn', 'TanitJobs']);
+      alert('Offre publiée avec succès');
+      await loadOffres();
     } catch (error: any) {
-      console.error('Erreur publication:', error);
-      alert(`❌ Erreur: ${error.response?.data?.message || error.message}`);
+      alert(`Erreur : ${error.response?.data?.message || error.message}`);
     }
   };
 
   const handleModifier = (offre: Offre) => {
     if (offre.statut !== 'BROUILLON') {
-      alert('Seules les offres au statut "Brouillon" peuvent être modifiées');
+      alert('Seules les offres en brouillon peuvent être modifiées');
       return;
     }
     setEditingOffre(offre);
@@ -71,19 +66,16 @@ export function OffresPage() {
 
   const handleSupprimer = async (offre: Offre) => {
     if (offre.statut !== 'BROUILLON') {
-      alert('Seules les offres au statut "Brouillon" peuvent être supprimées');
+      alert('Seules les offres en brouillon peuvent être supprimées');
       return;
     }
-    
-    if (!confirm(`Supprimer définitivement l'offre ${offre.reference} ?`)) return;
-    
+    if (!confirm(`Supprimer définitivement l'offre "${offre.intitule}" ?`)) return;
     try {
       await offreService.deleteOffre(offre.id);
-      alert('✅ Offre supprimée avec succès');
+      alert('Offre supprimée');
       await loadOffres();
     } catch (error: any) {
-      console.error('Erreur suppression:', error);
-      alert(`❌ Erreur: ${error.response?.data?.message || error.message}`);
+      alert(`Erreur : ${error.response?.data?.message || error.message}`);
     }
   };
 
@@ -92,167 +84,166 @@ export function OffresPage() {
     setShowDetailModal(true);
   };
 
-  if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>Chargement...</div>;
-  }
+  // Compteurs par statut pour l'affichage
+  const nbBrouillon = offres.filter(o => o.statut === 'BROUILLON').length;
+  const nbPubliee = offres.filter(o => o.statut === 'PUBLIEE').length;
 
   return (
-    <div className="page-fade">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+    <div>
+      {/* En-tête */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 600 }}>Offres d'emploi</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            Gestion et publication multi-canaux • {offres.length} offre(s)
+            {offres.length} offre{offres.length > 1 ? 's' : ''} au total
+            {nbBrouillon > 0 && (
+              <span style={{ marginLeft: 10 }}>
+                · <span style={{ color: '#d97706' }}>{nbBrouillon} brouillon{nbBrouillon > 1 ? 's' : ''}</span>
+              </span>
+            )}
+            {nbPubliee > 0 && (
+              <span style={{ marginLeft: 10 }}>
+                · <span style={{ color: '#16a34a' }}>{nbPubliee} publiée{nbPubliee > 1 ? 's' : ''}</span>
+              </span>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
             value={filterStatut}
             onChange={(e) => setFilterStatut(e.target.value)}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
+            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13 }}
           >
             <option value="">Tous les statuts</option>
             <option value="BROUILLON">Brouillon</option>
             <option value="PUBLIEE">Publiée</option>
             <option value="CLOTUREE">Clôturée</option>
           </select>
-          <Button size="sm" onClick={() => {
-            setEditingOffre(null);
-            setShowFormModal(true);
-          }}>
-            <Sparkles size={13} /> Nouvelle offre (IA)
+
+          <Button variant="ghost" size="sm" onClick={loadOffres} disabled={loading}>
+            <RefreshCw size={14} />
+          </Button>
+
+          <Button size="sm" onClick={() => { setEditingOffre(null); setShowFormModal(true); }}>
+            <Sparkles size={13} />
+            Nouvelle offre
           </Button>
         </div>
       </div>
 
-
-
-      {/* Tableau des offres */}
+      {/* Tableau */}
       <Card>
         <CardBody style={{ padding: 0 }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Référence</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Poste</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Statut</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Candidatures</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Canaux</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Créée le</th>
-                  <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {offres.map((offre) => {
-                  const badge = getStatutBadge(offre.statut);
-                  const isBrouillon = offre.statut === 'BROUILLON';
-                  
-                  return (
-                    <tr key={offre.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{offre.reference}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>{offre.intitule}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <Badge variant={badge.variant as any}>{badge.label}</Badge>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
-                        <strong>{offre._count?.candidatures || 0}</strong> candidat(s)
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          {offre.canauxPublication?.length > 0 ? (
-                            offre.canauxPublication.map((c) => <Badge key={c} variant="gold">{c}</Badge>)
-                          ) : (
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 48, color: 'var(--text-muted)' }}>
+              Chargement...
+            </div>
+          ) : offres.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 48, color: 'var(--text-muted)', gap: 12 }}>
+              <Sparkles size={32} style={{ opacity: 0.3 }} />
+              <div style={{ fontSize: 15 }}>Aucune offre trouvée</div>
+              <div style={{ fontSize: 13 }}>
+                {filterStatut
+                  ? `Aucune offre avec le statut "${filterStatut}"`
+                  : 'Créez votre première offre ou attendez qu\'une demande soit validée'}
+              </div>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Référence</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Poste</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Statut</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Candidatures</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Canaux</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Créée le</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {offres.map((offre) => {
+                    const badge = getStatutBadge(offre.statut);
+                    const isBrouillon = offre.statut === 'BROUILLON';
+
+                    return (
+                      <tr
+                        key={offre.id}
+                        style={{ borderBottom: '1px solid var(--border-light)' }}
+                      >
+                        <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{offre.reference}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                          <div style={{ fontWeight: 500 }}>{offre.intitule}</div>
+                          {offre.demande && (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                              Demande : {offre.demande.reference}
+                            </div>
                           )}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
-                        {new Date(offre.createdAt).toLocaleDateString()}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {/* Bouton Voir Détails */}
-                          <Button 
-                            variant="ghost" 
-                            size="xs" 
-                            onClick={() => handleVoirDetails(offre)}
-                            title="Voir détails"
-                          >
-                            <Eye size={14} />
-                          </Button>
-                          
-                          {/* Bouton Publier (visible seulement pour brouillon) */}
-                          {isBrouillon && (
-                            <Button 
-                              variant="success" 
-                              size="xs" 
-                              onClick={() => handlePublier(offre)}
-                              title="Publier sur LinkedIn/TanitJobs"
-                            >
-                              <Send size={12} />
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <Badge variant={badge.variant}>{badge.label}</Badge>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                          {offre._count?.candidatures || 0} candidat{(offre._count?.candidatures || 0) > 1 ? 's' : ''}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {offre.canauxPublication?.length > 0
+                            ? offre.canauxPublication.map(c => <Badge key={c} variant="gold" style={{ marginRight: 4 }}>{c}</Badge>)
+                            : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                          }
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)' }}>
+                          {new Date(offre.createdAt).toLocaleDateString('fr-FR')}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <Button variant="ghost" size="xs" onClick={() => handleVoirDetails(offre)} title="Voir les détails">
+                              <Eye size={14} />
                             </Button>
-                          )}
-                          
-                          {/* Bouton Modifier (visible seulement pour brouillon) */}
-                          {isBrouillon && (
-                            <Button 
-                              variant="secondary" 
-                              size="xs" 
-                              onClick={() => handleModifier(offre)}
-                              title="Modifier l'offre"
-                            >
-                              <Edit size={12} />
-                            </Button>
-                          )}
-                          
-                          {/* Bouton Supprimer (visible seulement pour brouillon) */}
-                          {isBrouillon && (
-                            <Button 
-                              variant="danger" 
-                              size="xs" 
-                              onClick={() => handleSupprimer(offre)}
-                              title="Supprimer l'offre"
-                            >
-                              <Trash2 size={12} />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {isBrouillon && (
+                              <Button variant="success" size="xs" onClick={() => handlePublier(offre)} title="Publier">
+                                <Send size={12} />
+                              </Button>
+                            )}
+                            {isBrouillon && (
+                              <Button variant="secondary" size="xs" onClick={() => handleModifier(offre)} title="Modifier">
+                                <Edit size={12} />
+                              </Button>
+                            )}
+                            {isBrouillon && (
+                              <Button variant="danger" size="xs" onClick={() => handleSupprimer(offre)} title="Supprimer">
+                                <Trash2 size={12} />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardBody>
       </Card>
 
-      {/* Modal Formulaire (Création/Modification) */}
+      {/* Modals */}
       {showFormModal && (
         <OffreFormModal
           offreExistant={editingOffre}
-          onClose={() => {
-            setShowFormModal(false);
-            setEditingOffre(null);
-          }}
-          onSuccess={() => {
-            setShowFormModal(false);
-            setEditingOffre(null);
-            loadOffres();
-          }}
+          onClose={() => { setShowFormModal(false); setEditingOffre(null); }}
+          onSuccess={() => { setShowFormModal(false); setEditingOffre(null); loadOffres(); }}
         />
       )}
 
-      {/* Modal Détails */}
       {showDetailModal && selectedOffre && (
         <OffreDetailModal
           offre={selectedOffre}
-          onClose={() => {
-            setShowDetailModal(false);
-            setSelectedOffre(null);
-          }}
+          onClose={() => { setShowDetailModal(false); setSelectedOffre(null); }}
           onRefresh={loadOffres}
         />
       )}

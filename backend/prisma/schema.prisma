@@ -85,9 +85,8 @@ model Direction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  demandes     DemandeRecrutement[]
-  typesPoste   TypePoste[]
+  users    User[]
+  demandes DemandeRecrutement[]
 
   @@map("directions")
 }
@@ -128,27 +127,6 @@ model User {
   auditLogs     AuditLog[]
 
   @@map("users")
-}
-
-// ============================================
-// MODÈLE TYPE POSTE
-// ============================================
-
-model TypePoste {
-  id          String      @id @default(uuid())
-  code        String      @unique
-  nom         String
-  description String?
-  circuitType CircuitType
-  actif       Boolean     @default(true)
-  directionId String?
-  direction   Direction?  @relation(fields: [directionId], references: [id])
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  demandes DemandeRecrutement[]
-
-  @@map("types_poste")
 }
 
 // ============================================
@@ -197,9 +175,10 @@ model DemandeRecrutement {
   dateSouhaitee DateTime
   statut        StatutDemande @default(BROUILLON)
 
-  typePosteId   String?
-  typePoste     TypePoste?    @relation(fields: [typePosteId], references: [id])
+  // ✅ Niveau du poste (obligatoire)
+  niveau        CircuitType   @default(CADRE_CONFIRME)
   
+  // ✅ Déduit automatiquement du niveau
   circuitType     CircuitType?
   totalEtapes     Int?
   etapeActuelle   Int          @default(0)
@@ -298,7 +277,8 @@ model OffreEmploi {
   statut              String      @default("BROUILLON")
   canauxPublication   String[]
   datePublication     DateTime?
-
+  lienCandidature     String?     @unique
+  
   demandeId    String?             @unique
   demande      DemandeRecrutement? @relation(fields: [demandeId], references: [id])
   rhId         String
