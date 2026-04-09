@@ -1,9 +1,13 @@
-import { useState } from 'react';
+// frontend/src/components/pages/auth/ChangePasswordPage.tsx
+
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Alert } from '../../ui/Alert';
 import { Button } from '../../ui/Button';
 
 export const ChangePasswordPage = () => {
+  const navigate = useNavigate();
   const { changePassword, user } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -11,6 +15,14 @@ export const ChangePasswordPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Redirection si l'utilisateur n'a pas besoin de changer son mot de passe
+  useEffect(() => {
+    if (user && !user.mustChangePassword && !redirecting) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate, redirecting]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,9 +47,17 @@ export const ChangePasswordPage = () => {
     try {
       setLoading(true);
       await changePassword(currentPassword, newPassword);
-      setSuccess('Mot de passe changé ! Redirection...');
+      setSuccess('Mot de passe changé avec succès ! Redirection...');
+      setRedirecting(true);
+      
+      // Redirection après 2 secondes
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+      
     } catch (err: any) {
       setError(err.message || 'Erreur lors du changement');
+      setRedirecting(false);
     } finally {
       setLoading(false);
     }
@@ -100,6 +120,7 @@ export const ChangePasswordPage = () => {
                 fontSize: 14
               }}
               required
+              disabled={loading || redirecting}
             />
           </div>
 
@@ -119,6 +140,7 @@ export const ChangePasswordPage = () => {
                 fontSize: 14
               }}
               required
+              disabled={loading || redirecting}
             />
             <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
               Minimum 8 caractères avec majuscule, minuscule, chiffre et symbole
@@ -141,15 +163,16 @@ export const ChangePasswordPage = () => {
                 fontSize: 14
               }}
               required
+              disabled={loading || redirecting}
             />
           </div>
 
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || redirecting}
             style={{ width: '100%', padding: 14 }}
           >
-            {loading ? 'Changement...' : 'Changer le mot de passe'}
+            {loading ? 'Changement en cours...' : redirecting ? 'Redirection...' : 'Changer le mot de passe'}
           </Button>
         </form>
       </div>

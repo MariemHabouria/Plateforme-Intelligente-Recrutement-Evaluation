@@ -18,7 +18,6 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { section: 'administration' },
     { id: 'dashboard',      label: 'Tableau de bord',        icon: 'LayoutDashboard' },
     { id: 'utilisateurs',   label: 'Utilisateurs & Rôles',   icon: 'Users', badge: '2', badgeColor: 'amber' },
-    { id: 'type_postes',    label: 'Types de poste',         icon: 'Briefcase', badge: '84', badgeColor: 'gold' },  // ← AJOUTER
     { id: 'workflows',      label: 'Circuits de validation', icon: 'GitBranch' },
     { id: 'ia_config',      label: 'Configuration IA',       icon: 'Cpu' },
     { section: 'supervision' },
@@ -62,7 +61,7 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
   dga: [
     { section: 'principal' },
     { id: 'dashboard',  label: 'Tableau de bord',   icon: 'LayoutDashboard' },
-    { id: 'demandes',   label: 'Vue globale',       icon: 'FileText',  badge: '1', badgeColor: 'amber' },
+    { id: 'demandes',   label: 'Demandes',       icon: 'FileText',  badge: '1', badgeColor: 'amber' },
     { section: 'periode_essai' },
     { id: 'evaluation', label: 'Évaluations PE',    icon: 'Star',      badge: '1', badgeColor: 'amber' },
   ],
