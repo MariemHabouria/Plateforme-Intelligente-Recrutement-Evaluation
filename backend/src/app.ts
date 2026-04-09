@@ -12,7 +12,7 @@ import userRoutes from './routes/user.routes';
 import demandeRoutes from './routes/demandeRoutes';
 import adminRoutes from './routes/adminRoutes';
 import directionRoutes from './routes/directionRoutes';
-import typePosteRoutes from './routes/typePosteRoutes';
+
 import offreRoutes from './routes/offreRoutes';
 
 
@@ -59,7 +59,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/demandes', demandeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/directions', directionRoutes);
-app.use('/api/type-postes', typePosteRoutes);
+
 
 app.use('/api/offres', offreRoutes);
 // Health check

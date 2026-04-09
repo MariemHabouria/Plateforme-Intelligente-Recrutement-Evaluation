@@ -1,3 +1,5 @@
+// backend/src/controllers/circuitController.ts
+
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendError, sendNotFound } from '../utils/helpers';
@@ -5,25 +7,21 @@ import { CircuitType } from '@prisma/client';
 
 const VALID_WORKFLOW_ROLES = new Set(['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG']);
 
-
 const validateEtapes = (etapes: any[]): null | string => {
   if (!Array.isArray(etapes) || etapes.length === 0) {
-    return 'Circuit doit contenir au moins une étape';
+    return 'Circuit doit contenir au moins une etape';
   }
   for (const etape of etapes) {
     if (!etape.role || !VALID_WORKFLOW_ROLES.has(etape.role)) {
-      return `Rôle invalide: "${etape.role}". Rôles supportés: DIRECTEUR, DRH, DAF, DGA, DG`;
+      return `Role invalide: "${etape.role}". Roles supportes: DIRECTEUR, DRH, DAF, DGA, DG`;
     }
     if (!etape.niveau || !etape.label) {
-      return 'Étape doit avoir un niveau et un label';
+      return 'Etape doit avoir un niveau et un label';
     }
   }
   return null;
 };
 
-// ============================================
-// GET /api/admin/circuits
-// ============================================
 export const getCircuits = async (req: Request, res: Response) => {
   try {
     const circuits = await prisma.circuitConfig.findMany({
@@ -32,46 +30,37 @@ export const getCircuits = async (req: Request, res: Response) => {
     });
     sendSuccess(res, circuits);
   } catch (error) {
-    console.error('❌ getCircuits error:', error);
-    sendError(res, 'Erreur lors de la récupération des circuits');
+    console.error('getCircuits error:', error);
+    sendError(res, 'Erreur lors de la recuperation des circuits');
   }
 };
 
-// ============================================
-// GET /api/admin/circuits/:id
-// ============================================
 export const getCircuitById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const circuit = await prisma.circuitConfig.findUnique({ where: { id } });
-    if (!circuit) return sendNotFound(res, 'Circuit non trouvé');
+    if (!circuit) return sendNotFound(res, 'Circuit non trouve');
     sendSuccess(res, circuit);
   } catch (error) {
-    console.error('❌ getCircuitById error:', error);
-    sendError(res, 'Erreur lors de la récupération du circuit');
+    console.error('getCircuitById error:', error);
+    sendError(res, 'Erreur lors de la recuperation du circuit');
   }
 };
 
-// ============================================
-// GET /api/admin/circuits/type/:type
-// ============================================
 export const getCircuitByType = async (req: Request, res: Response) => {
   try {
     const { type } = req.params;
     const circuit = await prisma.circuitConfig.findFirst({
       where: { type: type as any, actif: true }
     });
-    if (!circuit) return sendNotFound(res, 'Circuit non trouvé pour ce type');
+    if (!circuit) return sendNotFound(res, 'Circuit non trouve pour ce type');
     sendSuccess(res, circuit);
   } catch (error) {
-    console.error('❌ getCircuitByType error:', error);
-    sendError(res, 'Erreur lors de la récupération du circuit');
+    console.error('getCircuitByType error:', error);
+    sendError(res, 'Erreur lors de la recuperation du circuit');
   }
 };
 
-// ============================================
-// PUT /api/admin/circuits/:id
-// ============================================
 export const updateCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -86,20 +75,16 @@ export const updateCircuit = async (req: Request, res: Response) => {
       where: { id },
       data: { ...data, updatedAt: new Date() }
     });
-    sendSuccess(res, circuit, 'Circuit mis à jour avec succès');
+    sendSuccess(res, circuit, 'Circuit mis a jour avec succes');
   } catch (error) {
-    console.error('❌ updateCircuit error:', error);
-    sendError(res, 'Erreur lors de la mise à jour du circuit');
+    console.error('updateCircuit error:', error);
+    sendError(res, 'Erreur lors de la mise a jour du circuit');
   }
 };
 
-// ============================================
-// POST /api/admin/circuits
-// ============================================
 export const createCircuit = async (req: Request, res: Response) => {
   try {
     const data = req.body;
-    console.log('📥 createCircuit body:', JSON.stringify(data, null, 2));
 
     if (data.etapes) {
       const etapesError = validateEtapes(data.etapes);
@@ -108,30 +93,27 @@ export const createCircuit = async (req: Request, res: Response) => {
 
     if (data.type) {
       const existing = await prisma.circuitConfig.findUnique({ where: { type: data.type as any } });
-      if (existing) return sendError(res, 'Un circuit avec ce type existe déjà', 400);
+      if (existing) return sendError(res, 'Un circuit avec ce type existe deja', 400);
     }
 
     const circuit = await prisma.circuitConfig.create({
       data: {
-        type:          data.type,
-        nom:           data.nom,
-        description:   data.description,
-        etapes:        data.etapes,
-        totalEtapes:   data.totalEtapes,
+        type: data.type,
+        nom: data.nom,
+        description: data.description,
+        etapes: data.etapes,
+        totalEtapes: data.totalEtapes,
         delaiParDefaut: data.delaiParDefaut || 48,
-        actif:         data.actif !== undefined ? data.actif : true
+        actif: data.actif !== undefined ? data.actif : true
       }
     });
-    sendSuccess(res, circuit, 'Circuit créé avec succès', 201);
+    sendSuccess(res, circuit, 'Circuit cree avec succes', 201);
   } catch (error) {
-    console.error('❌ createCircuit error:', error);
-    sendError(res, 'Erreur lors de la création du circuit');
+    console.error('createCircuit error:', error);
+    sendError(res, 'Erreur lors de la creation du circuit');
   }
 };
 
-// ============================================
-// PATCH /api/admin/circuits/:id/toggle
-// ============================================
 export const toggleCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -141,17 +123,13 @@ export const toggleCircuit = async (req: Request, res: Response) => {
       where: { id },
       data: { actif, updatedAt: new Date() }
     });
-    sendSuccess(res, circuit, `Circuit ${actif ? 'activé' : 'désactivé'} avec succès`);
+    sendSuccess(res, circuit, `Circuit ${actif ? 'active' : 'desactive'} avec succes`);
   } catch (error) {
-    console.error('❌ toggleCircuit error:', error);
+    console.error('toggleCircuit error:', error);
     sendError(res, 'Erreur lors de la modification du circuit');
   }
 };
 
-// ============================================
-// POST /api/admin/circuits/reset
-// ✅ FIX: STRATEGIQUE n'inclut plus CONSEIL (logique sans conseil)
-// ============================================
 export const resetCircuits = async (req: Request, res: Response) => {
   try {
     const defaultCircuits = [
@@ -161,67 +139,66 @@ export const resetCircuits = async (req: Request, res: Response) => {
         description: 'Postes techniques et ouvriers',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 }
         ],
         totalEtapes: 2, delaiParDefaut: 48, actif: true
       },
       {
         type: CircuitType.EMPLOYE,
-        nom: 'Employé / Agent',
+        nom: 'Employe / Agent',
         description: 'Postes administratifs',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 }
         ],
         totalEtapes: 2, delaiParDefaut: 48, actif: true
       },
       {
         type: CircuitType.CADRE_DEBUTANT,
-        nom: 'Cadre débutant',
+        nom: 'Cadre debutant',
         description: 'Cadres juniors',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
-          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 },
+          { niveau: 3, role: 'DAF', label: 'DAF', delai: 48 }
         ],
         totalEtapes: 3, delaiParDefaut: 48, actif: true
       },
       {
         type: CircuitType.CADRE_CONFIRME,
-        nom: 'Cadre confirmé',
+        nom: 'Cadre confirme',
         description: 'Cadres seniors',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
-          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
-          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 },
+          { niveau: 3, role: 'DAF', label: 'DAF', delai: 48 },
+          { niveau: 4, role: 'DGA', label: 'DGA', delai: 48 }
         ],
         totalEtapes: 4, delaiParDefaut: 48, actif: true
       },
       {
         type: CircuitType.CADRE_SUPERIEUR,
-        nom: 'Cadre supérieur',
-        description: 'Directeurs de département',
+        nom: 'Cadre superieur',
+        description: 'Directeurs de departement',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
-          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
-          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 },
-          { niveau: 5, role: 'DG',        label: 'DG',        delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 },
+          { niveau: 3, role: 'DAF', label: 'DAF', delai: 48 },
+          { niveau: 4, role: 'DGA', label: 'DGA', delai: 48 },
+          { niveau: 5, role: 'DG', label: 'DG', delai: 48 }
         ],
         totalEtapes: 5, delaiParDefaut: 48, actif: true
       },
       {
-        // ✅ FIX: STRATEGIQUE = même circuit que CADRE_SUPERIEUR (sans CONSEIL)
         type: CircuitType.STRATEGIQUE,
-        nom: 'Poste stratégique',
-        description: 'Postes de direction',
+        nom: 'Poste strategique',
+        description: 'Postes de direction generale',
         etapes: [
           { niveau: 1, role: 'DIRECTEUR', label: 'Directeur', delai: 48 },
-          { niveau: 2, role: 'DRH',       label: 'DRH',       delai: 48 },
-          { niveau: 3, role: 'DAF',       label: 'DAF',       delai: 48 },
-          { niveau: 4, role: 'DGA',       label: 'DGA',       delai: 48 },
-          { niveau: 5, role: 'DG',        label: 'DG',        delai: 48 }
+          { niveau: 2, role: 'DRH', label: 'DRH', delai: 48 },
+          { niveau: 3, role: 'DAF', label: 'DAF', delai: 48 },
+          { niveau: 4, role: 'DGA', label: 'DGA', delai: 48 },
+          { niveau: 5, role: 'DG', label: 'DG', delai: 48 }
         ],
         totalEtapes: 5, delaiParDefaut: 48, actif: true
       }
@@ -244,16 +221,13 @@ export const resetCircuits = async (req: Request, res: Response) => {
       created++;
     }
 
-    sendSuccess(res, { created }, `${created} circuits réinitialisés avec succès`);
+    sendSuccess(res, { created }, `${created} circuits reinitialises avec succes`);
   } catch (error) {
-    console.error('❌ resetCircuits error:', error);
-    sendError(res, 'Erreur lors de la réinitialisation des circuits');
+    console.error('resetCircuits error:', error);
+    sendError(res, 'Erreur lors de la reinitialisation des circuits');
   }
 };
 
-// ============================================
-// DELETE /api/admin/circuits/:id (soft delete)
-// ============================================
 export const deleteCircuit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -261,9 +235,9 @@ export const deleteCircuit = async (req: Request, res: Response) => {
       where: { id },
       data: { actif: false, updatedAt: new Date() }
     });
-    sendSuccess(res, circuit, 'Circuit supprimé avec succès');
+    sendSuccess(res, circuit, 'Circuit supprime avec succes');
   } catch (error) {
-    console.error('❌ deleteCircuit error:', error);
+    console.error('deleteCircuit error:', error);
     sendError(res, 'Erreur lors de la suppression du circuit');
   }
 };
