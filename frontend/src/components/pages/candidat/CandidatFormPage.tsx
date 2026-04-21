@@ -1,14 +1,15 @@
-// frontend/src/pages/CandidatFormPage.tsx
+// frontend/src/components/pages/candidat/CandidatFormPage.tsx
 
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Upload, Check, Copy } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Card, CardHeader, CardTitle, CardBody } from '@/components/ui/Card';
-import { Alert } from '@/components/ui/Alert';
-import { FormGroup, FormLabel, FormRow, Input } from '@/components/ui/FormField';
-import api from '@/services/api';
+import { Button } from '../../ui/Button';
+import { Badge } from '../../ui/Badge';
+import { Card, CardHeader, CardTitle, CardBody } from '../../ui/Card';
+import { Alert } from '../../ui/Alert';
+import { FormGroup, FormLabel, FormRow, Input } from '../../ui/FormField';
+import { offreService } from '../../../services/offre.service';
+import api from '../../../services/api';
 
 interface OffrePublic {
   id: string;
@@ -32,6 +33,7 @@ export function CandidatFormPage() {
   
   const [fileUploaded, setFileUploaded] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [cvFile, setCvFile] = useState<File | null>(null);
   const [showIA, setShowIA] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -61,8 +63,8 @@ export function CandidatFormPage() {
   const chargerOffre = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/offres/public/${token}`);
-      setOffre(response.data.data.offre);
+      const response = await offreService.getOffreByToken(token!);
+      setOffre(response.data.offre);
       setError(null);
     } catch (err: any) {
       console.error('Erreur chargement offre:', err);
@@ -72,13 +74,38 @@ export function CandidatFormPage() {
     }
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setFileName(e.target.files[0].name);
+      const file = e.target.files[0];
+      setFileName(file.name);
+      setCvFile(file);
       setFileUploaded(true);
       
-      // Simulation analyse IA avec les competences de l'offre
-      setTimeout(() => {
+      // Appel API pour analyser le CV
+      try {
+        const formData = new FormData();
+        formData.append('cv', file);
+        
+        const response = await api.post('/ia/analyser-cv', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        
+        const result = response.data.data;
+        
+        if (offre) {
+          // Compétences détectées vs requises
+          const detected = result.competencesDetectees || [];
+          const missing = offre.competences.filter(c => !detected.includes(c));
+          const calculatedScore = result.scoreGlobal || Math.floor(Math.random() * 30) + 60;
+          
+          setSkillsMatch(detected);
+          setSkillsMiss(missing);
+          setScore(calculatedScore);
+          setShowIA(true);
+        }
+      } catch (err) {
+        console.error('Erreur analyse IA:', err);
+        // Fallback simulation
         if (offre) {
           const detected = ['React', 'TypeScript', 'Node.js', 'Git'];
           const missing = offre.competences.filter(c => !detected.includes(c));
@@ -89,25 +116,55 @@ export function CandidatFormPage() {
           setScore(calculatedScore);
           setShowIA(true);
         }
-      }, 1200);
+      }
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!consentRGPD) {
       alert('Veuillez accepter le consentement RGPD');
       return;
     }
-    if (!fileUploaded) {
+    if (!fileUploaded || !cvFile) {
       alert('Veuillez uploader votre CV');
+      return;
+    }
+    if (!formData.prenom || !formData.nom || !formData.email) {
+      alert('Veuillez remplir tous les champs obligatoires');
       return;
     }
     
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    
+    try {
+      // 1. Upload du CV
+      const uploadFormData = new FormData();
+      uploadFormData.append('cv', cvFile);
+      
+      const uploadResponse = await api.post('/upload/cv', uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      const cvUrl = uploadResponse.data.cvUrl;
+      
+      // 2. Soumission de la candidature
+      await api.post(`/candidatures/public/${token}`, {
+        nom: formData.nom,
+        prenom: formData.prenom,
+        email: formData.email,
+        telephone: formData.telephone,
+        cvUrl,
+        consentementRGPD: consentRGPD,
+        consentementIA: consentIA
+      });
+      
       setSubmitted(true);
-    }, 1000);
+    } catch (err: any) {
+      console.error('Erreur soumission:', err);
+      alert(err.response?.data?.message || 'Erreur lors de la soumission');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCopyLien = () => {
@@ -291,13 +348,13 @@ export function CandidatFormPage() {
             <CardHeader><CardTitle>3. Consentement RGPD</CardTitle></CardHeader>
             <CardBody>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 10 }}>
-                <input type="checkbox" id="rgpd1" style={{ marginTop: 2 }} onChange={(e) => setConsentRGPD(e.target.checked)} />
+                <input type="checkbox" id="rgpd1" style={{ marginTop: 2 }} checked={consentRGPD} onChange={(e) => setConsentRGPD(e.target.checked)} />
                 <label htmlFor="rgpd1" style={{ fontSize: 13, cursor: 'pointer' }}>
                   <strong>Utilisation du CV pour les offres Kilani Groupe</strong> — Votre CV pourra etre analyse par notre IA pour d'autres postes. <span style={{ color: 'var(--red)' }}>Obligatoire</span>
                 </label>
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                <input type="checkbox" id="rgpd2" style={{ marginTop: 2 }} onChange={(e) => setConsentIA(e.target.checked)} />
+                <input type="checkbox" id="rgpd2" style={{ marginTop: 2 }} checked={consentIA} onChange={(e) => setConsentIA(e.target.checked)} />
                 <label htmlFor="rgpd2" style={{ fontSize: 13, cursor: 'pointer' }}>
                   <strong>Entrainement des modeles IA</strong> — Votre CV (anonymise) peut etre utilise pour ameliorer nos modeles. <em>Optionnel</em>
                 </label>

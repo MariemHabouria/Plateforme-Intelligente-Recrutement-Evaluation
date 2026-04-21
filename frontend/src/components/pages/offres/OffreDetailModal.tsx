@@ -1,10 +1,10 @@
 // frontend/src/components/pages/offres/OffreDetailModal.tsx
 
 import { useState } from 'react';
-import { Copy, Check, Send } from 'lucide-react';
-import { Offre } from '@/services/offre.service';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Copy, Check } from 'lucide-react';
+import { Offre } from '../../../services/offre.service';
+import { Button } from '../../ui/Button';
+import { Badge } from '../../ui/Badge';
 
 interface OffreDetailModalProps {
   offre: Offre;
@@ -13,24 +13,7 @@ interface OffreDetailModalProps {
 }
 
 export function OffreDetailModal({ offre, onRefresh, onClose }: OffreDetailModalProps) {
-  const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  const handlePublier = async () => {
-    if (!confirm(`Publier l'offre "${offre.intitule}" sur LinkedIn et TanitJobs ?`)) return;
-    setPublishing(true);
-    try {
-      const { offreService } = await import('@/services/offre.service');
-      await offreService.publierOffre(offre.id, ['LinkedIn', 'TanitJobs']);
-      alert('Offre publiée avec succès');
-      onRefresh();
-      onClose();
-    } catch (error: any) {
-      alert(`Erreur : ${error.response?.data?.message || error.message}`);
-    } finally {
-      setPublishing(false);
-    }
-  };
 
   const handleCopyLien = () => {
     if (offre.lienCandidature) {
@@ -101,15 +84,6 @@ export function OffreDetailModal({ offre, onRefresh, onClose }: OffreDetailModal
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CANDIDATURES</div>
               <div style={{ fontWeight: 500 }}>{offre._count?.candidatures || 0} candidat(s)</div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CANAUX</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                {offre.canauxPublication?.length > 0
-                  ? offre.canauxPublication.map(c => <Badge key={c} variant="gold">{c}</Badge>)
-                  : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Non définis</span>
-                }
-              </div>
-            </div>
           </div>
 
           {/* Lien de candidature */}
@@ -177,12 +151,6 @@ export function OffreDetailModal({ offre, onRefresh, onClose }: OffreDetailModal
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
             <Button variant="secondary" onClick={onClose}>Fermer</Button>
-            {offre.statut === 'BROUILLON' && (
-              <Button onClick={handlePublier} disabled={publishing}>
-                <Send size={14} />
-                {publishing ? 'Publication...' : 'Publier'}
-              </Button>
-            )}
           </div>
         </div>
       </div>

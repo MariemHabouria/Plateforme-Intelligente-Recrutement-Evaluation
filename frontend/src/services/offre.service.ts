@@ -12,7 +12,6 @@ export interface Offre {
   fourchetteSalariale: string;
   typeContrat: string;
   statut: 'BROUILLON' | 'PUBLIEE' | 'CLOTUREE';
-  canauxPublication: string[];
   lienCandidature?: string;
   rhId?: string;
   demandeId?: string;
@@ -47,19 +46,13 @@ export interface CreateOffreDto {
   competences?: string[];
   fourchetteSalariale?: string;
   typeContrat: string;
-  canauxPublication?: string[];
 }
 
 class OffreService {
-  // --------------------------------------------------------
-  // OFFRES
-  // --------------------------------------------------------
-
- async getOffres(params?: { statut?: string; page?: number; limit?: number }) {
-  const response = await api.get('/offres', { params });
-  return response.data; // response.data = { success, data: { offres, pagination } }
-}
-
+  async getOffres(params?: { statut?: string; page?: number; limit?: number }) {
+    const response = await api.get('/offres', { params });
+    return response.data;
+  }
 
   async getOffreById(id: string) {
     const response = await api.get(`/offres/${id}`);
@@ -81,24 +74,18 @@ class OffreService {
     return response.data;
   }
 
-  async publierOffre(id: string, canaux: string[]) {
-    const response = await api.post(`/offres/${id}/publier`, { canaux });
+  async publierOffre(id: string) {
+    const response = await api.post(`/offres/${id}/publier`);
     return response.data;
   }
-
-  async genererAvecIA(demandeId: string) {
-    const response = await api.post('/offres/generer-ia', { demandeId });
-    return response.data;
-  }
-
-  // --------------------------------------------------------
-  // DEMANDES SANS OFFRE
-  // Retourne uniquement les demandes VALIDÉE sans offre associée
-  // Utiliser dans OffreFormModal à la place de demandeService.getDemandes
-  // --------------------------------------------------------
 
   async getDemandesSansOffre(): Promise<{ data: { demandes: DemandeLight[] }; success: boolean }> {
     const response = await api.get('/offres/demandes-sans-offre');
+    return response.data;
+  }
+
+  async getOffreByToken(token: string): Promise<any> {
+    const response = await api.get(`/offres/public/${token}`);
     return response.data;
   }
 }

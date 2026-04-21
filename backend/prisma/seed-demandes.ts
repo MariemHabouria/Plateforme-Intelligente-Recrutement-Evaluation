@@ -7,76 +7,159 @@ import 'dotenv/config';
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter } as any);
 
-// Mapping niveau → circuitType et budget suggéré
+// Mapping niveau → circuitType et budget suggere
 const NIVEAU_CONFIG: Record<string, { circuitType: CircuitType; budgetMin: number; budgetMax: number; totalEtapes: number }> = {
-  TECHNICIEN: { circuitType: CircuitType.TECHNICIEN, budgetMin: 800, budgetMax: 1500, totalEtapes: 2 },
-  EMPLOYE: { circuitType: CircuitType.EMPLOYE, budgetMin: 1000, budgetMax: 2000, totalEtapes: 2 },
-  CADRE_DEBUTANT: { circuitType: CircuitType.CADRE_DEBUTANT, budgetMin: 2000, budgetMax: 3500, totalEtapes: 3 },
-  CADRE_CONFIRME: { circuitType: CircuitType.CADRE_CONFIRME, budgetMin: 3500, budgetMax: 5500, totalEtapes: 4 },
-  CADRE_SUPERIEUR: { circuitType: CircuitType.CADRE_SUPERIEUR, budgetMin: 5500, budgetMax: 9000, totalEtapes: 5 },
-  STRATEGIQUE: { circuitType: CircuitType.STRATEGIQUE, budgetMin: 9000, budgetMax: 20000, totalEtapes: 5 },
+  TECHNICIEN:       { circuitType: CircuitType.TECHNICIEN,       budgetMin: 800,  budgetMax: 1500,  totalEtapes: 2 },
+  EMPLOYE:          { circuitType: CircuitType.EMPLOYE,          budgetMin: 1000, budgetMax: 2000,  totalEtapes: 2 },
+  CADRE_DEBUTANT:   { circuitType: CircuitType.CADRE_DEBUTANT,   budgetMin: 2000, budgetMax: 3500,  totalEtapes: 3 },
+  CADRE_CONFIRME:   { circuitType: CircuitType.CADRE_CONFIRME,   budgetMin: 3500, budgetMax: 5500,  totalEtapes: 4 },
+  CADRE_SUPERIEUR:  { circuitType: CircuitType.CADRE_SUPERIEUR,  budgetMin: 5500, budgetMax: 9000,  totalEtapes: 5 },
+  STRATEGIQUE:      { circuitType: CircuitType.STRATEGIQUE,      budgetMin: 9000, budgetMax: 20000, totalEtapes: 5 },
+};
+
+// Definition des validateurs naturels par niveau
+const VALIDATEURS_PAR_NIVEAU: Record<string, string[]> = {
+  TECHNICIEN:       ['MANAGER', 'DIRECTEUR', 'DRH'],
+  EMPLOYE:          ['MANAGER', 'DIRECTEUR', 'DRH'],
+  CADRE_DEBUTANT:   ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF'],
+  CADRE_CONFIRME:   ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA'],
+  CADRE_SUPERIEUR:  ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
+  STRATEGIQUE:      ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
+};
+
+// Niveaux qui necessitent un entretien direction
+const NIVEAUX_AVEC_DIRECTION = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
+const NIVEAUX_AVEC_TECHNIQUE = ['TECHNICIEN', 'EMPLOYE', 'CADRE_DEBUTANT', 'CADRE_CONFIRME'];
+
+const getRoleLabel = (role: string): string => {
+  const labels: Record<string, string> = {
+    'MANAGER': 'Manager',
+    'DIRECTEUR': 'Directeur',
+    'DRH': 'DRH',
+    'DAF': 'DAF',
+    'DGA': 'DGA',
+    'DG': 'DG'
+  };
+  return labels[role] || role;
+};
+
+const determinerCircuit = (niveau: string, createurRole: string): { etapes: any[]; totalEtapes: number } => {
+  const validateursNaturels = VALIDATEURS_PAR_NIVEAU[niveau] || ['DIRECTEUR', 'DRH'];
+  const validateursFiltres = validateursNaturels.filter(role => role !== createurRole);
+  const etapes = validateursFiltres.map((role, index) => ({
+    niveau: index + 1,
+    role: role,
+    label: getRoleLabel(role),
+    delai: 48
+  }));
+  return { etapes, totalEtapes: etapes.length };
 };
 
 async function main() {
-  console.log('🌱 Début du seed des demandes...');
+  console.log('Debut du seed des demandes...');
   await prisma.$connect();
 
-  // ─── Récupérer les données existantes ───────────────────
-  const manager      = await prisma.user.findFirst({ where: { role: 'MANAGER' } });
-  const directeur    = await prisma.user.findFirst({ where: { role: 'DIRECTEUR' } });
-  const drh          = await prisma.user.findFirst({ where: { role: 'DRH' } });
-  const daf          = await prisma.user.findFirst({ where: { role: 'DAF' } });
-  const dga          = await prisma.user.findFirst({ where: { role: 'DGA' } });
-  const dg           = await prisma.user.findFirst({ where: { role: 'DG' } });
-  const superAdmin   = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+  // Nettoyage
+  console.log('\nNettoyage des donnees existantes...');
+  await prisma.entretien.deleteMany({});
+  await prisma.candidature.deleteMany({});
+  await prisma.disponibiliteInterviewer.deleteMany({});
+  await prisma.offreEmploi.deleteMany({});
+  await prisma.validationEtape.deleteMany({});
+  await prisma.disponibilite.deleteMany({});
+  await prisma.demandeRecrutement.deleteMany({});
+  console.log('   Nettoyage termine');
 
-  const direction    = await prisma.direction.findFirst({ where: { actif: true } });
+  // Recuperation des utilisateurs
+  const managerPharma = await prisma.user.findFirst({ where: { role: 'MANAGER', email: 'manager.pharma@kilani.tn' } });
+  const managerSI = await prisma.user.findFirst({ where: { role: 'MANAGER', email: 'manager.si@kilani.tn' } });
+  const managerMKT = await prisma.user.findFirst({ where: { role: 'MANAGER', email: 'manager.mkt@kilani.tn' } });
+
+  const directionPharma = await prisma.direction.findFirst({ where: { code: 'DIR_PHARMA' } });
+  const directionSI = await prisma.direction.findFirst({ where: { code: 'DIR_SI' } });
+  const directionMKT = await prisma.direction.findFirst({ where: { code: 'DIR_MKT' } });
+
+  const directeurPharma = await prisma.user.findFirst({ where: { role: 'DIRECTEUR', directionId: directionPharma?.id } });
+  const directeurSI = await prisma.user.findFirst({ where: { role: 'DIRECTEUR', directionId: directionSI?.id } });
+  const directeurMKT = await prisma.user.findFirst({ where: { role: 'DIRECTEUR', directionId: directionMKT?.id } });
   
-  // Récupérer les circuits config
-  const circuitTechnicien     = await prisma.circuitConfig.findFirst({ where: { type: 'TECHNICIEN' } });
-  const circuitEmploye        = await prisma.circuitConfig.findFirst({ where: { type: 'EMPLOYE' } });
-  const circuitCadreDebutant  = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_DEBUTANT' } });
-  const circuitCadreConfirme  = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_CONFIRME' } });
-  const circuitCadreSuperieur = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_SUPERIEUR' } });
-  const circuitStrategique    = await prisma.circuitConfig.findFirst({ where: { type: 'STRATEGIQUE' } });
+  const drh = await prisma.user.findFirst({ where: { role: 'DRH' } });
+  const daf = await prisma.user.findFirst({ where: { role: 'DAF' } });
+  const dga = await prisma.user.findFirst({ where: { role: 'DGA' } });
+  const dg = await prisma.user.findFirst({ where: { role: 'DG' } });
 
-  if (!manager || !directeur || !drh || !daf || !dga || !dg || !superAdmin || !direction) {
-    throw new Error('❌ Utilisateurs ou direction manquants. Lancez d\'abord le seed principal.');
+  const circuitTechnicien = await prisma.circuitConfig.findFirst({ where: { type: 'TECHNICIEN' } });
+  const circuitEmploye = await prisma.circuitConfig.findFirst({ where: { type: 'EMPLOYE' } });
+  const circuitCadreDebutant = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_DEBUTANT' } });
+  const circuitCadreConfirme = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_CONFIRME' } });
+  const circuitCadreSuperieur = await prisma.circuitConfig.findFirst({ where: { type: 'CADRE_SUPERIEUR' } });
+  const circuitStrategique = await prisma.circuitConfig.findFirst({ where: { type: 'STRATEGIQUE' } });
+
+  if (!managerPharma || !managerSI || !managerMKT || !directionPharma || !directionSI || !directionMKT) {
+    throw new Error('Managers ou directions manquants');
+  }
+  if (!directeurPharma || !directeurSI || !directeurMKT || !drh || !daf || !dga || !dg) {
+    throw new Error('Utilisateurs transversaux manquants');
   }
 
-  const now    = new Date();
+  const now = new Date();
+  const plus15 = new Date(now); plus15.setDate(plus15.getDate() + 15);
   const plus30 = new Date(now); plus30.setDate(plus30.getDate() + 30);
   const plus60 = new Date(now); plus60.setDate(plus60.getDate() + 60);
   const plus48h = new Date(now); plus48h.setHours(plus48h.getHours() + 48);
-  const depasse48h = new Date(now); depasse48h.setHours(depasse48h.getHours() - 1);
+  const hier = new Date(now); hier.setDate(hier.getDate() - 1);
 
   let refCounter = 1000;
   const ref = () => `DEM-${now.getFullYear()}-${String(++refCounter).padStart(3, '0')}`;
 
-  // Helper pour créer une demande avec niveau
-  const createDemandeWithNiveau = async (data: {
+  const addCreneauxManager = async (managerId: string, demandeId: string, offsetDays: number[], niveau: string) => {
+    if (!NIVEAUX_AVEC_TECHNIQUE.includes(niveau)) return;
+    await prisma.disponibiliteInterviewer.createMany({
+      data: offsetDays.map((d, i) => ({
+        userId: managerId,
+        demandeId,
+        date: new Date(now.getFullYear(), now.getMonth(), now.getDate() + d),
+        heureDebut: i % 2 === 0 ? '09:00' : '14:00',
+        heureFin: i % 2 === 0 ? '10:00' : '15:00',
+        reservee: false,
+      })),
+    });
+  };
+
+  const addCreneauxDirecteur = async (directeurId: string, demandeId: string, offsetDays: number[], niveau: string) => {
+    if (!NIVEAUX_AVEC_DIRECTION.includes(niveau)) return;
+    await prisma.disponibiliteInterviewer.createMany({
+      data: offsetDays.map((d, i) => ({
+        userId: directeurId,
+        demandeId,
+        date: new Date(now.getFullYear(), now.getMonth(), now.getDate() + d),
+        heureDebut: i % 2 === 0 ? '10:00' : '14:00',
+        heureFin: i % 2 === 0 ? '11:00' : '15:00',
+        reservee: false,
+      })),
+    });
+  };
+
+  const createDemande = async (data: {
     intitulePoste: string;
     niveau: string;
     description?: string;
     justification: string;
     motif: Motif;
-    commentaireMotif?: string;
-    personneRemplaceeNom?: string;
-    fonctionRemplacee?: string;
     typeContrat: TypeContrat;
     priorite: Priorite;
     dateSouhaitee: Date;
     statut: StatutDemande;
     createurId: string;
+    createurRole: string;
     managerId: string;
     directionId: string;
     etapeActuelle?: number;
     valideeAt?: Date;
+    avecOffre?: boolean;
+    avecCreneaux?: boolean;
   }) => {
     const config = NIVEAU_CONFIG[data.niveau];
-    if (!config) throw new Error(`Niveau invalide: ${data.niveau}`);
-
-    // Trouver le circuit config correspondant
     let circuitConfigId: string | undefined;
     switch (data.niveau) {
       case 'TECHNICIEN': circuitConfigId = circuitTechnicien?.id; break;
@@ -86,17 +169,15 @@ async function main() {
       case 'CADRE_SUPERIEUR': circuitConfigId = circuitCadreSuperieur?.id; break;
       case 'STRATEGIQUE': circuitConfigId = circuitStrategique?.id; break;
     }
-
-    return prisma.demandeRecrutement.create({
+    const { totalEtapes } = determinerCircuit(data.niveau, data.createurRole);
+    
+    const demande = await prisma.demandeRecrutement.create({
       data: {
         reference: ref(),
         intitulePoste: data.intitulePoste,
         description: data.description,
         justification: data.justification,
         motif: data.motif,
-        commentaireMotif: data.commentaireMotif,
-        personneRemplaceeNom: data.personneRemplaceeNom,
-        fonctionRemplacee: data.fonctionRemplacee,
         typeContrat: data.typeContrat,
         priorite: data.priorite,
         budgetMin: config.budgetMin,
@@ -105,446 +186,384 @@ async function main() {
         statut: data.statut,
         niveau: data.niveau as CircuitType,
         circuitType: config.circuitType,
-        totalEtapes: config.totalEtapes,
-        etapeActuelle: data.etapeActuelle || 0,
+        totalEtapes: totalEtapes,
+        etapeActuelle: data.etapeActuelle ?? 0,
         valideeAt: data.valideeAt,
-        circuitConfigId: circuitConfigId,
+        circuitConfigId,
         createurId: data.createurId,
         managerId: data.managerId,
         directionId: data.directionId,
-      }
+      },
     });
+
+    if (data.avecCreneaux) {
+      await addCreneauxManager(data.managerId, demande.id, [5, 6], data.niveau);
+      await addCreneauxDirecteur(
+        data.niveau === 'CADRE_SUPERIEUR' || data.niveau === 'STRATEGIQUE' 
+          ? (data.directionId === directionPharma.id ? directeurPharma.id : 
+             data.directionId === directionSI.id ? directeurSI.id : directeurMKT.id)
+          : '',
+        demande.id, [8, 9], data.niveau
+      );
+    }
+
+    if (data.avecOffre && data.statut === 'VALIDEE') {
+      const offreRef = `OFF-${now.getFullYear()}-${data.directionId === directionPharma.id ? 'PHARMA' : data.directionId === directionSI.id ? 'SI' : 'MKT'}-${Math.floor(Math.random() * 1000)}`;
+      await prisma.offreEmploi.create({
+        data: {
+          reference: offreRef,
+          intitule: data.intitulePoste,
+          typeContrat: data.typeContrat,
+          statut: 'PUBLIEE',
+          rhId: drh.id,
+          demandeId: demande.id,
+          lienCandidature: `http://localhost:5173/candidature/token-${Date.now()}`,
+          description: data.description || '',
+          competences: [],
+        },
+      });
+    }
+
+    return demande;
   };
 
   // ============================================================
-  // 1. BROUILLON (Manager)
+  // CAS 1: BROUILLON - Manager Pharma (pas d'offre)
   // ============================================================
-  console.log('\n📝 1. BROUILLON');
-  await createDemandeWithNiveau({
-    intitulePoste: 'Technicien de laboratoire junior',
+  console.log('\n=== CAS 1: BROUILLON (Manager Pharma) ===');
+  await createDemande({
+    intitulePoste: 'Technicien laboratoire',
     niveau: 'TECHNICIEN',
-    description: 'Poste de technicien en support qualite.',
-    justification: 'Charge de travail accrue sur le labo.',
+    description: 'Poste technique',
+    justification: 'Besoin operationnel',
     motif: 'CREATION',
-    commentaireMotif: 'Nouvelle ligne de production ouverte.',
     typeContrat: 'CDI',
-    priorite: 'BASSE',
+    priorite: 'MOYENNE',
     dateSouhaitee: plus30,
     statut: 'BROUILLON',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
+    createurId: managerPharma.id,
+    createurRole: 'MANAGER',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
-  console.log('   BROUILLON cree (Manager)');
 
   // ============================================================
-  // 2. SOUMISE (Manager)
+  // CAS 2: SOUMISE - Manager SI (en attente validation)
   // ============================================================
-  console.log('\n📤 2. SOUMISE');
-  await createDemandeWithNiveau({
-    intitulePoste: 'Assistant qualite',
+  console.log('\n=== CAS 2: SOUMISE (Manager SI) ===');
+  const demandeSoumise = await createDemande({
+    intitulePoste: 'Support IT',
     niveau: 'EMPLOYE',
-    description: 'Suivi des procedures qualite internes.',
-    justification: 'Depart d\'un collaborateur en juin.',
+    description: 'Support technique',
+    justification: 'Depart collaborateur',
     motif: 'REMPLACEMENT',
-    personneRemplaceeNom: 'Youssef Trabelsi',
-    fonctionRemplacee: 'Assistant qualite',
     typeContrat: 'CDI',
     priorite: 'MOYENNE',
     dateSouhaitee: plus30,
     statut: 'SOUMISE',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
+    createurId: managerSI.id,
+    createurRole: 'MANAGER',
+    managerId: managerSI.id,
+    directionId: directionSI.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
-  console.log('   SOUMISE creee (Manager)');
 
   // ============================================================
-  // 3. EN_VALIDATION_DIR (Manager) → DIR en attente
+  // CAS 3: EN_VALIDATION_DIR - Manager MKT (attente Directeur)
   // ============================================================
-  console.log('\n🔵 3. EN_VALIDATION_DIR');
-  const demandeDir = await createDemandeWithNiveau({
-    intitulePoste: 'Ingenieur qualite junior',
+  console.log('\n=== CAS 3: EN_VALIDATION_DIR (Manager MKT) ===');
+  const demandeDir = await createDemande({
+    intitulePoste: 'Community Manager',
     niveau: 'CADRE_DEBUTANT',
-    description: 'Renforcement de l\'equipe QA.',
-    justification: 'Lancement de 3 nouveaux projets en Q3.',
-    motif: 'RENFORCEMENT',
-    commentaireMotif: 'Besoin urgent de competences QA.',
+    description: 'Gestion des reseaux sociaux',
+    justification: 'Lancement campagne',
+    motif: 'CREATION',
     typeContrat: 'CDI',
     priorite: 'HAUTE',
     dateSouhaitee: plus30,
     statut: 'EN_VALIDATION_DIR',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 0,
+    createurId: managerMKT.id,
+    createurRole: 'MANAGER',
+    managerId: managerMKT.id,
+    directionId: directionMKT.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
   await prisma.validationEtape.create({
-    data: {
-      demandeId: demandeDir.id,
-      niveauEtape: 1,
-      acteurId: directeur.id,
-      decision: 'EN_ATTENTE',
-      dateLimite: plus48h,
-    }
+    data: { demandeId: demandeDir.id, niveauEtape: 1, acteurId: directeurMKT.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
   });
-  console.log('   EN_VALIDATION_DIR creee (Manager → DIR en attente)');
 
   // ============================================================
-  // 4. EN_VALIDATION_DRH (Manager) → DIR validé, RH en attente
+  // CAS 4: EN_VALIDATION_DRH - Manager Pharma (Directeur a valide, attente DRH)
   // ============================================================
-  console.log('\n🟣 4. EN_VALIDATION_DRH');
-  const demandeDrh = await createDemandeWithNiveau({
-    intitulePoste: 'Chef de produit',
-    niveau: 'CADRE_CONFIRME',
-    description: 'Pilotage d\'une gamme pharmaceutique.',
-    justification: 'Extension de la gamme OTC.',
-    motif: 'NOUVEAU_POSTE',
+  console.log('\n=== CAS 4: EN_VALIDATION_DRH (Manager Pharma) ===');
+  const demandeDrh = await createDemande({
+    intitulePoste: 'Chef produit junior',
+    niveau: 'CADRE_DEBUTANT',
+    description: 'Assistance chef produit',
+    justification: 'Renforcement equipe',
+    motif: 'RENFORCEMENT',
     typeContrat: 'CDI',
     priorite: 'HAUTE',
     dateSouhaitee: plus30,
     statut: 'EN_VALIDATION_DRH',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 1,
+    createurId: managerPharma.id,
+    createurRole: 'MANAGER',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
   await prisma.validationEtape.createMany({
     data: [
-      { demandeId: demandeDrh.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'Poste justifie. OK.', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDrh.id, niveauEtape: 1, acteurId: directeurPharma.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
       { demandeId: demandeDrh.id, niveauEtape: 2, acteurId: drh.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
-    ]
+    ],
   });
-  console.log('   EN_VALIDATION_DRH creee (Manager → DIR validé, RH en attente)');
 
   // ============================================================
-  // 5. EN_VALIDATION_DAF (Manager) → DIR, RH validés, DAF en attente
+  // CAS 5: EN_VALIDATION_DAF - DRH (attente DAF)
   // ============================================================
-  console.log('\n🟡 5. EN_VALIDATION_DAF');
-  const demandeDaf = await createDemandeWithNiveau({
-    intitulePoste: 'Directeur commercial Pharma',
-    niveau: 'CADRE_SUPERIEUR',
-    description: 'Developpement du reseau de distribution.',
-    justification: 'Ouverture de 3 nouvelles regions.',
-    motif: 'EXPANSION',
+  console.log('\n=== CAS 5: EN_VALIDATION_DAF (DRH) ===');
+  const demandeDaf = await createDemande({
+    intitulePoste: 'Responsable RH',
+    niveau: 'CADRE_CONFIRME',
+    description: 'Gestion des ressources humaines',
+    justification: 'Creation pole RH',
+    motif: 'CREATION',
     typeContrat: 'CDI',
     priorite: 'HAUTE',
     dateSouhaitee: plus60,
     statut: 'EN_VALIDATION_DAF',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 2,
+    createurId: drh.id,
+    createurRole: 'DRH',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
   await prisma.validationEtape.createMany({
     data: [
-      { demandeId: demandeDaf.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'Approuve.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDaf.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Profil valide RH.', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDaf.id, niveauEtape: 1, acteurId: directeurPharma.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDaf.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
       { demandeId: demandeDaf.id, niveauEtape: 3, acteurId: daf.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
-    ]
+    ],
   });
-  console.log('   EN_VALIDATION_DAF creee (Manager → DAF en attente)');
 
   // ============================================================
-  // 6. EN_VALIDATION_DGA (Manager) → DIR, RH, DAF validés, DGA en attente
+  // CAS 6: VALIDEE AVEC OFFRE - DAF (CADRE_SUPERIEUR)
   // ============================================================
-  console.log('\n🟠 6. EN_VALIDATION_DGA');
-  const demandeDga = await createDemandeWithNiveau({
-    intitulePoste: 'Directeur technique (CTO)',
+  console.log('\n=== CAS 6: VALIDEE AVEC OFFRE (DAF) ===');
+  await createDemande({
+    intitulePoste: 'Directeur Commercial',
+    niveau: 'CADRE_SUPERIEUR',
+    description: 'Direction commerciale',
+    justification: 'Strategie commerciale',
+    motif: 'CREATION',
+    typeContrat: 'CDI',
+    priorite: 'HAUTE',
+    dateSouhaitee: plus60,
+    statut: 'VALIDEE',
+    createurId: daf.id,
+    createurRole: 'DAF',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    etapeActuelle: 4,
+    valideeAt: now,
+    avecOffre: true,
+    avecCreneaux: true,
+  });
+
+  // ============================================================
+  // CAS 7: VALIDEE AVEC OFFRE - DG (STRATEGIQUE)
+  // ============================================================
+  console.log('\n=== CAS 7: VALIDEE AVEC OFFRE (DG) ===');
+  await createDemande({
+    intitulePoste: 'Directeur General Adjoint',
     niveau: 'STRATEGIQUE',
-    description: 'Supervision de la strategie IT.',
-    justification: 'Depart a la retraite du CTO actuel.',
-    motif: 'REMPLACEMENT',
-    personneRemplaceeNom: 'Rachid Hamrouni',
-    fonctionRemplacee: 'CTO',
+    description: 'Assistance DG',
+    justification: 'Organisation groupe',
+    motif: 'CREATION',
+    typeContrat: 'CDI',
+    priorite: 'HAUTE',
+    dateSouhaitee: plus60,
+    statut: 'VALIDEE',
+    createurId: dg.id,
+    createurRole: 'DG',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    etapeActuelle: 4,
+    valideeAt: now,
+    avecOffre: true,
+    avecCreneaux: true,
+  });
+
+  // ============================================================
+  // CAS 8: REJETEE - Manager MKT (refus DRH)
+  // ============================================================
+  console.log('\n=== CAS 8: REJETEE (Manager MKT) ===');
+  const demandeRejetee = await createDemande({
+    intitulePoste: 'Graphiste',
+    niveau: 'EMPLOYE',
+    description: 'Creation graphique',
+    justification: 'Support marketing',
+    motif: 'CREATION',
+    typeContrat: 'CDI',
+    priorite: 'BASSE',
+    dateSouhaitee: plus30,
+    statut: 'REJETEE',
+    createurId: managerMKT.id,
+    createurRole: 'MANAGER',
+    managerId: managerMKT.id,
+    directionId: directionMKT.id,
+    avecOffre: false,
+    avecCreneaux: false,
+  });
+  await prisma.validationEtape.createMany({
+    data: [
+      { demandeId: demandeRejetee.id, niveauEtape: 1, acteurId: directeurMKT.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeRejetee.id, niveauEtape: 2, acteurId: drh.id, decision: 'REFUSEE', commentaire: 'Budget non dispo', dateDecision: now, dateLimite: plus48h },
+    ],
+  });
+
+  // ============================================================
+  // CAS 9: ANNULEE - Manager Pharma
+  // ============================================================
+  console.log('\n=== CAS 9: ANNULEE (Manager Pharma) ===');
+  await createDemande({
+    intitulePoste: 'Assistant RH',
+    niveau: 'EMPLOYE',
+    description: 'Support RH',
+    justification: 'Charge temporaire',
+    motif: 'CREATION',
+    typeContrat: 'CDD',
+    priorite: 'BASSE',
+    dateSouhaitee: plus30,
+    statut: 'ANNULEE',
+    createurId: managerPharma.id,
+    createurRole: 'MANAGER',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
+  });
+
+  // ============================================================
+  // CAS 10: VALIDEE SANS OFFRE - Manager SI (attente creation offre)
+  // ============================================================
+  console.log('\n=== CAS 10: VALIDEE SANS OFFRE (Manager SI) ===');
+  await createDemande({
+    intitulePoste: 'Developpeur Full Stack',
+    niveau: 'CADRE_CONFIRME',
+    description: 'Developpement web',
+    justification: 'Nouveau projet',
+    motif: 'CREATION',
+    typeContrat: 'CDI',
+    priorite: 'HAUTE',
+    dateSouhaitee: plus30,
+    statut: 'VALIDEE',
+    createurId: managerSI.id,
+    createurRole: 'MANAGER',
+    managerId: managerSI.id,
+    directionId: directionSI.id,
+    etapeActuelle: 3,
+    valideeAt: now,
+    avecOffre: false,  // ✅ PAS D'OFFRE
+    avecCreneaux: true,
+  });
+
+  // ============================================================
+  // CAS 11: EN_VALIDATION_DGA - DAF (attente DGA)
+  // ============================================================
+  console.log('\n=== CAS 11: EN_VALIDATION_DGA (DAF) ===');
+  const demandeDga = await createDemande({
+    intitulePoste: 'Directeur Innovation',
+    niveau: 'STRATEGIQUE',
+    description: 'Pilotage innovation',
+    justification: 'Strategie groupe',
+    motif: 'CREATION',
     typeContrat: 'CDI',
     priorite: 'HAUTE',
     dateSouhaitee: plus60,
     statut: 'EN_VALIDATION_DGA',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 3,
+    createurId: daf.id,
+    createurRole: 'DAF',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
   await prisma.validationEtape.createMany({
     data: [
-      { demandeId: demandeDga.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'Besoin confirme.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDga.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Grille salariale OK.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDga.id, niveauEtape: 3, acteurId: daf.id, decision: 'VALIDEE', commentaire: 'Budget valide.', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDga.id, niveauEtape: 1, acteurId: directeurPharma.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDga.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
+      { demandeId: demandeDga.id, niveauEtape: 3, acteurId: daf.id, decision: 'VALIDEE', dateDecision: now, dateLimite: plus48h },
       { demandeId: demandeDga.id, niveauEtape: 4, acteurId: dga.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
-    ]
+    ],
   });
-  console.log('   EN_VALIDATION_DGA creee (Manager → DGA en attente)');
 
   // ============================================================
-  // 7. EN_VALIDATION_DG (DIRECTEUR créateur)
+  // CAS 12: DIRECTEUR cree demande (Manager doit valider)
   // ============================================================
-  console.log('\n🔴 7. EN_VALIDATION_DG (Créateur = DIRECTEUR)');
-  const demandeDg = await createDemandeWithNiveau({
-    intitulePoste: 'Directeur general adjoint SI',
-    niveau: 'STRATEGIQUE',
-    description: 'DGA en charge de la transformation digitale.',
-    justification: 'Projet de digitalisation groupe sur 3 ans.',
-    motif: 'NOUVEAU_POSTE',
-    typeContrat: 'CDI',
-    priorite: 'HAUTE',
-    dateSouhaitee: plus60,
-    statut: 'EN_VALIDATION_DG',
-    createurId: directeur.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 3,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeDg.id, niveauEtape: 1, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Plan de recrutement valide.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDg.id, niveauEtape: 2, acteurId: daf.id, decision: 'VALIDEE', commentaire: 'Enveloppe budget accordee.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDg.id, niveauEtape: 3, acteurId: dga.id, decision: 'VALIDEE', commentaire: 'Opportunite strategique.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDg.id, niveauEtape: 4, acteurId: dg.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
-    ]
-  });
-  console.log('   EN_VALIDATION_DG creee (DIRECTEUR créateur)');
-
-  // ============================================================
-  // 8. EN_VALIDATION_DAF (DRH créateur)
-  // ============================================================
-  console.log('\n🟡 8. EN_VALIDATION_DAF (Créateur = DRH)');
-  const demandeDafDrh = await createDemandeWithNiveau({
-    intitulePoste: 'Responsable formation',
-    niveau: 'CADRE_CONFIRME',
-    description: 'Pilotage de la politique de formation.',
-    justification: 'Mise en place du plan de formation 2026.',
+  console.log('\n=== CAS 12: DIRECTEUR cree CADRE_DEBUTANT ===');
+  const demandeDirecteur = await createDemande({
+    intitulePoste: 'Chef de projet digital',
+    niveau: 'CADRE_DEBUTANT',
+    description: 'Pilotage projets digitaux',
+    justification: 'Transformation digitale',
     motif: 'CREATION',
     typeContrat: 'CDI',
-    priorite: 'MOYENNE',
-    dateSouhaitee: plus60,
-    statut: 'EN_VALIDATION_DAF',
-    createurId: drh.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 2,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeDafDrh.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'Besoin valide.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDafDrh.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Auto-validation RH', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeDafDrh.id, niveauEtape: 3, acteurId: daf.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
-    ]
-  });
-  console.log('   EN_VALIDATION_DAF creee (DRH créateur)');
-
-  // ============================================================
-  // 9. DEMANDE AVEC DELAI DEPASSE
-  // ============================================================
-  console.log('\n⚠️ 9. DEMANDE AVEC DELAI DEPASSE');
-  const demandeDepassee = await createDemandeWithNiveau({
-    intitulePoste: 'Chef de projet IT',
-    niveau: 'CADRE_DEBUTANT',
-    description: 'Coordination des projets digitaux.',
-    justification: 'Charge projet en augmentation.',
-    motif: 'RENFORCEMENT',
-    commentaireMotif: '2 projets majeurs a livrer en 2026.',
-    typeContrat: 'CDI',
     priorite: 'HAUTE',
-    dateSouhaitee: plus30,
+    dateSouhaitee: plus60,
     statut: 'EN_VALIDATION_DIR',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 0,
+    createurId: directeurPharma.id,
+    createurRole: 'DIRECTEUR',
+    managerId: managerPharma.id,
+    directionId: directionPharma.id,
+    avecOffre: false,
+    avecCreneaux: false,
   });
   await prisma.validationEtape.create({
-    data: {
-      demandeId: demandeDepassee.id,
-      niveauEtape: 1,
-      acteurId: directeur.id,
-      decision: 'EN_ATTENTE',
-      dateLimite: depasse48h,
-    }
-  });
-  console.log('   Demande avec delai depasse creee');
-
-  // ============================================================
-  // 10. VALIDEE SANS OFFRE
-  // ============================================================
-  console.log('\n✅ 10. VALIDEE SANS OFFRE');
-  const demandeValideeSansOffre = await createDemandeWithNiveau({
-    intitulePoste: 'Developpeur full stack',
-    niveau: 'CADRE_DEBUTANT',
-    description: 'Developpement de l\'ERP interne.',
-    justification: 'Roadmap technique 2025.',
-    motif: 'RENFORCEMENT',
-    commentaireMotif: 'Equipe insuffisante pour tenir la roadmap.',
-    typeContrat: 'CDI',
-    priorite: 'HAUTE',
-    dateSouhaitee: plus30,
-    statut: 'VALIDEE',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 3,
-    valideeAt: now,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeValideeSansOffre.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'Besoin reel.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeSansOffre.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Profil disponible.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeSansOffre.id, niveauEtape: 3, acteurId: daf.id, decision: 'VALIDEE', commentaire: 'Budget OK.', dateDecision: now, dateLimite: plus48h },
-    ]
-  });
-  console.log('   VALIDEE SANS OFFRE creee');
-
-  // ============================================================
-  // 11. VALIDEE AVEC OFFRE
-  // ============================================================
-  console.log('\n✅ 11. VALIDEE AVEC OFFRE');
-  const demandeValideeAvecOffre = await createDemandeWithNiveau({
-    intitulePoste: 'Architecte cloud',
-    niveau: 'CADRE_SUPERIEUR',
-    description: 'Migration de l\'infrastructure vers le cloud.',
-    justification: 'Stratégie cloud-first 2026.',
-    motif: 'CREATION',
-    typeContrat: 'CDI',
-    priorite: 'HAUTE',
-    dateSouhaitee: plus60,
-    statut: 'VALIDEE',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 5,
-    valideeAt: now,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeValideeAvecOffre.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'OK', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeAvecOffre.id, niveauEtape: 2, acteurId: drh.id, decision: 'VALIDEE', commentaire: 'Profil OK', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeAvecOffre.id, niveauEtape: 3, acteurId: daf.id, decision: 'VALIDEE', commentaire: 'Budget OK', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeAvecOffre.id, niveauEtape: 4, acteurId: dga.id, decision: 'VALIDEE', commentaire: 'Stratégique', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeValideeAvecOffre.id, niveauEtape: 5, acteurId: dg.id, decision: 'VALIDEE', commentaire: 'Approuve', dateDecision: now, dateLimite: plus48h },
-    ]
+    data: { demandeId: demandeDirecteur.id, niveauEtape: 1, acteurId: managerPharma.id, decision: 'EN_ATTENTE', dateLimite: plus48h },
   });
 
-  // Créer l'offre associée
-  const offreRef = `OFF-${now.getFullYear()}-${String(await prisma.offreEmploi.count() + 1).padStart(4, '0')}`;
-  await prisma.offreEmploi.create({
-    data: {
-      reference: offreRef,
-      intitule: demandeValideeAvecOffre.intitulePoste,
-      typeContrat: 'CDI',
-      statut: 'BROUILLON',
-      rhId: drh.id,
-      demandeId: demandeValideeAvecOffre.id,
-    }
-  });
-  console.log('   VALIDEE AVEC OFFRE creee');
-
   // ============================================================
-  // 12. REJETEE
-  // ============================================================
-  console.log('\n❌ 12. REJETEE');
-  const demandeRejetee = await createDemandeWithNiveau({
-    intitulePoste: 'Lead developpeur',
-    niveau: 'CADRE_CONFIRME',
-    description: 'Lead technique front-end.',
-    justification: 'Ameliorer la qualite du code frontend.',
-    motif: 'RENFORCEMENT',
-    commentaireMotif: 'Dette technique trop importante.',
-    typeContrat: 'CDD',
-    priorite: 'MOYENNE',
-    dateSouhaitee: plus30,
-    statut: 'REJETEE',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 1,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeRejetee.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'OK de mon cote.', dateDecision: now, dateLimite: plus48h },
-      { demandeId: demandeRejetee.id, niveauEtape: 2, acteurId: drh.id, decision: 'REFUSEE', commentaire: 'Budget non disponible en H1.', dateDecision: now, dateLimite: plus48h },
-    ]
-  });
-  console.log('   REJETEE creee');
-
-  // ============================================================
-  // 13. ANNULEE
-  // ============================================================
-  console.log('\n🚫 13. ANNULEE');
-  await createDemandeWithNiveau({
-    intitulePoste: 'Community manager',
-    niveau: 'TECHNICIEN',
-    description: 'Animation des reseaux sociaux.',
-    justification: 'Strategie digitale 2025.',
-    motif: 'NOUVEAU_POSTE',
-    typeContrat: 'STAGE',
-    priorite: 'BASSE',
-    dateSouhaitee: plus30,
-    statut: 'ANNULEE',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 0,
-  });
-  console.log('   ANNULEE creee');
-
-  // ============================================================
-  // 14. DEMANDE AVEC RELANCE
-  // ============================================================
-  console.log('\n📧 14. DEMANDE AVEC RELANCE');
-  const demandeRelance = await createDemandeWithNiveau({
-    intitulePoste: 'Data Scientist',
-    niveau: 'CADRE_CONFIRME',
-    description: 'Analyse des donnees commerciales.',
-    justification: 'Mise en place du data lake.',
-    motif: 'CREATION',
-    commentaireMotif: 'Nouveau pole data.',
-    typeContrat: 'CDI',
-    priorite: 'HAUTE',
-    dateSouhaitee: plus60,
-    statut: 'EN_VALIDATION_DRH',
-    createurId: manager.id,
-    managerId: manager.id,
-    directionId: direction.id,
-    etapeActuelle: 1,
-  });
-  await prisma.validationEtape.createMany({
-    data: [
-      { demandeId: demandeRelance.id, niveauEtape: 1, acteurId: directeur.id, decision: 'VALIDEE', commentaire: 'OK', dateDecision: now, dateLimite: depasse48h },
-      { demandeId: demandeRelance.id, niveauEtape: 2, acteurId: drh.id, decision: 'EN_ATTENTE', dateLimite: depasse48h, relanceEnvoyee: true },
-    ]
-  });
-  console.log('   Demande avec relance creee');
-
-  // ============================================================
-  // RESUME
+  // STATISTIQUES FINALES
   // ============================================================
   const total = await prisma.demandeRecrutement.count();
-  const demandesValidees = await prisma.demandeRecrutement.count({ where: { statut: 'VALIDEE' } });
-  const offresCount = await prisma.offreEmploi.count();
-  
-  console.log(`\n🎉 Seed termine ! Total demandes en base : ${total}`);
-  console.log(`📊 Demandes validees : ${demandesValidees}`);
-  console.log(`📊 Offres d'emploi : ${offresCount}`);
-  console.log(`\n⚠️ Demande validee SANS offre (pour formulaire) : ${demandeValideeSansOffre.reference}`);
-  console.log(`⚠️ Demande validee AVEC offre (pour tableau) : ${demandeValideeAvecOffre.reference}`);
-  
-  console.log('\n📊 STATUTS COUVERTS :');
-  const statusCounts = await prisma.demandeRecrutement.groupBy({
+  const parStatut = await prisma.demandeRecrutement.groupBy({
     by: ['statut'],
-    _count: { statut: true },
-    orderBy: { statut: 'asc' }
+    _count: true
   });
-  statusCounts.forEach(s => console.log(`   ${s.statut.padEnd(28)} → ${s._count.statut} demande(s)`));
+  const offresCount = await prisma.offreEmploi.count();
+  const offresPubliees = await prisma.offreEmploi.count({ where: { statut: 'PUBLIEE' } });
+
+  console.log(`\n=== RESUME DU SEED ===`);
+  console.log(`Demandes totales: ${total}`);
+  console.log(`Repartition par statut:`);
+  for (const s of parStatut) {
+    console.log(`   - ${s.statut}: ${s._count}`);
+  }
+  console.log(`Offres totales: ${offresCount}`);
+  console.log(`Offres publiees: ${offresPubliees}`);
   
-  console.log('\n📋 NIVEAUX DE POSTE UTILISES :');
-  const niveauCounts = await prisma.demandeRecrutement.groupBy({
-    by: ['niveau'],
-    _count: { niveau: true },
-    orderBy: { niveau: 'asc' }
-  });
-  niveauCounts.forEach(n => console.log(`   ${n.niveau.padEnd(20)} → ${n._count.niveau} demande(s)`));
+  console.log(`\n=== CAS TESTES ===`);
+  console.log(`1. BROUILLON - En cours de redaction`);
+  console.log(`2. SOUMISE - En attente de validation`);
+  console.log(`3. EN_VALIDATION_DIR - Attente Directeur`);
+  console.log(`4. EN_VALIDATION_DRH - Attente DRH`);
+  console.log(`5. EN_VALIDATION_DAF - Attente DAF`);
+  console.log(`6. EN_VALIDATION_DGA - Attente DGA`);
+  console.log(`7. VALIDEE AVEC OFFRE - Poste pourvu`);
+  console.log(`8. REJETEE - Demande refusee`);
+  console.log(`9. ANNULEE - Demande annulee`);
+  console.log(`10. VALIDEE SANS OFFRE - En attente creation offre`);
+  console.log(`11. DIRECTEUR CREATEUR - Validation par Manager requise`);
 }
 
 main()
-  .catch(e => { console.error('❌ Erreur :', e); process.exit(1); })
+  .catch(e => { console.error('Erreur:', e); process.exit(1); })
   .finally(() => prisma.$disconnect());

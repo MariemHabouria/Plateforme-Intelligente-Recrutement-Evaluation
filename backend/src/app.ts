@@ -14,10 +14,12 @@ import adminRoutes from './routes/adminRoutes';
 import directionRoutes from './routes/directionRoutes';
 
 import offreRoutes from './routes/offreRoutes';
-
-
+import candidatureRoutes from './routes/candidatureRoutes';
+import entretienRoutes from './routes/entretienRoutes';
+import { uploadCV, uploadMiddleware } from './controllers/uploadController';
 dotenv.config();
-
+import matchingInverseRoutes from './routes/matchingInverseRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
@@ -60,9 +62,15 @@ app.use('/api/demandes', demandeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/directions', directionRoutes);
 
-
 app.use('/api/offres', offreRoutes);
+app.use('/api/candidatures', candidatureRoutes);
+app.use('/api/entretiens', entretienRoutes);
+
+app.use('/api/matching-inverse', matchingInverseRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 // Health check
+app.post('/api/upload/cv', uploadMiddleware, uploadCV);
+
 app.get('/health', (req, res) => {
     res.status(200).json({ 
         status: 'OK', 

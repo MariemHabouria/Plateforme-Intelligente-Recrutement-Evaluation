@@ -12,7 +12,8 @@ interface Direction {
   nom: string;
 }
 
-interface Disponibilite {
+// ✅ Disponibilités de l'interviewer (Manager/Directeur)
+interface DisponibiliteInterviewer {
   date: string;
   heureDebut: string;
   heureFin: string;
@@ -23,8 +24,8 @@ const NIVEAUX_POSTE = [
     value: 'TECHNICIEN', 
     label: 'Technicien / Ouvrier', 
     description: 'Postes techniques et ouvriers',
-    circuit: ['DIR', 'RH'],
-    circuitText: 'Validation par Directeur → RH',
+    circuit: ['MANAGER', 'DIR', 'RH'],  
+    circuitText: 'Validation par Manager → Directeur → RH',
     color: '#ac6b2e',
     budgetMin: 800,
     budgetMax: 1500
@@ -33,8 +34,8 @@ const NIVEAUX_POSTE = [
     value: 'EMPLOYE', 
     label: 'Employe / Agent', 
     description: 'Postes administratifs',
-    circuit: ['DIR', 'RH'],
-    circuitText: 'Validation par Directeur → RH',
+    circuit: ['MANAGER', 'DIR', 'RH'],  // ✅ Corrigé
+    circuitText: 'Validation par Manager → Directeur → RH',
     color: '#ac6b2e',
     budgetMin: 1000,
     budgetMax: 2000
@@ -43,8 +44,8 @@ const NIVEAUX_POSTE = [
     value: 'CADRE_DEBUTANT', 
     label: 'Cadre debutant', 
     description: 'Cadres juniors (1-3 ans experience)',
-    circuit: ['DIR', 'RH', 'DAF'],
-    circuitText: 'Validation par Directeur → RH → DAF',
+    circuit: ['MANAGER', 'DIR', 'RH', 'DAF'],  // ✅ Corrigé
+    circuitText: 'Validation par Manager → Directeur → RH → DAF',
     color: '#ac6b2e',
     budgetMin: 2000,
     budgetMax: 3500
@@ -53,8 +54,8 @@ const NIVEAUX_POSTE = [
     value: 'CADRE_CONFIRME', 
     label: 'Cadre confirme', 
     description: 'Cadres seniors (4-8 ans experience)',
-    circuit: ['DIR', 'RH', 'DAF', 'DGA'],
-    circuitText: 'Validation par Directeur → RH → DAF → DGA',
+    circuit: ['MANAGER', 'DIR', 'RH', 'DAF', 'DGA'],  // ✅ Corrigé
+    circuitText: 'Validation par Manager → Directeur → RH → DAF → DGA',
     color: '#ac6b2e',
     budgetMin: 3500,
     budgetMax: 5500
@@ -63,7 +64,7 @@ const NIVEAUX_POSTE = [
     value: 'CADRE_SUPERIEUR', 
     label: 'Cadre superieur', 
     description: 'Directeurs de departement',
-    circuit: ['DIR', 'RH', 'DAF', 'DGA', 'DG'],
+    circuit: ['DIR', 'RH', 'DAF', 'DGA', 'DG'],  // ✅ Correct (pas de Manager)
     circuitText: 'Validation par Directeur → RH → DAF → DGA → DG',
     color: '#ac6b2e',
     budgetMin: 5500,
@@ -73,8 +74,8 @@ const NIVEAUX_POSTE = [
     value: 'STRATEGIQUE', 
     label: 'Poste strategique', 
     description: 'Postes de direction generale',
-    circuit: ['DIR', 'RH', 'DAF', 'DGA', 'DG'],
-    circuitText: 'Validation complete (toutes les directions)',
+    circuit: ['DIR', 'RH', 'DAF', 'DGA', 'DG'], 
+    circuitText: 'Validation par Directeur → RH → DAF → DGA → DG',
     color: '#ac6b2e',
     budgetMin: 9000,
     budgetMax: 20000
@@ -82,17 +83,21 @@ const NIVEAUX_POSTE = [
 ];
 
 const TRANSVERSAL_ROLES = ['rh', 'daf', 'dga', 'dg', 'superadmin'];
+const INTERVIEWER_ROLES = ['manager', 'directeur'];
+const NIVEAUX_AVEC_DIRECTION = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
 
 export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [directions, setDirections] = useState<Direction[]>([]);
-  const [disponibilites, setDisponibilites] = useState<Disponibilite[]>([
-    { date: '', heureDebut: '', heureFin: '' }
-  ]);
   const [budgetError, setBudgetError] = useState('');
   const [selectedDirectionId, setSelectedDirectionId] = useState('');
   const [dateError, setDateError] = useState('');
+  
+  // ✅ Disponibilités de l'interviewer (Manager/Directeur créateur)
+  const [mesDisponibilites, setMesDisponibilites] = useState<DisponibiliteInterviewer[]>([
+    { date: '', heureDebut: '', heureFin: '' }
+  ]);
   
   const [formData, setFormData] = useState({
     intitulePoste: '',
@@ -113,6 +118,24 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
   const isTransversal = TRANSVERSAL_ROLES.includes(user?.role || '');
   const hasFixedDirection = !isTransversal && user?.directionId;
   const needsToSelectDirection = isTransversal;
+  
+  // ✅ Vérifier si l'utilisateur est un interviewer
+  const isInterviewer = INTERVIEWER_ROLES.includes(user?.role || '');
+  
+  // ✅ Vérifier si l'utilisateur doit saisir ses disponibilités
+  const needsToAddDisponibilites = () => {
+    if (!isInterviewer) return false;
+    
+    // Manager → toujours (toujours entretien technique)
+    if (user?.role === 'manager') return true;
+    
+    // Directeur → uniquement pour cadres supérieurs ou stratégiques
+    if (user?.role === 'directeur') {
+      return NIVEAUX_AVEC_DIRECTION.includes(formData.niveau);
+    }
+    
+    return false;
+  };
 
   useEffect(() => {
     const niveauConfig = NIVEAUX_POSTE.find(n => n.value === formData.niveau);
@@ -125,7 +148,7 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
     }
   }, [formData.niveau]);
 
-  const validateDates = (dateSouhaitee: string, disponibilites: Disponibilite[]) => {
+  const validateDates = (dateSouhaitee: string) => {
     if (!dateSouhaitee) return true;
     
     const souhaitDate = new Date(dateSouhaitee);
@@ -137,20 +160,20 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
       return false;
     }
     
+    setDateError('');
+    return true;
+  };
+
+  // ✅ Validation des disponibilités de l'interviewer
+  const validateMesDisponibilites = (disponibilites: DisponibiliteInterviewer[]): boolean => {
     for (const dispo of disponibilites) {
       if (dispo.date && dispo.heureDebut && dispo.heureFin) {
-        const entretienDate = new Date(dispo.date);
+        const dispoDate = new Date(dispo.date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         
-        if (entretienDate < today) {
-          setDateError('La date d\'entretien ne peut pas etre dans le passe');
-          return false;
-        }
-        
-        const minDaysBefore = 14;
-        const diffDays = Math.ceil((souhaitDate.getTime() - entretienDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (diffDays < minDaysBefore) {
-          setDateError(`Les entretiens doivent etre planifies au moins ${minDaysBefore} jours avant la date de debut souhaitee`);
+        if (dispoDate < today) {
+          setDateError('La date de disponibilité ne peut pas etre dans le passe');
           return false;
         }
         
@@ -160,8 +183,6 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
         }
       }
     }
-    
-    setDateError('');
     return true;
   };
 
@@ -170,7 +191,7 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
       setSelectedDirectionId('');
       setBudgetError('');
       setDateError('');
-      setDisponibilites([{ date: '', heureDebut: '', heureFin: '' }]);
+      setMesDisponibilites([{ date: '', heureDebut: '', heureFin: '' }]);
       
       setFormData({
         intitulePoste: '',
@@ -213,7 +234,7 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
     }
     
     if (name === 'dateSouhaitee') {
-      validateDates(value, disponibilites);
+      validateDates(value);
     }
   };
 
@@ -230,24 +251,21 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
     }
   };
 
+  // ✅ Gestion des disponibilités de l'interviewer
   const addDisponibilite = () => {
-    setDisponibilites([...disponibilites, { date: '', heureDebut: '', heureFin: '' }]);
+    setMesDisponibilites([...mesDisponibilites, { date: '', heureDebut: '', heureFin: '' }]);
   };
 
   const removeDisponibilite = (index: number) => {
-    const newDispos = [...disponibilites];
+    const newDispos = [...mesDisponibilites];
     newDispos.splice(index, 1);
-    setDisponibilites(newDispos);
+    setMesDisponibilites(newDispos);
   };
 
   const updateDisponibilite = (index: number, field: string, value: string) => {
-    const newDispos = [...disponibilites];
+    const newDispos = [...mesDisponibilites];
     newDispos[index] = { ...newDispos[index], [field]: value };
-    setDisponibilites(newDispos);
-    
-    if (formData.dateSouhaitee) {
-      validateDates(formData.dateSouhaitee, newDispos);
-    }
+    setMesDisponibilites(newDispos);
   };
 
   const handleSubmit = async () => {
@@ -275,14 +293,22 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
       return;
     }
 
-    if (!validateDates(formData.dateSouhaitee, disponibilites)) {
+    if (!validateDates(formData.dateSouhaitee)) {
       alert(dateError);
       return;
     }
 
-    const validDisponibilites = disponibilites.filter(
-      d => d.date && d.heureDebut && d.heureFin
-    );
+    // ✅ Valider les disponibilités de l'interviewer si nécessaire
+    const validDisponibilites = mesDisponibilites.filter(d => d.date && d.heureDebut && d.heureFin);
+    if (needsToAddDisponibilites() && validDisponibilites.length === 0) {
+      alert('Veuillez saisir au moins une disponibilité pour les entretiens');
+      return;
+    }
+    
+    if (!validateMesDisponibilites(validDisponibilites)) {
+      alert(dateError);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -299,14 +325,18 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
         budgetMin: parseFloat(formData.budgetMin),
         budgetMax: parseFloat(formData.budgetMax),
         dateSouhaitee: new Date(formData.dateSouhaitee),
-        description: formData.description,
-        disponibilites: validDisponibilites
+        description: formData.description
       };
       
       if (needsToSelectDirection) {
         payload.directionId = selectedDirectionId;
       } else if (hasFixedDirection && user?.directionId) {
         payload.directionId = user.directionId;
+      }
+      
+      // ✅ Ajouter les disponibilités de l'interviewer si nécessaire
+      if (needsToAddDisponibilites() && validDisponibilites.length > 0) {
+        payload.disponibilitesInterviewers = validDisponibilites;
       }
       
       await api.post('/demandes', payload);
@@ -575,20 +605,30 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
           )}
         </FormGroup>
 
-        <FormGroup>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <FormLabel>Disponibilites pour entretien technique</FormLabel>
-            <Button variant="ghost" size="xs" onClick={addDisponibilite}>
-              <Plus size={14} /> Ajouter un creneau
-            </Button>
-          </div>
-          
-          {disponibilites.map((dispo, index) => {
-            const minDate = formData.dateSouhaitee 
-              ? new Date(new Date(formData.dateSouhaitee).getTime() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-              : new Date().toISOString().split('T')[0];
+        {/* ✅ Mes disponibilités (pour Manager/Directeur créateurs) */}
+        {needsToAddDisponibilites() && (
+          <FormGroup>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <FormLabel>
+                Mes disponibilités pour entretiens
+                {user?.role === 'directeur' && (
+                  <span style={{ fontSize: 11, marginLeft: 8, fontWeight: 'normal' }}>
+                    (Cadre supérieur / Stratégique uniquement)
+                  </span>
+                )}
+              </FormLabel>
+              <Button variant="ghost" size="xs" onClick={addDisponibilite}>
+                <Plus size={14} /> Ajouter un creneau
+              </Button>
+            </div>
             
-            return (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              {user?.role === 'manager' 
+                ? 'En tant que manager, veuillez saisir vos créneaux disponibles pour les entretiens techniques.'
+                : 'En tant que directeur, veuillez saisir vos créneaux disponibles pour les entretiens direction.'}
+            </div>
+            
+            {mesDisponibilites.map((dispo, index) => (
               <div key={index} style={{ 
                 display: 'grid', 
                 gridTemplateColumns: '1fr 1fr 1fr auto', 
@@ -599,8 +639,7 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
                 <input
                   type="date"
                   value={dispo.date}
-                  min={minDate}
-                  max={formData.dateSouhaitee || ''}
+                  min={new Date().toISOString().split('T')[0]}
                   onChange={(e) => updateDisponibilite(index, 'date', e.target.value)}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
                 />
@@ -616,21 +655,18 @@ export const DemandeFormModal = ({ open, onClose, onSuccess }: any) => {
                   onChange={(e) => updateDisponibilite(index, 'heureFin', e.target.value)}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
                 />
-                {disponibilites.length > 1 && (
+                {mesDisponibilites.length > 1 && (
                   <Button variant="ghost" size="xs" onClick={() => removeDisponibilite(index)}>
                     <X size={14} />
                   </Button>
                 )}
               </div>
-            );
-          })}
-          {dateError && (
-            <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{dateError}</div>
-          )}
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Les entretiens doivent etre planifies au moins 14 jours avant la date de debut souhaitee
-          </div>
-        </FormGroup>
+            ))}
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Ces créneaux seront utilisés pour planifier les entretiens.
+            </div>
+          </FormGroup>
+        )}
       </div>
     </Modal>
   );

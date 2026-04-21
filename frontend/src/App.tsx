@@ -11,7 +11,9 @@ import { DemandesPage } from './components/pages/demandes/DemandesPage';
 import { DemandeDetailsPage } from './components/pages/demandes/DemandeDetailsPage';
 import { OffresPage } from './components/pages/offres/OffresPage';
 import { CandidatsPage } from './components/pages/candidats/CandidatsPage';
+import { CandidatDetailPage } from './components/pages/candidats/CandidatDetailPage';
 import { EntretiensPage } from './components/pages/entretiens/EntretiensPage';
+import { EntretienDetailPage } from './components/pages/entretiens/EntretienDetailPage';
 import { EvaluationPage } from './components/pages/evaluation/EvaluationPage';
 import { ContratsPage } from './components/pages/contrats/ContratsPage';
 import { SuperAdminPage } from './components/pages/superadmin/SuperAdminPage';
@@ -40,9 +42,11 @@ function AuthenticatedApp() {
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  
+
   const getPageFromPath = (path: string): string => {
     if (path.startsWith('/demandes/')) return 'demande-details';
+    if (path.startsWith('/candidats/')) return 'candidat-details';
+    if (path.startsWith('/entretiens/')) return 'entretien-details';
     if (path === '/profile') return 'profile';
     if (path === '/settings') return 'settings';
     if (path === '/offres') return 'offres';
@@ -56,6 +60,8 @@ function AuthenticatedApp() {
 
   const currentPage = getPageFromPath(pathname);
   const demandeId = pathname.startsWith('/demandes/') ? pathname.split('/')[2] : null;
+  const candidatId = pathname.startsWith('/candidats/') ? pathname.split('/')[2] : null;
+  const entretienId = pathname.startsWith('/entretiens/') ? pathname.split('/')[2] : null;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -67,9 +73,7 @@ function AuthenticatedApp() {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Chargement...</div>;
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   if (user.mustChangePassword) {
     navigate('/change-password');
@@ -77,10 +81,16 @@ function AuthenticatedApp() {
   }
 
   const renderContent = () => {
+    // ✅ Passer l'id directement en prop pour éviter le problème useParams
+    if (entretienId) {
+      return <EntretienDetailPage id={entretienId} />;
+    }
+    if (candidatId) {
+  return <CandidatDetailPage id={candidatId} />;
+}
     if (demandeId) {
       return <DemandeDetailsPage id={demandeId} />;
     }
-
     if (currentPage === 'profile') return <ProfilePage />;
     if (currentPage === 'settings') return <SettingsPage />;
 
@@ -122,12 +132,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Routes publiques (sans sidebar) */}
           <Route path="/candidature/:token" element={<CandidatFormPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
-          
-          {/* Routes protégées (avec sidebar) */}
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>
       </AuthProvider>
