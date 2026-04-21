@@ -1,6 +1,9 @@
 // frontend/src/types/index.ts
 
-export type Role = 'superadmin' | 'manager' | 'directeur' | 'rh' | 'daf' | 'dga' | 'dg' | 'paie' | 'candidat'
+export type Role = 'superadmin' | 'manager' | 'directeur' | 'rh' | 'daf' | 'dga' | 'dg' | 'paie' | 'candidat';
+
+// ✅ Enum TypeEntretien aligné avec le backend
+export type TypeEntretien = 'RH' | 'TECHNIQUE' | 'DIRECTION';
 
 export interface Direction {
   id: string;
@@ -16,17 +19,16 @@ export interface User {
   prenom: string;
   role: Role;
   token?: string;
-  mustChangePassword?: boolean;  
+  mustChangePassword?: boolean;
   dernierConnexion?: string;
   actif?: boolean;
   departement?: string;
   poste?: string;
   telephone?: string;
-  directionId?: string;      
-  direction?: Direction;     
+  directionId?: string;
+  direction?: Direction;
 }
 
-// ✅ AJOUTER CES TYPES
 export interface RoleConfig {
   label: string;
   color: string;
@@ -44,65 +46,141 @@ export interface NavItem {
   section?: string;
 }
 
-export interface Demande {
-  id?: string;
-  reference?: string;
-  ref?: string;           // Pour compatibilité avec les données mock
-  poste: string;
-  motif: string;
-  contrat: string;
-  priorite: 'Haute' | 'Moyenne' | 'Basse';
-  statut: string;
-  budget: string;
-  date: string;
-  etape: number;
-  totalEtapes: number;
-  // Champs supplémentaires pour l'API
-  intitulePoste?: string;
-  justification?: string;
-  typeContrat?: string;
-  budgetEstime?: number;
-  dateSouhaitee?: string;
-  description?: string;
-  managerId?: string;
-  manager?: User;
-  directionId?: string;
-  direction?: Direction;
-  validations?: ValidationEtape[];
-  disponibilites?: Disponibilite[];
-  createdAt?: string;
-  updatedAt?: string;
+export interface ValidationEtape {
+  id: string;
+  demandeId: string;
+  niveauEtape: number;
+  acteurId: string;
+  acteur: User;
+  decision: 'EN_ATTENTE' | 'VALIDEE' | 'REFUSEE' | 'MODIFIEE';
+  commentaire?: string;
+  dateLimite: string;
+  dateDecision?: string;
 }
 
-export interface Offre {
-  ref: string;
-  poste: string;
-  statut: 'Publiée' | 'Brouillon' | 'Clôturée';
-  candidats: number;
-  canaux: string[];
+export interface Disponibilite {
+  id: string;
+  demandeId: string;
   date: string;
+  heureDebut: string;
+  heureFin: string;
+}
+
+// ✅ NOUVEAU : créneau d'interviewer (MANAGER / DIRECTEUR / DRH)
+export interface DisponibiliteInterviewer {
+  id: string;
+  userId: string;
+  user: Pick<User, 'id' | 'nom' | 'prenom' | 'role'>;
+  demandeId: string;
+  date: string;
+  heureDebut: string;
+  heureFin: string;
+  reservee: boolean;
+  createdAt: string;
+}
+
+// ✅ Interface Demande complète (alignée avec l'API)
+export interface Demande {
+  id: string;
+  reference: string;
+  intitulePoste: string;
+  description?: string;
+  justification: string;
+  motif: string;
+  commentaireMotif?: string;
+  personneRemplaceeNom?: string;
+  fonctionRemplacee?: string;
+  typeContrat: string;
+  priorite: 'HAUTE' | 'MOYENNE' | 'BASSE';
+  budgetMin?: number;
+  budgetMax?: number;
+  dateSouhaitee: string;
+  statut: string;
+  // ✅ Niveau du poste — essentiel pour déterminer le circuit et les types d'entretien
+  niveau: 'TECHNICIEN' | 'EMPLOYE' | 'CADRE_DEBUTANT' | 'CADRE_CONFIRME' | 'CADRE_SUPERIEUR' | 'STRATEGIQUE';
+  circuitType?: string;
+  totalEtapes?: number;
+  etapeActuelle: number;
+  valideeAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  createurId: string;
+  createur: User;
+  managerId: string;
+  manager: User;
+  directionId?: string;
+  direction?: Direction;
+  validations: ValidationEtape[];
+  disponibilites: Disponibilite[];
+  disponibilitesInterviewers?: DisponibiliteInterviewer[];
+  offre?: OffreEmploi;
+
+  // Champs de compatibilité ancienne interface (à supprimer progressivement)
+  ref?: string;
+  poste?: string;
+  contrat?: string;
+  budget?: string;
+  date?: string;
+  etape?: number;
+}
+
+export interface OffreEmploi {
+  id: string;
+  reference: string;
+  intitule: string;
+  description?: string;
+  profilRecherche?: string;
+  competences: string[];
+  fourchetteSalariale?: string;
+  typeContrat: string;
+  statut: string;
+  canauxPublication: string[];
+  datePublication?: string;
+  lienCandidature?: string;
+  demandeId?: string;
+  demande?: Demande;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Candidature {
   id: string;
+  reference: string;
   nom: string;
-  offre: string;
-  type: 'Nouvelle' | 'Base';
-  scoreGlobal: number;
-  scoreExp: number;
-  motsCles: string[];
+  prenom: string;
+  email: string;
+  telephone?: string;
+  cvUrl: string;
+  cvTexte?: string;
+  scoreGlobal?: number;
+  scoreExp?: number;
+  competencesDetectees: string[];
+  competencesManquantes: string[];
   statut: string;
+  consentementRGPD: boolean;
+  consentementIA: boolean;
+  dateSoumission: string;
+  offreId: string;
+  offre: OffreEmploi;
+  entretiens?: Entretien[];
 }
 
+// ✅ Interface Entretien corrigée avec TypeEntretien et DisponibiliteInterviewer
 export interface Entretien {
   id: string;
-  candidat: string;
-  poste: string;
-  type: 'RH' | 'Technique';
+  type: TypeEntretien;          // ✅ 'RH' | 'TECHNIQUE' | 'DIRECTION'
   date: string;
   heure: string;
   lieu: string;
-  statut: string;
+  statut: 'PLANIFIE' | 'REALISE' | 'ANNULE' | 'REPORTE';
+  feedback?: string;
+  evaluation?: number;
+  candidatureId: string;
+  candidature?: Candidature;
+  interviewerId: string;
+  interviewer?: User;
+  disponibiliteId?: string;
+  disponibilite?: DisponibiliteInterviewer;
 }
 
 export interface EvaluationPE {
@@ -121,22 +199,15 @@ export interface EvaluationPE {
 
 export interface Contrat {
   id: string;
-  candidat: string;
-  poste: string;
-  type: string;
+  reference: string;
+  typeContrat: string;
   salaire: string;
   dateDebut: string;
+  dateFin?: string;
   statut: string;
-}
-
-export interface ValidationItem {
-  ref: string;
-  objet: string;
-  type: string;
-  demandeur: string;
-  budget: string;
-  priorite: 'Haute' | 'Moyenne';
-  depuis: string;
+  pdfUrl?: string;
+  candidatureId: string;
+  candidature?: Candidature;
 }
 
 export interface StatCard {
@@ -152,26 +223,6 @@ export interface PEStep {
   role: string;
   label: string;
   description: string;
-}
-
-export interface ValidationEtape {
-  id: string;
-  demandeId: string;
-  niveauEtape: number;
-  acteurId: string;
-  acteur?: User;
-  decision: string;
-  commentaire?: string;
-  dateLimite: string;
-  dateDecision?: string;
-}
-
-export interface Disponibilite {
-  id: string;
-  demandeId: string;
-  date: string;
-  heureDebut: string;
-  heureFin: string;
 }
 
 export const PE_WORKFLOW: PEStep[] = [

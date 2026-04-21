@@ -1,8 +1,10 @@
+// frontend/src/components/pages/demandes/DemandeDetailsPage.tsx
+
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, User, FileText, CheckCircle, XCircle, Clock, AlertCircle, Info, Edit, X } from 'lucide-react';
 import { demandeService } from '../../../services/demande.service';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Card, CardBody } from '../../ui/Card';
+import { Card, CardBody, CardHeader, CardTitle, CardSubtitle } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
 import { Alert } from '../../ui/Alert';
@@ -16,12 +18,12 @@ interface Props {
 // ✅ Fonction pour obtenir le libellé du niveau
 const getNiveauLabel = (niveau: string): string => {
   const labels: Record<string, string> = {
-    'TECHNICIEN': '🔧 Technicien',
-    'EMPLOYE': '📋 Employé',
-    'CADRE_DEBUTANT': '🎓 Cadre débutant',
-    'CADRE_CONFIRME': '⭐ Cadre confirmé',
-    'CADRE_SUPERIEUR': '👔 Cadre supérieur',
-    'STRATEGIQUE': '🎯 Stratégique'
+    'TECHNICIEN': ' Technicien',
+    'EMPLOYE': ' Employé',
+    'CADRE_DEBUTANT': ' Cadre débutant',
+    'CADRE_CONFIRME': ' Cadre confirmé',
+    'CADRE_SUPERIEUR': ' Cadre supérieur',
+    'STRATEGIQUE': ' Stratégique'
   };
   return labels[niveau] || niveau;
 };
@@ -30,7 +32,7 @@ interface DemandeDetail {
   id: string;
   reference: string;
   intitulePoste: string;
-  niveau: string;  
+  niveau: string;
   description?: string;
   justification: string;
   motif: string;
@@ -83,6 +85,20 @@ interface DemandeDetail {
     heureDebut: string;
     heureFin: string;
   }[];
+  disponibilitesInterviewers?: {
+    id: string;
+    userId: string;
+    user?: {
+      id: string;
+      nom: string;
+      prenom: string;
+      role: string;
+    };
+    date: string;
+    heureDebut: string;
+    heureFin: string;
+    reservee: boolean;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -91,7 +107,7 @@ const buildMockDemande = (id: string): DemandeDetail => ({
   id,
   reference: 'DEM-2026-001',
   intitulePoste: 'Développeur Full Stack',
-  niveau: 'CADRE_CONFIRME',  // ← NOUVEAU
+  niveau: 'CADRE_CONFIRME',
   description: "Développement d'applications web avec React et Node.js",
   justification: "Besoin de renforcer l'équipe technique pour le nouveau projet",
   motif: 'RENFORCEMENT',
@@ -138,6 +154,7 @@ const buildMockDemande = (id: string): DemandeDetail => ({
     },
   ],
   disponibilites: [],
+  disponibilitesInterviewers: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 });
@@ -153,7 +170,6 @@ export const DemandeDetailsPage = ({ id }: Props) => {
   const [selectedValidation, setSelectedValidation] = useState<{ id: string; etape: number } | null>(null);
   const [validationAction, setValidationAction] = useState<'Validee' | 'Refusee' | null>(null);
   
-  // État pour l'édition
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     intitulePoste: '',
@@ -192,6 +208,22 @@ export const DemandeDetailsPage = ({ id }: Props) => {
   const canEdit = () => {
     if (!user || !demande) return false;
     return demande.createur?.id === user.id && demande.statut === 'BROUILLON';
+  };
+
+  // ✅ Fonction pour vérifier si l'utilisateur peut valider la demande
+  const canValidate = () => {
+    if (!user || !demande) return false;
+    
+    const validatingRoles = ['directeur', 'rh', 'daf', 'dga', 'dg', 'superadmin'];
+    if (!validatingRoles.includes(user.role)) return false;
+    
+    if (demande.statut === 'VALIDEE' || demande.statut === 'REJETEE') return false;
+    if (demande.statut === 'BROUILLON') return false;
+    
+    const validationEnCours = demande.validations?.find(v => v.decision === 'EN_ATTENTE');
+    if (!validationEnCours) return false;
+    
+    return validationEnCours.acteur.id === user.id;
   };
 
   const openEditForm = () => {
@@ -329,60 +361,52 @@ export const DemandeDetailsPage = ({ id }: Props) => {
     }
   };
 
-  // ✅ Circuit de validation - comme dans DemandesPage
   const getCircuitLabels = () => {
     if (!demande) return [];
     const circuits: Record<string, string[]> = {
-      TECHNICIEN:      ['DIR', 'RH'],
-      EMPLOYE:         ['DIR', 'RH'],
-      CADRE_DEBUTANT:  ['DIR', 'RH', 'DAF'],
-      CADRE_CONFIRME:  ['DIR', 'RH', 'DAF', 'DGA'],
-      CADRE_SUPERIEUR: ['DIR', 'RH', 'DAF', 'DGA', 'DG'],
-      STRATEGIQUE:     ['DIR', 'RH', 'DAF', 'DGA', 'DG'],
+      TECHNICIEN:      ['MANAGER', 'DIRECTEUR', 'DRH'],
+      EMPLOYE:         ['MANAGER', 'DIRECTEUR', 'DRH'],
+      CADRE_DEBUTANT:  ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF'],
+      CADRE_CONFIRME:  ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA'],
+      CADRE_SUPERIEUR: ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
+      STRATEGIQUE:     ['DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG'],
     };
-    return circuits[demande.circuitType || 'CADRE_CONFIRME'] || ['DIR', 'RH', 'DAF', 'DGA'];
+    
+    const circuitComplet = circuits[demande.circuitType || 'CADRE_CONFIRME'] || ['DIRECTEUR', 'DRH', 'DAF', 'DGA'];
+    const createurRole = demande.createur?.role?.toUpperCase();
+    
+    if (!createurRole) return circuitComplet;
+    
+    // Filtrer pour exclure le créateur
+    return circuitComplet.filter(label => label !== createurRole);
   };
 
-  // ✅ Calcul du currentStep pour l'affichage
   const getDisplayCurrentStep = () => {
     if (!demande) return 0;
     
-    const createurRole = demande.createur?.role;
-    const circuitLabels = getCircuitLabels();
+    // Si validée → toutes les étapes
+    if (demande.statut === 'VALIDEE') return getCircuitLabels().length;
     
-    const roleToLabel: Record<string, string> = {
-      'manager': 'MGR',
-      'directeur': 'DIR',
-      'rh': 'RH',
-      'daf': 'DAF',
-      'dga': 'DGA',
-      'dg': 'DG'
-    };
-    
-    const createurLabel = roleToLabel[createurRole || ''];
-    const createurIndex = circuitLabels.indexOf(createurLabel);
-    
-    if (createurIndex !== -1) {
-      return demande.etapeActuelle + createurIndex;
+    // Si rejetée → étape où ça a bloqué
+    if (demande.statut === 'REJETEE') {
+      const refusee = demande.validations?.find(v => v.decision === 'REFUSEE');
+      if (refusee) {
+        const circuitLabels = getCircuitLabels();
+        const idx = circuitLabels.indexOf(refusee.acteur?.role?.toUpperCase() || '');
+        return idx >= 0 ? idx : 0;
+      }
+      return 0;
     }
     
-    return demande.etapeActuelle;
-  };
-
-  // ✅ Vérifier si l'utilisateur est le validateur
-  const canValidate = () => {
-    if (!user || !demande) return false;
-    
-    const validatingRoles = ['directeur', 'rh', 'daf', 'dga', 'dg', 'superadmin'];
-    if (!validatingRoles.includes(user.role)) return false;
-    
-    if (demande.statut === 'VALIDEE' || demande.statut === 'REJETEE') return false;
-    if (demande.statut === 'BROUILLON') return false;
-    
+    // Sinon → étape en cours
     const validationEnCours = demande.validations?.find(v => v.decision === 'EN_ATTENTE');
-    if (!validationEnCours) return false;
+    if (validationEnCours) {
+      const circuitLabels = getCircuitLabels();
+      const idx = circuitLabels.indexOf(validationEnCours.acteur?.role?.toUpperCase() || '');
+      return idx >= 0 ? idx : 0;
+    }
     
-    return validationEnCours.acteur.id === user.id;
+    return 0;
   };
 
   const formatDate = (date: string) =>
@@ -420,7 +444,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
   const priorite = getPrioriteBadge(demande.priorite);
   const circuitLabels = getCircuitLabels();
   const displayCurrentStep = getDisplayCurrentStep();
-  const isValidable = canValidate();
+  const isValidable = canValidate(); // ✅ Maintenant la fonction existe
   const validationEnCours = demande.validations?.find(v => v.decision === 'EN_ATTENTE');
   const budgetText = demande.budgetMin && demande.budgetMax 
     ? `${demande.budgetMin} - ${demande.budgetMax} DT` 
@@ -473,18 +497,10 @@ export const DemandeDetailsPage = ({ id }: Props) => {
       )}
 
       {/* Alertes */}
-      {error && (
-        <div style={{ marginBottom: 20 }}>
-          <Alert variant="red">{error}</Alert>
-        </div>
-      )}
-      {success && (
-        <div style={{ marginBottom: 20 }}>
-          <Alert variant="green">{success}</Alert>
-        </div>
-      )}
+      {error && <div style={{ marginBottom: 20 }}><Alert variant="red">{error}</Alert></div>}
+      {success && <div style={{ marginBottom: 20 }}><Alert variant="green">{success}</Alert></div>}
 
-      {/* Formulaire d'édition */}
+      {/* Formulaire d'édition - reste identique */}
       {isEditing ? (
         <Card style={{ marginBottom: 24 }}>
           <CardBody>
@@ -495,11 +511,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
               </Button>
             </div>
             
-            {editError && (
-              <div style={{ marginBottom: 16 }}>
-                <Alert variant="red">{editError}</Alert>
-              </div>
-            )}
+            {editError && <div style={{ marginBottom: 16 }}><Alert variant="red">{editError}</Alert></div>}
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
@@ -519,20 +531,8 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                   Budget mensuel (DT) <span style={{ color: 'red' }}>*</span>
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <input
-                    type="number"
-                    placeholder="Min"
-                    value={editForm.budgetMin}
-                    onChange={(e) => setEditForm({ ...editForm, budgetMin: e.target.value })}
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max"
-                    value={editForm.budgetMax}
-                    onChange={(e) => setEditForm({ ...editForm, budgetMax: e.target.value })}
-                    style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                  />
+                  <input type="number" placeholder="Min" value={editForm.budgetMin} onChange={(e) => setEditForm({ ...editForm, budgetMin: e.target.value })} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }} />
+                  <input type="number" placeholder="Max" value={editForm.budgetMax} onChange={(e) => setEditForm({ ...editForm, budgetMax: e.target.value })} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }} />
                 </div>
               </div>
               
@@ -540,36 +540,21 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                 <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>
                   Date souhaitée <span style={{ color: 'red' }}>*</span>
                 </label>
-                <input
-                  type="date"
-                  value={editForm.dateSouhaitee}
-                  onChange={(e) => setEditForm({ ...editForm, dateSouhaitee: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                />
+                <input type="date" value={editForm.dateSouhaitee} onChange={(e) => setEditForm({ ...editForm, dateSouhaitee: e.target.value })} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }} />
               </div>
               
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>
                   Justification <span style={{ color: 'red' }}>*</span>
                 </label>
-                <textarea
-                  value={editForm.justification}
-                  onChange={(e) => setEditForm({ ...editForm, justification: e.target.value })}
-                  rows={3}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                />
+                <textarea value={editForm.justification} onChange={(e) => setEditForm({ ...editForm, justification: e.target.value })} rows={3} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }} />
               </div>
               
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>
                   Description du poste
                 </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  rows={4}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                />
+                <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }} />
               </div>
               
               <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
@@ -648,14 +633,11 @@ export const DemandeDetailsPage = ({ id }: Props) => {
               <div style={{ marginBottom: 24, overflowX: 'auto' }}>
                 <CircuitSteps labels={circuitLabels} currentStep={displayCurrentStep} />
               </div>
-
-              {/* Légende */}
               <div style={{ display: 'flex', gap: 16, marginBottom: 20, fontSize: 11, color: 'var(--text-muted)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--green)' }} /><span>Validée</span></div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--gold)' }} /><span>En cours</span></div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--white)', border: '1px solid var(--border)' }} /><span>À venir</span></div>
               </div>
-
               <div style={{ marginTop: 20 }}>
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Historique des validations</h4>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -677,9 +659,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                         <tr key={validation.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                           <td style={{ padding: '12px 8px', fontSize: 13 }}>
                             <strong>Étape {validation.niveauEtape}</strong>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              {circuitLabels[validation.niveauEtape - 1] || `Niveau ${validation.niveauEtape}`}
-                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{circuitLabels[validation.niveauEtape - 1] || `Niveau ${validation.niveauEtape}`}</div>
                           </td>
                           <td style={{ padding: '12px 8px', fontSize: 13 }}>
                             <div>{validation.acteur.prenom} {validation.acteur.nom}</div>
@@ -693,22 +673,16 @@ export const DemandeDetailsPage = ({ id }: Props) => {
                               </span>
                             </div>
                           </td>
-                          <td style={{ padding: '12px 8px', fontSize: 13, color: 'var(--text-muted)' }}>
-                            {validation.commentaire || '-'}
-                          </td>
-                          <td style={{ padding: '12px 8px', fontSize: 12 }}>
-                            {validation.dateDecision ? formatDate(validation.dateDecision) : '-'}
-                          </td>
+                          <td style={{ padding: '12px 8px', fontSize: 13, color: 'var(--text-muted)' }}>{validation.commentaire || '-'}</td>
+                          <td style={{ padding: '12px 8px', fontSize: 12 }}>{validation.dateDecision ? formatDate(validation.dateDecision) : '-'}</td>
                           <td style={{ padding: '12px 8px', fontSize: 12 }}>
                             {isEnAttente ? (
                               <span style={{ color: isExpired ? 'var(--red)' : 'var(--amber)' }}>
                                 {formatDate(validation.dateLimite)}
                                 {isExpired && <AlertCircle size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />}
                               </span>
-                            ) : (
-                              formatDate(validation.dateLimite)
-                            )}
-                          </td>
+                            ) : (formatDate(validation.dateLimite))}
+                           </td>
                         </tr>
                       );
                     })}
@@ -718,7 +692,7 @@ export const DemandeDetailsPage = ({ id }: Props) => {
             </CardBody>
           </Card>
 
-          {/* Disponibilités */}
+          {/* Disponibilités techniques (créées par le créateur) */}
           {demande.disponibilites && demande.disponibilites.length > 0 && (
             <Card style={{ marginBottom: 24 }}>
               <CardBody>
@@ -739,29 +713,66 @@ export const DemandeDetailsPage = ({ id }: Props) => {
             </Card>
           )}
 
-          {/* ✅ Boutons de validation - placés AU-DESSUS du tableau */}
+          {/* Disponibilités des interviewers (MANAGER/DIRECTEUR) */}
+          {demande.disponibilitesInterviewers && demande.disponibilitesInterviewers.length > 0 && (
+            <Card style={{ marginBottom: 24 }}>
+              <CardHeader>
+                <CardTitle>Disponibilités des interviewers</CardTitle>
+                <CardSubtitle>Créneaux saisis par le manager et le directeur pour les entretiens</CardSubtitle>
+              </CardHeader>
+              <CardBody>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {demande.disponibilitesInterviewers.map((dispo) => (
+                    <div
+                      key={dispo.id}
+                      style={{
+                        padding: 12,
+                        border: `1px solid ${dispo.reservee ? 'var(--green)' : 'var(--border-light)'}`,
+                        borderRadius: 8,
+                        background: dispo.reservee ? 'rgba(90,122,58,0.05)' : 'transparent'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <Badge variant={dispo.user?.role === 'MANAGER' ? 'olive' : 'gold'}>
+                            {dispo.user?.role === 'MANAGER' ? ' Manager' : ' Directeur'}
+                          </Badge>
+                          <span style={{ marginLeft: 12, fontWeight: 500 }}>
+                            {dispo.user?.prenom} {dispo.user?.nom}
+                          </span>
+                        </div>
+                        {dispo.reservee && <Badge variant="green">✅ Réservé</Badge>}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13 }}>
+                        <Calendar size={14} style={{ display: 'inline', marginRight: 6 }} />
+                        {new Date(dispo.date).toLocaleDateString('fr-FR')}
+                        <span style={{ marginLeft: 16 }}>
+                          <Clock size={14} style={{ display: 'inline', marginRight: 6 }} />
+                          {dispo.heureDebut} - {dispo.heureFin}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
+          {/* Boutons de validation */}
           {isValidable && validationEnCours && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginBottom: 24 }}>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  setSelectedValidation({ id: demande.id, etape: validationEnCours.niveauEtape });
-                  setValidationAction('Refusee');
-                  setShowValidationModal(true);
-                }}
-              >
+              <Button variant="danger" size="sm" onClick={() => {
+                setSelectedValidation({ id: demande.id, etape: validationEnCours.niveauEtape });
+                setValidationAction('Refusee');
+                setShowValidationModal(true);
+              }}>
                 Refuser
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  setSelectedValidation({ id: demande.id, etape: validationEnCours.niveauEtape });
-                  setValidationAction('Validee');
-                  setShowValidationModal(true);
-                }}
-              >
+              <Button variant="primary" size="sm" onClick={() => {
+                setSelectedValidation({ id: demande.id, etape: validationEnCours.niveauEtape });
+                setValidationAction('Validee');
+                setShowValidationModal(true);
+              }}>
                 Valider
               </Button>
             </div>

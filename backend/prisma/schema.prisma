@@ -46,6 +46,7 @@ enum Priorite {
 enum StatutDemande {
   BROUILLON
   SOUMISE
+  EN_VALIDATION_MANAGER
   EN_VALIDATION_DIR
   EN_VALIDATION_DRH
   EN_VALIDATION_DAF
@@ -71,6 +72,13 @@ enum CircuitType {
   CADRE_CONFIRME
   CADRE_SUPERIEUR
   STRATEGIQUE
+}
+
+
+enum TypeEntretien {
+  RH         // Planifié par le DRH, date libre
+  TECHNIQUE  // Manager obligatoire, créneau depuis DisponibiliteInterviewer
+  DIRECTION  // Directeur, uniquement pour CADRE_SUPERIEUR et STRATEGIQUE
 }
 
 // ============================================
@@ -122,6 +130,9 @@ model User {
   evaluationsEmploye EvaluationPE[] @relation("EmployeEvaluations")
   evaluationsManager EvaluationPE[] @relation("ManagerEvaluations")
   entretiensRealises Entretien[]    @relation("InterviewerEntretiens")
+
+  // ✅ NOUVEAU : disponibilités pour entretiens (MANAGER, DIRECTEUR, DRH)
+  disponibilitesInterviewer DisponibiliteInterviewer[]
 
   notifications Notification[]
   auditLogs     AuditLog[]
@@ -175,10 +186,8 @@ model DemandeRecrutement {
   dateSouhaitee DateTime
   statut        StatutDemande @default(BROUILLON)
 
-  // ✅ Niveau du poste (obligatoire)
   niveau        CircuitType   @default(CADRE_CONFIRME)
   
-  // ✅ Déduit automatiquement du niveau
   circuitType     CircuitType?
   totalEtapes     Int?
   etapeActuelle   Int          @default(0)
@@ -202,7 +211,44 @@ model DemandeRecrutement {
   offre          OffreEmploi?
   disponibilites Disponibilite[]
 
+  // ✅ NOUVEAU : disponibilités des interviewers liées à cette demande
+  disponibilitesInterviewers DisponibiliteInterviewer[]
+
   @@map("demandes")
+}
+
+// ============================================
+// ✅ NOUVEAU MODÈLE : DISPONIBILITE INTERVIEWER
+// ============================================
+// Stocke les créneaux des interviewers (MANAGER, DIRECTEUR, DRH)
+// liés à une demande de recrutement spécifique.
+// Utilisé par le RH pour planifier les entretiens TECHNIQUE et DIRECTION.
+// Pour l'entretien RH, la date est choisie librement par le DRH.
+
+model DisponibiliteInterviewer {
+  id         String   @id @default(uuid())
+
+  // L'interviewer qui propose ce créneau (MANAGER, DIRECTEUR, DRH)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  // La demande à laquelle ce créneau est associé
+  demandeId  String
+  demande    DemandeRecrutement @relation(fields: [demandeId], references: [id], onDelete: Cascade)
+
+  date       DateTime
+  heureDebut String
+  heureFin   String
+
+  // Passe à true quand un entretien est planifié sur ce créneau
+  reservee   Boolean  @default(false)
+
+  createdAt  DateTime @default(now())
+
+  // Un créneau ne peut être utilisé que pour un seul entretien
+  entretien  Entretien?
+
+  @@map("disponibilites_interviewers")
 }
 
 // ============================================
@@ -247,7 +293,7 @@ model RelanceJob {
 }
 
 // ============================================
-// MODÈLE DISPONIBILITE
+// MODÈLE DISPONIBILITE (créneaux demande - entretien technique)
 // ============================================
 
 model Disponibilite {
@@ -275,7 +321,7 @@ model OffreEmploi {
   fourchetteSalariale String?
   typeContrat         TypeContrat
   statut              String      @default("BROUILLON")
-  canauxPublication   String[]
+
   datePublication     DateTime?
   lienCandidature     String?     @unique
   
@@ -312,32 +358,43 @@ model Candidature {
   consentementIA        Boolean  @default(false)
   dateSoumission        DateTime @default(now())
 
-  offreId    String
-  offre      OffreEmploi @relation(fields: [offreId], references: [id])
-  entretiens Entretien[]
-  contrat    Contrat?
+  offreId     String?      // ✅ AJOUTER ? pour rendre optionnel
+  offre       OffreEmploi? @relation(fields: [offreId], references: [id])  // ✅ AJOUTER ?
+  entretiens  Entretien[]
+  contrat     Contrat?
 
   @@map("candidatures")
 }
-
 // ============================================
-// MODÈLE ENTRETIEN
+// MODÈLE ENTRETIEN — CORRIGÉ
 // ============================================
 
 model Entretien {
-  id         String   @id @default(uuid())
-  type       String
+  id         String        @id @default(uuid())
+
+  // ✅ Enum TypeEntretien (RH | TECHNIQUE | DIRECTION)
+  type       TypeEntretien
+
   date       DateTime
   heure      String
   lieu       String
-  statut     String   @default("PLANIFIE")
+  statut     String        @default("PLANIFIE")
   feedback   String?
   evaluation Int?
 
   candidatureId String
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
+
+  // Pour RH : interviewerId = DRH lui-même
+  // Pour TECHNIQUE : interviewerId = MANAGER de la direction
+  // Pour DIRECTION : interviewerId = DIRECTEUR
   interviewerId String
   interviewer   User        @relation("InterviewerEntretiens", fields: [interviewerId], references: [id])
+
+  // ✅ NOUVEAU : créneau utilisé (null pour entretien RH — date libre)
+  // Pour TECHNIQUE et DIRECTION : obligatoirement un créneau DisponibiliteInterviewer
+  disponibiliteId String?                    @unique
+  disponibilite   DisponibiliteInterviewer?  @relation(fields: [disponibiliteId], references: [id])
 
   @@map("entretiens")
 }

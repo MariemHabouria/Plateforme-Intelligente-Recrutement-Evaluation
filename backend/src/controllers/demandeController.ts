@@ -31,6 +31,22 @@ const VALIDATEURS_PAR_NIVEAU: Record<string, string[]> = {
 };
 
 // ============================================
+// NIVEAUX AVEC ENTRETIEN DIRECTION
+// ============================================
+const NIVEAUX_AVEC_DIRECTION = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
+
+// ============================================
+// DÉTERMINER LES INTERVIEWERS NÉCESSAIRES
+// ============================================
+const determinerInterviewers = (niveau: string) => {
+  return {
+    rh: true,
+    technique: 'MANAGER',
+    direction: NIVEAUX_AVEC_DIRECTION.includes(niveau) ? 'DIRECTEUR' : null
+  };
+};
+
+// ============================================
 // DÉTERMINER LE CIRCUIT SELON LE NIVEAU ET LE CRÉATEUR
 // ============================================
 
@@ -38,18 +54,15 @@ const determinerCircuit = (
   niveau: string,
   createurRole: string
 ): { etapes: any[]; totalEtapes: number } => {
-  // Récupérer les validateurs naturels pour ce niveau
   const validateursNaturels = VALIDATEURS_PAR_NIVEAU[niveau] || ['DIRECTEUR', 'DRH'];
   
   console.log(`📋 Validateurs naturels pour niveau ${niveau}: ${validateursNaturels.join(' → ')}`);
   console.log(`👤 Créateur: ${createurRole}`);
   
-  // Filtrer pour enlever le créateur s'il est dans la liste
   const validateursFiltres = validateursNaturels.filter(role => role !== createurRole);
   
   console.log(`✅ Circuit final: ${validateursFiltres.join(' → ') || '(aucun - validation directe)'}`);
   
-  // Construire les étapes avec niveaux
   const etapes = validateursFiltres.map((role, index) => ({
     niveau: index + 1,
     role: role,
@@ -189,7 +202,6 @@ const verifierDroitsCreateur = (
   createurRole: string,
   niveau: string
 ): { valid: boolean; message?: string } => {
-  // DAF : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DAF') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
     if (!allowedTypes.includes(niveau)) {
@@ -200,7 +212,6 @@ const verifierDroitsCreateur = (
     }
   }
 
-  // DGA : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DGA') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
     if (!allowedTypes.includes(niveau)) {
@@ -211,7 +222,6 @@ const verifierDroitsCreateur = (
     }
   }
 
-  // DG : uniquement CADRE_SUPERIEUR ou STRATEGIQUE
   if (createurRole === 'DG') {
     const allowedTypes = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
     if (!allowedTypes.includes(niveau)) {
@@ -245,16 +255,32 @@ export const getDemandes = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
     const userDirectionId = (req as any).user.directionId;
-    const { page = 1, limit = 10, statut, priorite } = req.query;
+    // ✅ Récupérer le nouveau paramètre aValider
+    const { page = 1, limit = 10, statut, priorite, aValider } = req.query;
 
     const where: any = {};
 
-    if (userRole === 'MANAGER') {
-      where.managerId = userId;
-    } else if (userRole === 'DIRECTEUR') {
-      where.directionId = userDirectionId;
-    } else if (!['DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'].includes(userRole)) {
-      where.managerId = userId;
+    // ✅ Filtre "mes demandes à valider" : prioritaire sur le filtrage par rôle
+    if (aValider === 'true') {
+      const rolesValidateurs = ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'];
+      if (rolesValidateurs.includes(userRole)) {
+        // Retourne uniquement les demandes qui ont une validation EN_ATTENTE assignée à cet utilisateur
+        where.validations = {
+          some: {
+            acteurId: userId,
+            decision: 'EN_ATTENTE'
+          }
+        };
+      }
+    } else {
+      // Filtrage normal par rôle
+      if (userRole === 'MANAGER') {
+        where.managerId = userId;
+      } else if (userRole === 'DIRECTEUR') {
+        where.directionId = userDirectionId;
+      } else if (!['DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'].includes(userRole)) {
+        where.managerId = userId;
+      }
     }
 
     if (statut) where.statut = statut;
@@ -315,7 +341,13 @@ export const getDemandeById = async (req: Request, res: Response) => {
         },
         disponibilites: true,
         circuitConfig: true,
-        offre: true
+        offre: true,
+        disponibilitesInterviewers: {
+          include: {
+            user: { select: { id: true, nom: true, prenom: true, role: true } }
+          },
+          orderBy: { date: 'asc' }
+        }
       }
     });
 
@@ -389,7 +421,6 @@ export const createDemande = async (req: Request, res: Response) => {
       targetDirectionId = createur.directionId;
     }
 
-    // ✅ Vérifier les droits du créateur selon le niveau
     const droits = verifierDroitsCreateur(userRole, niveau);
     if (!droits.valid) return sendError(res, droits.message!, 403);
 
@@ -417,7 +448,6 @@ export const createDemande = async (req: Request, res: Response) => {
         break;
     }
 
-    // ✅ Récupérer le circuit config pour ce niveau
     const circuitConfig = await prisma.circuitConfig.findFirst({
       where: { type: niveau as any, actif: true }
     });
@@ -609,23 +639,53 @@ export const submitDemande = async (req: Request, res: Response) => {
       return sendError(res, 'La demande doit avoir un niveau de poste', 400);
     }
 
-    // ✅ Utiliser le niveau directement
-    const { etapes, totalEtapes } = determinerCircuit(
-      demande.niveau,
-      demande.createur.role
-    );
+    const { etapes, totalEtapes } = determinerCircuit(demande.niveau, demande.createur.role);
+    const rolesCircuit = etapes.map((e: any) => e.role);
 
-    console.log(`🔧 Circuit déterminé: ${etapes.map((e: any) => e.role).join(' → ') || '(aucune)'}`);
+    console.log(`🔧 Circuit: ${rolesCircuit.join(' → ') || '(aucune)'}`);
+
+    const interviewers = determinerInterviewers(demande.niveau);
+
+    if (!rolesCircuit.includes('MANAGER')) {
+      const manager = await prisma.user.findFirst({
+        where: { role: 'MANAGER', directionId: demande.directionId || undefined, actif: true }
+      });
+      if (manager) {
+        await emailService.sendDisponibiliteRequest({
+          nom: manager.nom,
+          prenom: manager.prenom,
+          email: manager.email,
+          demandeRef: demande.reference,
+          poste: demande.intitulePoste,
+          role: 'MANAGER',
+          actionUrl: `${process.env.FRONTEND_URL}/demandes/${demande.id}/disponibilites`
+        });
+        console.log(`📅 Notification dispo envoyée au MANAGER hors circuit: ${manager.email}`);
+      }
+    }
+
+    if (interviewers.direction === 'DIRECTEUR' && !rolesCircuit.includes('DIRECTEUR')) {
+      const directeur = await prisma.user.findFirst({
+        where: { role: 'DIRECTEUR', directionId: demande.directionId || undefined, actif: true }
+      });
+      if (directeur) {
+        await emailService.sendDisponibiliteRequest({
+          nom: directeur.nom,
+          prenom: directeur.prenom,
+          email: directeur.email,
+          demandeRef: demande.reference,
+          poste: demande.intitulePoste,
+          role: 'DIRECTEUR',
+          actionUrl: `${process.env.FRONTEND_URL}/demandes/${demande.id}/disponibilites`
+        });
+        console.log(`📅 Notification dispo envoyée au DIRECTEUR hors circuit: ${directeur.email}`);
+      }
+    }
 
     if (etapes.length === 0) {
-      // Validation directe
       await prisma.demandeRecrutement.update({
         where: { id },
-        data: {
-          statut: 'VALIDEE',
-          valideeAt: new Date(),
-          etapeActuelle: 0
-        }
+        data: { statut: 'VALIDEE', valideeAt: new Date(), etapeActuelle: 0 }
       });
 
       await createAuditLog(userId, 'SUBMIT_DEMANDE_DIRECT', 'DemandeRecrutement', demande.id,
@@ -634,16 +694,11 @@ export const submitDemande = async (req: Request, res: Response) => {
       return sendSuccess(res, null, 'Demande validée automatiquement');
     }
 
-    // Mettre à jour la demande avec les infos du circuit
     await prisma.demandeRecrutement.update({
       where: { id },
-      data: {
-        totalEtapes: totalEtapes,
-        etapeActuelle: 0
-      }
+      data: { totalEtapes: totalEtapes, etapeActuelle: 0 }
     });
 
-    // Créer la première validation
     const premiereEtape = etapes[0];
     const premierValidateur = await trouverValidateur(premiereEtape.role, demande.directionId);
 
@@ -655,12 +710,7 @@ export const submitDemande = async (req: Request, res: Response) => {
     dateLimite.setHours(dateLimite.getHours() + 48);
 
     await prisma.validationEtape.create({
-      data: {
-        demandeId: id,
-        niveauEtape: 1,
-        acteurId: premierValidateur.id,
-        dateLimite
-      }
+      data: { demandeId: id, niveauEtape: 1, acteurId: premierValidateur.id, dateLimite }
     });
 
     const nouveauStatut = STATUT_PAR_ROLE[premiereEtape.role] || 'EN_VALIDATION_DIR';
@@ -674,22 +724,12 @@ export const submitDemande = async (req: Request, res: Response) => {
       `Soumission de la demande ${demande.reference}`);
 
     await notifierValidateur(
-      premierValidateur,
-      demande.reference,
-      demande.intitulePoste,
-      1,
-      totalEtapes,
-      premiereEtape.role,
-      dateLimite,
-      demande.id
+      premierValidateur, demande.reference, demande.intitulePoste,
+      1, totalEtapes, premiereEtape.role, dateLimite, demande.id
     );
 
     sendSuccess(res, {
-      demande: {
-        ...demande,
-        totalEtapes: totalEtapes,
-        prochaineEtape: premiereEtape
-      }
+      demande: { ...demande, totalEtapes, prochaineEtape: premiereEtape }
     }, 'Demande soumise avec succès');
 
   } catch (error) {
@@ -701,7 +741,7 @@ export const submitDemande = async (req: Request, res: Response) => {
 export const validerDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { decision, commentaire } = req.body;
+    const { decision, commentaire, disponibilites } = req.body;
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
     const userDirectionId = (req as any).user.directionId;
@@ -726,12 +766,29 @@ export const validerDemande = async (req: Request, res: Response) => {
       return sendForbidden(res, "Vous n'êtes pas le validateur de cette étape");
     }
 
-    // Vérification spécifique pour DIRECTEUR
+    if ((userRole === 'MANAGER' || userRole === 'DIRECTEUR') && 
+        Array.isArray(disponibilites) && disponibilites.length > 0) {
+      await Promise.all(
+        disponibilites.map((d: any) =>
+          prisma.disponibiliteInterviewer.create({
+            data: {
+              userId,
+              demandeId: id,
+              date: new Date(d.date),
+              heureDebut: d.heureDebut,
+              heureFin: d.heureFin,
+              reservee: false
+            }
+          })
+        )
+      );
+      console.log(`📅 ${userRole} a ajouté ${disponibilites.length} disponibilité(s) lors de sa validation`);
+    }
+
     if (userRole === 'DIRECTEUR' && userDirectionId !== demande.directionId) {
       return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre propre direction');
     }
 
-    // Vérification spécifique pour MANAGER
     if (userRole === 'MANAGER' && demande.managerId !== userId) {
       return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre équipe');
     }
@@ -761,7 +818,6 @@ export const validerDemande = async (req: Request, res: Response) => {
         data: { statut: 'REJETEE' as any }
       });
 
-      // Notifier le créateur et le manager du refus
       await emailService.sendRejetNotification({
         nom: demande.createur.nom, prenom: demande.createur.prenom,
         email: demande.createur.email, demandeRef: demande.reference,
@@ -781,7 +837,6 @@ export const validerDemande = async (req: Request, res: Response) => {
 
     const nouvellesEtapesValidees = demande.etapeActuelle + 1;
 
-    // Vérifier si c'est la dernière étape
     if (nouvellesEtapesValidees >= (demande.totalEtapes || 0)) {
       console.log('✅ Dernière étape - Validation finale de la demande');
       
@@ -797,7 +852,6 @@ export const validerDemande = async (req: Request, res: Response) => {
       await createAuditLog(userId, 'VALIDATE_DEMANDE_FINAL', 'DemandeRecrutement', demande.id,
         `Validation finale de la demande ${demande.reference}`);
 
-      // Notifier le DRH qu'il peut créer l'offre
       const drh = await prisma.user.findFirst({ where: { role: 'DRH', actif: true } });
       if (drh) {
         await emailService.sendNotificationEmail({
@@ -812,7 +866,6 @@ export const validerDemande = async (req: Request, res: Response) => {
       return sendSuccess(res, null, 'Demande validée avec succès');
     }
 
-    // Passer à l'étape suivante
     const { etapes } = determinerCircuit(demande.niveau, demande.createur.role);
     const prochaineEtapeConfig = etapes[nouvellesEtapesValidees];
 

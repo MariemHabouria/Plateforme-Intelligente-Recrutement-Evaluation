@@ -84,7 +84,29 @@ interface AccountActivationEmailData {
   activationToken: string;
   activationUrl: string;
 }
-
+interface DisponibiliteRequestData {
+  nom: string;
+  prenom: string;
+  email: string;
+  demandeRef: string;
+  poste: string;
+  role: string;        // 'MANAGER' | 'DIRECTEUR'
+  actionUrl: string;
+}
+ 
+interface EntretienNotificationData {
+  nom: string;
+  prenom: string;
+  email: string;
+  candidatNom: string;
+  poste: string;
+  type: string;        // 'RH' | 'TECHNIQUE' | 'DIRECTION'
+  date: Date;
+  heure: string;
+  lieu: string;
+  actionUrl: string;
+}
+ 
 // ============================================
 // EMAIL SERVICE - VERSION SIMULATION
 // ============================================
@@ -393,6 +415,70 @@ export const emailService = {
     
     return { success: true, simulated: true, to: data.email, type: 'notification' };
   },
+  async sendDisponibiliteRequest(data: DisponibiliteRequestData) {
+  const roleLabel = data.role === 'MANAGER' ? 'Manager' : 'Directeur';
+ 
+  console.log('\n' + '='.repeat(70));
+  console.log('📅 SAISIE DE DISPONIBILITÉS REQUISE');
+  console.log('='.repeat(70));
+  console.log(`À: ${data.email}`);
+  console.log(`Rôle: ${roleLabel}`);
+  console.log('-'.repeat(70));
+  console.log(`Bonjour ${data.prenom} ${data.nom},`);
+  console.log('');
+  console.log(`Une demande de recrutement a été soumise :`);
+  console.log(`   Référence : ${data.demandeRef}`);
+  console.log(`   Poste     : ${data.poste}`);
+  console.log('');
+  console.log(`En tant que ${roleLabel}, vous devez participer à l'entretien technique.`);
+  console.log(`Merci de saisir vos disponibilités dans les meilleurs délais.`);
+  console.log('');
+  console.log(`🌐 SAISIR MES DISPONIBILITÉS : ${data.actionUrl}`);
+  console.log('='.repeat(70) + '\n');
+ 
+  return { success: true, simulated: true, to: data.email, type: 'disponibilite_request' };
+},
+ 
+// ============================================
+// MÉTHODE 2 : Notification entretien planifié
+// ============================================
+// Envoyée à l'interviewer (MANAGER, DIRECTEUR ou DRH) quand le RH
+// planifie un entretien sur un de ses créneaux.
+ 
+async sendEntretienNotification(data: EntretienNotificationData) {
+  const typeLabels: Record<string, string> = {
+    RH: 'Entretien RH',
+    TECHNIQUE: 'Entretien technique',
+    DIRECTION: 'Entretien direction'
+  };
+ 
+  const dateFormatee = new Date(data.date).toLocaleDateString('fr-TN', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+  });
+ 
+  console.log('\n' + '='.repeat(70));
+  console.log('🗓️  ENTRETIEN PLANIFIÉ');
+  console.log('='.repeat(70));
+  console.log(`À: ${data.email}`);
+  console.log('-'.repeat(70));
+  console.log(`Bonjour ${data.prenom} ${data.nom},`);
+  console.log('');
+  console.log(`Un entretien a été planifié avec un candidat :`);
+  console.log('');
+  console.log(`   Type      : ${typeLabels[data.type] || data.type}`);
+  console.log(`   Candidat  : ${data.candidatNom}`);
+  console.log(`   Poste     : ${data.poste}`);
+  console.log(`   Date      : ${dateFormatee}`);
+  console.log(`   Heure     : ${data.heure}`);
+  console.log(`   Lieu      : ${data.lieu}`);
+  console.log('');
+  console.log(`Après l'entretien, merci de saisir votre feedback.`);
+  console.log('');
+  console.log(`🌐 VOIR L'ENTRETIEN : ${data.actionUrl}`);
+  console.log('='.repeat(70) + '\n');
+ 
+  return { success: true, simulated: true, to: data.email, type: 'entretien_notification' };
+},
 
   /**
    * Version simplifiée pour les logs

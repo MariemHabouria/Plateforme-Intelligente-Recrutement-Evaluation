@@ -3,9 +3,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from '../utils/helpers';
-import { iaOffreService } from '../services/iaOffre.service';
-import { linkedinService } from '../services/linkedin.service';
-import { tanitjobsService } from '../services/tanitjobs.service';
 import { TypeContrat } from '@prisma/client';
 import crypto from 'crypto';
 
@@ -36,7 +33,6 @@ export const getOffres = async (req: Request, res: Response) => {
 
     const where: any = {};
 
-    // ✅ AJOUTER CE FILTRE : Uniquement les offres avec une demande associée
     where.demandeId = { not: null };
 
     if (userRole === 'DRH' || userRole === 'SUPER_ADMIN') {
@@ -73,7 +69,7 @@ export const getOffres = async (req: Request, res: Response) => {
       prisma.offreEmploi.count({ where })
     ]);
 
-    console.log(`📊 ${offres.length} offre(s) trouvée(s) (uniquement celles avec demande)`);
+    console.log(`📊 ${offres.length} offre(s) trouvée(s)`);
 
     sendSuccess(res, {
       offres,
@@ -154,12 +150,10 @@ export const getOffreParToken = async (req: Request, res: Response) => {
 
 // ============================================
 // DEMANDES SANS OFFRE
-// ✅ Retourne UNIQUEMENT les demandes VALIDEES sans offre associée
 // ============================================
 
 export const getDemandesSansOffre = async (req: Request, res: Response) => {
   try {
-    // ✅ offre: null = seulement les demandes qui n'ont PAS d'offre liée
     const demandes = await prisma.demandeRecrutement.findMany({
       where: {
         statut: 'VALIDEE',
@@ -188,42 +182,7 @@ export const getDemandesSansOffre = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// GENERATION IA
-// ============================================
-
-export const genererOffreAvecIA = async (req: Request, res: Response) => {
-  try {
-    const { demandeId } = req.body;
-
-    const demande = await prisma.demandeRecrutement.findUnique({
-      where: { id: demandeId },
-      include: { direction: true, createur: true }
-    });
-
-    if (!demande) return sendNotFound(res, 'Demande non trouvee');
-
-    const offreGeneree = await iaOffreService.genererOffre({
-      intitulePoste: demande.intitulePoste,
-      budgetMin: demande.budgetMin?.toNumber() || 0,
-      budgetMax: demande.budgetMax?.toNumber() || 0,
-      typeContrat: demande.typeContrat,
-      directionNom: demande.direction?.nom,
-      descriptionDemande: demande.description || undefined,
-      justification: demande.justification
-    });
-
-    // ✅ Retourne juste les données générées, ne crée RIEN en base
-    sendSuccess(res, offreGeneree, 'Offre generee avec succes par IA');
-
-  } catch (error) {
-    console.error('genererOffreAvecIA error:', error);
-    sendError(res, 'Erreur lors de la generation IA');
-  }
-};
-
-// ============================================
-// CREATION OFFRE
-// ✅ Crée UNIQUEMENT une nouvelle offre, ne met plus à jour l'existante
+// CREATION OFFRE (sans IA)
 // ============================================
 
 export const createOffre = async (req: Request, res: Response) => {
@@ -242,8 +201,7 @@ export const createOffre = async (req: Request, res: Response) => {
       profilRecherche,
       competences,
       fourchetteSalariale,
-      typeContrat,
-      canauxPublication
+      typeContrat
     } = req.body;
 
     if (!demandeId) return res.status(400).json({ success: false, message: 'demandeId requis' });
@@ -270,16 +228,14 @@ export const createOffre = async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ Vérifier qu'il n'existe pas déjà une offre pour cette demande
     const offreExistante = await prisma.offreEmploi.findFirst({ where: { demandeId } });
     if (offreExistante) {
       return res.status(400).json({
         success: false,
-        message: `Une offre existe déjà pour cette demande (${offreExistante.reference}). Veuillez la modifier depuis le tableau.`
+        message: `Une offre existe déjà pour cette demande (${offreExistante.reference})`
       });
     }
 
-    // ✅ Création d'une nouvelle offre uniquement
     const year = new Date().getFullYear();
     const timestamp = Date.now();
     const reference = `OFF-${year}-${timestamp}`;
@@ -297,7 +253,6 @@ export const createOffre = async (req: Request, res: Response) => {
         fourchetteSalariale: fourchetteSalariale || '',
         typeContrat: typeContrat as TypeContrat,
         statut: 'BROUILLON',
-        canauxPublication: canauxPublication || ['Kilani'],
         rhId: userId,
         lienCandidature,
         demande: { connect: { id: demandeId } }
@@ -322,13 +277,12 @@ export const createOffre = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// PUBLICATION MULTI-CANAUX
+// PUBLICATION OFFRE (simplifiée)
 // ============================================
 
 export const publierOffre = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { canaux } = req.body;
     const userId = (req as any).user.id;
 
     let offre = await prisma.offreEmploi.findUnique({
@@ -345,28 +299,6 @@ export const publierOffre = async (req: Request, res: Response) => {
     let lienCandidature = offre.lienCandidature;
     if (!lienCandidature) {
       lienCandidature = generateLienCandidature(offre.id, offre.reference);
-      await prisma.offreEmploi.update({ where: { id }, data: { lienCandidature } });
-    }
-
-    const resultatsPublication = [];
-
-    if (canaux.includes('LinkedIn')) {
-      const result = await linkedinService.publierOffre(offre, {
-        description: offre.description,
-        profilRecherche: offre.profilRecherche,
-        competences: offre.competences,
-        lienCandidature
-      });
-      resultatsPublication.push({ canal: 'LinkedIn', ...result });
-    }
-
-    if (canaux.includes('TanitJobs')) {
-      const result = await tanitjobsService.publierOffre(offre, {
-        description: offre.description,
-        competences: offre.competences,
-        lienCandidature
-      });
-      resultatsPublication.push({ canal: 'TanitJobs', ...result });
     }
 
     const offreMaj = await prisma.offreEmploi.update({
@@ -374,7 +306,7 @@ export const publierOffre = async (req: Request, res: Response) => {
       data: {
         statut: 'PUBLIEE',
         datePublication: new Date(),
-        canauxPublication: canaux
+        lienCandidature
       }
     });
 
@@ -383,14 +315,13 @@ export const publierOffre = async (req: Request, res: Response) => {
         action: 'PUBLISH_OFFRE',
         entityType: 'OffreEmploi',
         entityId: offre.id,
-        details: `Publication de l'offre ${offre.reference} sur: ${canaux.join(', ')}`,
+        details: `Publication de l'offre ${offre.reference}`,
         acteurId: userId
       }
     });
 
     sendSuccess(res, {
       offre: offreMaj,
-      publication: resultatsPublication,
       lienCandidature
     }, 'Offre publiee avec succes');
 
@@ -430,8 +361,7 @@ export const updateOffre = async (req: Request, res: Response) => {
         profilRecherche: data.profilRecherche,
         competences: data.competences,
         fourchetteSalariale: data.fourchetteSalariale,
-        typeContrat: data.typeContrat as TypeContrat,
-        canauxPublication: data.canauxPublication || ['Kilani']
+        typeContrat: data.typeContrat as TypeContrat
       }
     });
 
@@ -474,5 +404,46 @@ export const deleteOffre = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('deleteOffre error:', error);
     sendError(res, 'Erreur lors de la suppression');
+  }
+};
+
+// ============================================
+// DISPONIBILITES PAR OFFRE
+// ============================================
+
+export const getDisponibilitesByOffre = async (req: Request, res: Response) => {
+  try {
+    const { offreId } = req.params;
+
+    const offre = await prisma.offreEmploi.findUnique({
+      where: { id: offreId },
+      include: {
+        demande: {
+          include: {
+            disponibilites: {
+              orderBy: { date: 'asc' }
+            }
+          }
+        }
+      }
+    });
+
+    if (!offre) {
+      return sendNotFound(res, 'Offre non trouvée');
+    }
+
+    if (!offre.demande) {
+      return sendSuccess(res, { disponibilites: [] }, 'Aucune demande associée');
+    }
+
+    sendSuccess(res, { 
+      disponibilites: offre.demande.disponibilites,
+      demandeId: offre.demande.id,
+      intitulePoste: offre.demande.intitulePoste
+    });
+
+  } catch (error) {
+    console.error('getDisponibilitesByOffre error:', error);
+    sendError(res, 'Erreur lors de la récupération des disponibilités');
   }
 };

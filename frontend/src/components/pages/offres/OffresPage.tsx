@@ -1,20 +1,25 @@
 // frontend/src/components/pages/offres/OffresPage.tsx
 
 import { useState, useEffect } from 'react';
-import { Eye, Send, Trash2, Edit, Sparkles, RefreshCw } from 'lucide-react';
-import { offreService, Offre } from '@/services/offre.service';
-import { Card, CardBody } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Eye, Send, Trash2, Edit, Sparkles, RefreshCw, Brain } from 'lucide-react';
+import { offreService, Offre } from '../../../services/offre.service';
+import { Card, CardBody } from '../../ui/Card';
+import { Badge } from '../../ui/Badge';
+import { Button } from '../../ui/Button';
 import { OffreFormModal } from './OffreFormModal';
 import { OffreDetailModal } from './OffreDetailModal';
+import { MatchingInverseModal } from './MatchingInverseModal';
+
+type BadgeVariant = 'green' | 'amber' | 'red' | 'gold' | 'olive';
 
 export function OffresPage() {
   const [offres, setOffres] = useState<Offre[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showMatchingModal, setShowMatchingModal] = useState(false);
   const [selectedOffre, setSelectedOffre] = useState<Offre | null>(null);
+  const [selectedOffreForMatching, setSelectedOffreForMatching] = useState<{ id: string; intitule: string } | null>(null);
   const [editingOffre, setEditingOffre] = useState<Offre | null>(null);
   const [filterStatut, setFilterStatut] = useState<string>('');
 
@@ -35,20 +40,25 @@ export function OffresPage() {
     loadOffres();
   }, [filterStatut]);
 
-  const getStatutBadge = (statut: string) => {
+  const getStatutBadge = (statut: string): { variant: BadgeVariant; label: string } => {
     switch (statut) {
       case 'PUBLIEE': return { variant: 'green' as const, label: 'Publiée' };
       case 'BROUILLON': return { variant: 'amber' as const, label: 'Brouillon' };
-      case 'CLOTUREE': return { variant: 'gray' as const, label: 'Clôturée' };
-      default: return { variant: 'gray' as const, label: statut };
+      case 'CLOTUREE': return { variant: 'olive' as const, label: 'Clôturée' };
+      default: return { variant: 'olive' as const, label: statut };
     }
   };
 
   const handlePublier = async (offre: Offre) => {
-    if (!confirm(`Publier l'offre "${offre.intitule}" sur LinkedIn et TanitJobs ?`)) return;
+    if (!confirm(`Publier l'offre "${offre.intitule}" ?`)) return;
     try {
-      await offreService.publierOffre(offre.id, ['LinkedIn', 'TanitJobs']);
+      const response = await offreService.publierOffre(offre.id);
       alert('Offre publiée avec succès');
+      const lien = response.data?.lienCandidature;
+      if (lien) {
+        navigator.clipboard.writeText(lien);
+        alert('Lien de candidature copié dans le presse-papier');
+      }
       await loadOffres();
     } catch (error: any) {
       alert(`Erreur : ${error.response?.data?.message || error.message}`);
@@ -84,7 +94,11 @@ export function OffresPage() {
     setShowDetailModal(true);
   };
 
-  // Compteurs par statut pour l'affichage
+  const openMatchingInverse = (offre: Offre) => {
+    setSelectedOffreForMatching({ id: offre.id, intitule: offre.intitule });
+    setShowMatchingModal(true);
+  };
+
   const nbBrouillon = offres.filter(o => o.statut === 'BROUILLON').length;
   const nbPubliee = offres.filter(o => o.statut === 'PUBLIEE').length;
 
@@ -158,7 +172,6 @@ export function OffresPage() {
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Poste</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Statut</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Candidatures</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Canaux</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Créée le</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Actions</th>
                   </tr>
@@ -167,12 +180,10 @@ export function OffresPage() {
                   {offres.map((offre) => {
                     const badge = getStatutBadge(offre.statut);
                     const isBrouillon = offre.statut === 'BROUILLON';
+                    const isPubliee = offre.statut === 'PUBLIEE';
 
                     return (
-                      <tr
-                        key={offre.id}
-                        style={{ borderBottom: '1px solid var(--border-light)' }}
-                      >
+                      <tr key={offre.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                         <td style={{ padding: '12px 16px', fontSize: 13 }}>
                           <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{offre.reference}</span>
                         </td>
@@ -190,20 +201,26 @@ export function OffresPage() {
                         <td style={{ padding: '12px 16px', fontSize: 13 }}>
                           {offre._count?.candidatures || 0} candidat{(offre._count?.candidatures || 0) > 1 ? 's' : ''}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          {offre.canauxPublication?.length > 0
-                            ? offre.canauxPublication.map(c => <Badge key={c} variant="gold" style={{ marginRight: 4 }}>{c}</Badge>)
-                            : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
-                          }
-                        </td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-muted)' }}>
                           {new Date(offre.createdAt).toLocaleDateString('fr-FR')}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <Button variant="ghost" size="xs" onClick={() => handleVoirDetails(offre)} title="Voir les détails">
                               <Eye size={14} />
                             </Button>
+                            
+                            {isPubliee && (
+                              <Button 
+                                variant="secondary" 
+                                size="xs" 
+                                onClick={() => openMatchingInverse(offre)} 
+                                title="Matching inverse - Candidats passifs"
+                              >
+                                <Brain size={12} />
+                              </Button>
+                            )}
+                            
                             {isBrouillon && (
                               <Button variant="success" size="xs" onClick={() => handlePublier(offre)} title="Publier">
                                 <Send size={12} />
@@ -245,6 +262,21 @@ export function OffresPage() {
           offre={selectedOffre}
           onClose={() => { setShowDetailModal(false); setSelectedOffre(null); }}
           onRefresh={loadOffres}
+        />
+      )}
+
+      {showMatchingModal && selectedOffreForMatching && (
+        <MatchingInverseModal
+          open={showMatchingModal}
+          onClose={() => {
+            setShowMatchingModal(false);
+            setSelectedOffreForMatching(null);
+          }}
+          offreId={selectedOffreForMatching.id}
+          offreIntitule={selectedOffreForMatching.intitule}
+          onSuccess={() => {
+            loadOffres();
+          }}
         />
       )}
     </div>
