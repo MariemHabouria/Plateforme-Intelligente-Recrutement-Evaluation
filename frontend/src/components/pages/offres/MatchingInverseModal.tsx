@@ -25,10 +25,9 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
   const [executing, setExecuting] = useState(false);
   const [created, setCreated] = useState(false);
   
-  // États pour le modal de détail
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedCandidatureId, setSelectedCandidatureId] = useState<string | null>(null);
-  const [selectedCandidatNom, setSelectedCandidatNom] = useState<string>('');
+  const [selectedCandidatNom, setSelectedCandidatNom] = useState('');
 
   useEffect(() => {
     if (open && offreId) {
@@ -41,9 +40,10 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
     setError('');
     try {
       const result = await matchingInverseService.executerMatching(offreId);
-      setMatching(result.matching);
+      setMatching(result.candidaturesMatch || []);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors du matching inverse');
+      setMatching([]);
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === matching.length) {
+    if (selectedIds.size === matching.length && matching.length > 0) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(matching.map(m => m.candidatureId)));
@@ -76,7 +76,7 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
     setExecuting(true);
     setError('');
     try {
-      await matchingInverseService.creerCandidatures(offreId, Array.from(selectedIds));
+      await matchingInverseService.creerCandidaturesMatching(offreId, Array.from(selectedIds));
       setCreated(true);
       onSuccess();
       setTimeout(() => {
@@ -128,7 +128,7 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
       >
         <div style={{ padding: '8px 0' }}>
           {/* En-tête */}
-          <div style={{ marginBottom: 20, padding: 12, background: 'var(--gold-pale)', borderRadius: 8 }}>
+          <div style={{ marginBottom: 20, padding: 12, background: 'rgba(172, 107, 46, 0.1)', borderRadius: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Brain size={18} style={{ color: 'var(--gold)' }} />
               <strong>Matching Inverse - {offreIntitule}</strong>
@@ -150,9 +150,11 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
               <div style={{ marginTop: 16 }}>Analyse des candidatures...</div>
             </div>
           ) : matching.length === 0 ? (
-            <Alert variant="gold">
-              Aucun candidat passif ne correspond à cette offre pour le moment.
-            </Alert>
+            <div style={{ marginBottom: 16 }}>
+              <Alert variant="gold">
+                Aucun candidat passif ne correspond à cette offre pour le moment.
+              </Alert>
+            </div>
           ) : (
             <>
               {/* Sélectionner tout */}
@@ -160,7 +162,7 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === matching.length}
+                    checked={selectedIds.size === matching.length && matching.length > 0}
                     onChange={toggleSelectAll}
                   />
                   <span style={{ fontSize: 13 }}>Sélectionner tout</span>
@@ -230,12 +232,12 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Compétences correspondantes</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {candidat.competencesMatch.slice(0, 5).map(c => (
+                            {(candidat.competencesMatch || []).slice(0, 5).map((c: string) => (
                               <span key={c} style={{ background: 'var(--olive-bg)', color: 'var(--olive)', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
                                 {c}
                               </span>
                             ))}
-                            {candidat.competencesMatch.length > 5 && (
+                            {(candidat.competencesMatch && candidat.competencesMatch.length > 5) && (
                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{candidat.competencesMatch.length - 5}</span>
                             )}
                           </div>
@@ -244,12 +246,12 @@ export function MatchingInverseModal({ open, onClose, offreId, offreIntitule, on
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Compétences manquantes</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {candidat.competencesManquantes.slice(0, 3).map(c => (
+                            {(candidat.competencesManquantes || []).slice(0, 3).map((c: string) => (
                               <span key={c} style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
                                 {c}
                               </span>
                             ))}
-                            {candidat.competencesManquantes.length > 3 && (
+                            {(candidat.competencesManquantes && candidat.competencesManquantes.length > 3) && (
                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{candidat.competencesManquantes.length - 3}</span>
                             )}
                           </div>

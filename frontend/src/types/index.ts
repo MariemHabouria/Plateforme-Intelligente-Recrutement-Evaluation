@@ -1,17 +1,46 @@
 // frontend/src/types/index.ts
 
-export type Role = 'superadmin' | 'manager' | 'directeur' | 'rh' | 'daf' | 'dga' | 'dg' | 'paie' | 'candidat';
+export type Role = 
+  | 'SUPER_ADMIN'
+  | 'MANAGER'
+  | 'DIRECTEUR'
+  | 'DRH'
+  | 'DAF'
+  | 'DGA'
+  | 'DG'
+  | 'RESP_PAIE'
+  | 'EMPLOYE'
+  | 'candidat';
+export const normalizeRole = (role: string | undefined): string => {
+  if (!role) return '';
+  const roleMap: Record<string, string> = {
+    'paie': 'RESP_PAIE',
+    'manager': 'MANAGER',
+    'directeur': 'DIRECTEUR',
+    'rh': 'DRH',
+    'superadmin': 'SUPER_ADMIN'
+  };
+  return roleMap[role] || role;
+};
 
-// ✅ Enum TypeEntretien aligné avec le backend
+// Enum TypeEntretien aligne avec le backend
 export type TypeEntretien = 'RH' | 'TECHNIQUE' | 'DIRECTION';
 
+// ============================================
+// MODELE DIRECTION
+// ============================================
 export interface Direction {
   id: string;
   code: string;
   nom: string;
   actif: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
+// ============================================
+// MODELE USER
+// ============================================
 export interface User {
   id: string;
   email: string;
@@ -27,8 +56,13 @@ export interface User {
   telephone?: string;
   directionId?: string;
   direction?: Direction;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
+// ============================================
+// CONFIGURATION
+// ============================================
 export interface RoleConfig {
   label: string;
   color: string;
@@ -46,6 +80,9 @@ export interface NavItem {
   section?: string;
 }
 
+// ============================================
+// VALIDATION ETAPE (pour demandes)
+// ============================================
 export interface ValidationEtape {
   id: string;
   demandeId: string;
@@ -56,8 +93,12 @@ export interface ValidationEtape {
   commentaire?: string;
   dateLimite: string;
   dateDecision?: string;
+  createdAt?: string;
 }
 
+// ============================================
+// DISPONIBILITES
+// ============================================
 export interface Disponibilite {
   id: string;
   demandeId: string;
@@ -66,7 +107,6 @@ export interface Disponibilite {
   heureFin: string;
 }
 
-// ✅ NOUVEAU : créneau d'interviewer (MANAGER / DIRECTEUR / DRH)
 export interface DisponibiliteInterviewer {
   id: string;
   userId: string;
@@ -79,7 +119,9 @@ export interface DisponibiliteInterviewer {
   createdAt: string;
 }
 
-// ✅ Interface Demande complète (alignée avec l'API)
+// ============================================
+// DEMANDE RECRUTEMENT
+// ============================================
 export interface Demande {
   id: string;
   reference: string;
@@ -96,7 +138,6 @@ export interface Demande {
   budgetMax?: number;
   dateSouhaitee: string;
   statut: string;
-  // ✅ Niveau du poste — essentiel pour déterminer le circuit et les types d'entretien
   niveau: 'TECHNICIEN' | 'EMPLOYE' | 'CADRE_DEBUTANT' | 'CADRE_CONFIRME' | 'CADRE_SUPERIEUR' | 'STRATEGIQUE';
   circuitType?: string;
   totalEtapes?: number;
@@ -114,16 +155,11 @@ export interface Demande {
   disponibilites: Disponibilite[];
   disponibilitesInterviewers?: DisponibiliteInterviewer[];
   offre?: OffreEmploi;
-
-  // Champs de compatibilité ancienne interface (à supprimer progressivement)
-  ref?: string;
-  poste?: string;
-  contrat?: string;
-  budget?: string;
-  date?: string;
-  etape?: number;
 }
 
+// ============================================
+// OFFRE EMPLOI
+// ============================================
 export interface OffreEmploi {
   id: string;
   reference: string;
@@ -134,15 +170,19 @@ export interface OffreEmploi {
   fourchetteSalariale?: string;
   typeContrat: string;
   statut: string;
-  canauxPublication: string[];
   datePublication?: string;
   lienCandidature?: string;
   demandeId?: string;
   demande?: Demande;
+  rhId: string;
+  candidatures?: Candidature[];
   createdAt: string;
   updatedAt: string;
 }
 
+// ============================================
+// CANDIDATURE
+// ============================================
 export interface Candidature {
   id: string;
   reference: string;
@@ -160,15 +200,18 @@ export interface Candidature {
   consentementRGPD: boolean;
   consentementIA: boolean;
   dateSoumission: string;
-  offreId: string;
-  offre: OffreEmploi;
+  offreId?: string;
+  offre?: OffreEmploi;
   entretiens?: Entretien[];
+  contrat?: Contrat;
 }
 
-// ✅ Interface Entretien corrigée avec TypeEntretien et DisponibiliteInterviewer
+// ============================================
+// ENTRETIEN
+// ============================================
 export interface Entretien {
   id: string;
-  type: TypeEntretien;          // ✅ 'RH' | 'TECHNIQUE' | 'DIRECTION'
+  type: TypeEntretien;
   date: string;
   heure: string;
   lieu: string;
@@ -183,6 +226,157 @@ export interface Entretien {
   disponibilite?: DisponibiliteInterviewer;
 }
 
+// ============================================
+// CONTRAT
+// ============================================
+export interface Contrat {
+  id: string;
+  reference: string;
+  typeContrat: string;
+  salaire: string;
+  dateDebut: string;
+  dateFin?: string;
+  statut: string;
+  pdfUrl?: string;
+  candidatureId: string;
+  candidature?: Candidature;
+  evaluationPE?: EvaluationPEDetail;
+  avenants?: Avenant[];
+}
+
+export interface Avenant {
+  id: string;
+  typeAvenant: string;
+  date: string;
+  description: string;
+  contratId: string;
+}
+
+// ============================================
+// EVALUATION PE (PROCESSUS 2)
+// ============================================
+export type DecisionEvaluationPE = 'CONFIRMATION' | 'PROLONGATION' | 'RUPTURE' | 'CHANGEMENT';
+
+export type StatutEvaluationPE = 
+  | 'BROUILLON'
+  | 'EN_VALIDATION_DIR'
+  | 'EN_VALIDATION_DRH'
+  | 'EN_VALIDATION_DAF'
+  | 'EN_VALIDATION_DGA'
+  | 'EN_VALIDATION_DG'
+  | 'VALIDEE'
+  | 'REJETEE';
+
+export interface EvaluationPEDetail {
+  id: string;
+  reference: string;
+  employeId: string;
+  employe: User;
+  managerId: string;
+  manager: User;
+  contratId: string;
+  contrat: Contrat;
+  dateDebut: string;
+  dateFin: string;
+  dateEvaluation: string;
+  joursRestants: number;
+  decision?: DecisionEvaluationPE;
+  dureeProlongation?: number;
+  justificationRupture?: string;
+  evaluationN1?: string;
+  commentaireN1?: string;
+  dateSoumissionN1?: string;
+  evaluationN2?: string;
+  commentaireN2?: string;
+  dateDecisionN2?: string;
+  evaluationN1Masquee: boolean;
+  statut: StatutEvaluationPE;
+  etapeActuelle: number;
+  totalEtapes: number;
+  createdAt: string;
+  updatedAt: string;
+  valideeAt?: string;
+  validations: EvaluationValidation[];
+}
+
+export interface EvaluationValidation {
+  id: string;
+  evaluationId: string;
+  niveauEtape: number;
+  role: string;
+  acteurId: string;
+  acteur: User;
+  decision: string;
+  commentaire?: string;
+  dateLimite: string;
+  dateDecision?: string;
+  relanceEnvoyee: boolean;
+  createdAt: string;
+}
+
+// ============================================
+// WORKFLOW STEPS
+// ============================================
+export interface PEStep {
+  role: string;
+  label: string;
+  description: string;
+  order: number;
+}
+
+export const PE_WORKFLOW: PEStep[] = [
+  { role: 'paie', label: 'Resp. Paie', description: 'Saisie & verification donnees contractuelles', order: 0 },
+  { role: 'manager', label: 'Manager N+1', description: 'Evaluation comportementale et decision', order: 1 },
+  { role: 'directeur', label: 'Directeur N+2', description: 'Validation avec acces eval. N+1', order: 2 },
+  { role: 'rh', label: 'DRH', description: 'Validation RH — eval. N+1 masquee', order: 3 },
+  { role: 'daf', label: 'DAF', description: 'Validation financiere — eval. N+1 masquee', order: 4 },
+  { role: 'dga', label: 'DGA/DG', description: 'Decision finale — eval. N+1 masquee', order: 5 },
+  { role: 'cloturee', label: 'Cloturee', description: 'Evaluation finalisee', order: 6 }
+];
+
+// ============================================
+// FORMULAIRES EVALUATION PE
+// ============================================
+export interface EvaluationN1FormData {
+  evaluationN1: string;
+  commentaireN1: string;
+  decision: DecisionEvaluationPE;
+  dureeProlongation?: number;
+  justificationRupture?: string;
+}
+
+export interface EvaluationN2FormData {
+  decision: 'VALIDEE' | 'MODIFIEE' | 'REJETEE';
+  commentaire?: string;
+  evaluationN2?: string;
+}
+
+export interface EvaluationValidationFormData {
+  decision: 'Validee' | 'Refusee';
+  commentaire?: string;
+}
+
+// ============================================
+// STATISTIQUES
+// ============================================
+export interface StatCard {
+  label: string;
+  value: string;
+  delta: string;
+  up: boolean | null;
+  icon: string;
+  color: string;
+}
+
+// ============================================
+// DONNEES MOCK (pour developpement)
+// ============================================
+export interface EvaluationPEMock extends EvaluationPEDetail {
+  decisionManager?: string;
+  salaire?: string;
+}
+
+// Compatibilité ancienne interface (à deprecier)
 export interface EvaluationPE {
   id: string;
   employe: string;
@@ -196,40 +390,3 @@ export interface EvaluationPE {
   decisionManager?: string;
   salaire?: string;
 }
-
-export interface Contrat {
-  id: string;
-  reference: string;
-  typeContrat: string;
-  salaire: string;
-  dateDebut: string;
-  dateFin?: string;
-  statut: string;
-  pdfUrl?: string;
-  candidatureId: string;
-  candidature?: Candidature;
-}
-
-export interface StatCard {
-  label: string;
-  value: string;
-  delta: string;
-  up: boolean | null;
-  icon: string;
-  color: string;
-}
-
-export interface PEStep {
-  role: string;
-  label: string;
-  description: string;
-}
-
-export const PE_WORKFLOW: PEStep[] = [
-  { role: 'paie',      label: 'Resp. Paie',    description: 'Saisie & vérification données contractuelles' },
-  { role: 'manager',   label: 'Manager N+1',   description: 'Évaluation comportementale et décision' },
-  { role: 'directeur', label: 'Directeur N+2', description: 'Validation avec accès éval. N+1' },
-  { role: 'rh',        label: 'DRH',           description: 'Validation RH — éval. N+1 masquée' },
-  { role: 'daf',       label: 'DAF',           description: 'Validation financière — éval. N+1 masquée' },
-  { role: 'dga',       label: 'DGA',           description: 'Décision finale — éval. N+1 masquée' },
-];

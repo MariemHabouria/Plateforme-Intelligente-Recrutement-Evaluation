@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, MapPin, User, Briefcase, Mail, Phone, FileText, Edit, Save, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, User, Briefcase, Mail, Phone, FileText, Edit, Save, MessageSquare, Eye, FileCheck } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle, CardSubtitle } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
 import { Alert } from '../../ui/Alert';
 import { Avatar } from '../../ui/Avatar';
 import { ScoreBar } from '../../ui/ScoreBar';
+import { Modal } from '../../ui/Modal';
 import api from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { CandidatPassifDetailModal } from '../offres/CandidatPassifDetailModal';
@@ -38,6 +39,8 @@ interface EntretienDetail {
     scoreExp?: number;
     competencesDetectees: string[];
     statut: string;
+    ficheRenseignementRecue?: boolean;
+    ficheRenseignementData?: any;
     offre: {
       id: string;
       reference: string;
@@ -79,8 +82,9 @@ export function EntretienDetailPage({ id }: Props) {
   const [editForm, setEditForm] = useState({ feedback: '', evaluation: 0, statut: '' });
   const [submitting, setSubmitting] = useState(false);
   const [showProfilModal, setShowProfilModal] = useState(false);
+  const [showFicheModal, setShowFicheModal] = useState(false);
+  const [ficheData, setFicheData] = useState<any>(null);
   
-  // ✅ Etats pour le controle de date
   const [peutDonnerAvis, setPeutDonnerAvis] = useState(false);
   const [dateAvisPossible, setDateAvisPossible] = useState('');
 
@@ -97,6 +101,12 @@ export function EntretienDetailPage({ id }: Props) {
       setEntretien(data);
       setPeutDonnerAvis(response.data.data.peutDonnerAvis);
       setDateAvisPossible(response.data.data.dateAvisPossible);
+      
+      // Charger la fiche de renseignement si disponible
+      if (data.candidature.ficheRenseignementData) {
+        setFicheData(data.candidature.ficheRenseignementData);
+      }
+      
       setEditForm({
         feedback: data.feedback || '',
         evaluation: data.evaluation || 0,
@@ -130,6 +140,10 @@ export function EntretienDetailPage({ id }: Props) {
     }
   };
 
+  const openFicheModal = () => {
+    setShowFicheModal(true);
+  };
+
   const getStatutVariant = (statut: string): 'gold' | 'green' | 'red' | 'amber' | 'olive' => {
     const variants: Record<string, any> = {
       'PLANIFIE': 'amber', 'REALISE': 'green', 'ANNULE': 'red', 'REPORTE': 'gold'
@@ -154,7 +168,6 @@ export function EntretienDetailPage({ id }: Props) {
   const formatDate = (date: string) =>
     new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // ✅ Condition pour afficher le bouton d'edition
   const canEdit = () => {
     if (!user || !entretien) return false;
     if (user.id !== entretien.interviewer.id) return false;
@@ -162,15 +175,16 @@ export function EntretienDetailPage({ id }: Props) {
     return peutDonnerAvis;
   };
 
-  // ✅ Message si l'avis n'est pas encore disponible
   const getAvisMessage = () => {
     if (entretien?.feedback) return null;
     if (!peutDonnerAvis) {
       return (
-        <Alert variant="gold" style={{ marginBottom: 16 }}>
-          <Calendar size={14} style={{ marginRight: 8, display: 'inline', verticalAlign: 'middle' }} />
-          Vous pourrez donner votre avis a partir du {dateAvisPossible} (date de l'entretien)
-        </Alert>
+        <div style={{ marginBottom: 16 }}>
+          <Alert variant="gold">
+            <Calendar size={14} style={{ marginRight: 8, display: 'inline', verticalAlign: 'middle' }} />
+            Vous pourrez donner votre avis a partir du {dateAvisPossible} (date de l'entretien)
+          </Alert>
+        </div>
       );
     }
     return null;
@@ -190,6 +204,8 @@ export function EntretienDetailPage({ id }: Props) {
       </div>
     );
   }
+
+  const hasFicheRenseignement = entretien.candidature.ficheRenseignementRecue && ficheData;
 
   return (
     <div className="page-fade">
@@ -213,18 +229,33 @@ export function EntretienDetailPage({ id }: Props) {
             </div>
           </div>
         </div>
-        {canEdit() && !isEditing && (
-          <Button variant="primary" size="sm" onClick={() => setIsEditing(true)}>
-            <MessageSquare size={14} style={{ marginRight: 6 }} />
-            Donner mon avis
-          </Button>
-        )}
+        <div style={{ display: 'flex', gap: 12 }}>
+          {hasFicheRenseignement && (
+            <Button variant="secondary" size="sm" onClick={openFicheModal}>
+              <FileCheck size={14} style={{ marginRight: 6 }} />
+              Voir fiche candidat
+            </Button>
+          )}
+          {canEdit() && !isEditing && (
+            <Button variant="primary" size="sm" onClick={() => setIsEditing(true)}>
+              <MessageSquare size={14} style={{ marginRight: 6 }} />
+              Donner mon avis
+            </Button>
+          )}
+        </div>
       </div>
 
-      {success && <div style={{ marginBottom: 16 }}><Alert variant="green">{success}</Alert></div>}
-      {error && <div style={{ marginBottom: 16 }}><Alert variant="red">{error}</Alert></div>}
+      {success && (
+        <div style={{ marginBottom: 16 }}>
+          <Alert variant="green">{success}</Alert>
+        </div>
+      )}
+      {error && (
+        <div style={{ marginBottom: 16 }}>
+          <Alert variant="red">{error}</Alert>
+        </div>
+      )}
       
-      {/* ✅ Message d'information sur la disponibilite de l'avis */}
       {getAvisMessage()}
 
       {/* Formulaire d'edition */}
@@ -382,6 +413,9 @@ export function EntretienDetailPage({ id }: Props) {
               <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                 Candidature : {entretien.candidature.reference || entretien.candidature.id}
               </div>
+              {entretien.candidature.ficheRenseignementRecue && (
+                <Badge variant="green" style={{ marginTop: 6 }}>Fiche renseignements remplie</Badge>
+              )}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 16 }}>
@@ -444,6 +478,89 @@ export function EntretienDetailPage({ id }: Props) {
           candidatNom={`${entretien.candidature.prenom} ${entretien.candidature.nom}`}
         />
       )}
+
+      {/* Modal fiche de renseignement */}
+      <Modal
+        open={showFicheModal}
+        onClose={() => setShowFicheModal(false)}
+        title={`Fiche de renseignement - ${entretien.candidature.prenom} ${entretien.candidature.nom}`}
+        maxWidth={800}
+        footer={
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <Button variant="ghost" onClick={() => setShowFicheModal(false)}>Fermer</Button>
+          </div>
+        }
+      >
+        {ficheData ? (
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '16px' }}>
+            {/* Informations personnelles */}
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Informations personnelles
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Date naissance:</strong> {ficheData.dateNaissance || '-'}</div>
+                <div><strong>Lieu naissance:</strong> {ficheData.lieuNaissance || '-'}</div>
+                <div><strong>Nationalite:</strong> {ficheData.nationalite || '-'}</div>
+                <div><strong>Situation familiale:</strong> {ficheData.situationFamiliale || '-'}</div>
+                <div><strong>Civilite:</strong> {ficheData.civilite || '-'}</div>
+                <div><strong>Adresse:</strong> {ficheData.adresse || '-'}</div>
+                <div><strong>Ville:</strong> {ficheData.ville || '-'}</div>
+                <div><strong>Telephone:</strong> {ficheData.telephone || ficheData.mobile || '-'}</div>
+                <div><strong>Email:</strong> {ficheData.email || '-'}</div>
+              </div>
+            </div>
+
+            {/* Situation professionnelle */}
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Situation professionnelle
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Situation actuelle:</strong> {ficheData.situationActuelle || '-'}</div>
+                <div><strong>Employeur actuel:</strong> {ficheData.employeurActuel || '-'}</div>
+                <div><strong>Poste actuel:</strong> {ficheData.posteActuel || '-'}</div>
+                <div><strong>Anciennete:</strong> {ficheData.anciennete || '-'}</div>
+                <div><strong>Disponibilite:</strong> {ficheData.disponibilite || '-'}</div>
+                <div><strong>Salaire souhaite:</strong> {ficheData.salaireSouhaite || '-'}</div>
+              </div>
+            </div>
+
+            {/* Formation & Competences */}
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Formation & Competences
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Niveau etudes:</strong> {ficheData.niveauEtudes || '-'}</div>
+                <div><strong>Diplomes:</strong> {ficheData.diplomes || '-'}</div>
+                <div><strong>Formations complementaires:</strong> {ficheData.formationsComplementaires || '-'}</div>
+                <div><strong>Langues:</strong> {
+                  ficheData.langues && typeof ficheData.langues === 'object'
+                    ? Object.entries(ficheData.langues)
+                        .filter(([key, value]) => value && key !== 'autres')
+                        .map(([key, value]) => `${key}: ${value}`)
+                        .join(', ')
+                    : ficheData.langues || '-'
+                }</div>
+                <div><strong>Permis:</strong> {ficheData.permis || '-'}</div>
+                <div><strong>Vehicule:</strong> {ficheData.vehicule || '-'}</div>
+              </div>
+            </div>
+
+            {/* Declaration */}
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--surface)', borderRadius: 8 }}>
+              <p style={{ fontSize: 12, fontStyle: 'italic', margin: 0 }}>
+                Le candidat certifie la sincerite des renseignements fournis.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <p>Aucune fiche de renseignement disponible pour ce candidat</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

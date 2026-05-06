@@ -12,10 +12,16 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "seed:demandes": "ts-node prisma/seed-demandes.ts",
+    "seed:candidatures": "ts-node prisma/seed-candidatures.ts",
+    "seed:contrats": "ts-node prisma/seed-contrats.ts",
+    "seed:employes": "ts-node prisma/seed-employes.ts",
+    "seed:evaluations": "ts-node prisma/seed-evaluations-pe.ts",
+    "seed:all": "npm run prisma:seed && npm run seed:demandes && npm run seed:candidatures && npm run seed:contrats && npm run seed:employes && npm run seed:evaluations"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.5.0",
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
@@ -30,6 +36,7 @@
     "node-cron": "^4.2.1",
     "pg": "^8.20.0",
     "pg-hstore": "^2.3.4",
+    "puppeteer": "^24.42.0",
     "sequelize": "^6.37.8",
     "uuid": "^9.0.1"
   },
@@ -41,12 +48,14 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/morgan": "^1.9.9",
     "@types/multer": "^2.1.0",
-    "@types/node": "^20.19.37",
+    "@types/node": "^20.19.39",
     "@types/node-cron": "^3.0.11",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",
     "@types/sequelize": "^4.28.20",
     "@types/uuid": "^9.0.7",
     "nodemon": "^3.0.2",
+    "pdfkit": "^0.18.0",
     "prisma": "^7.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

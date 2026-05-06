@@ -52,7 +52,7 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { id: 'entretiens', label: 'Entretiens',          icon: 'Calendar' },
     { section: 'gestion_rh' },
     { id: 'evaluation', label: 'Evaluations PE',      icon: 'Star' },
-    { id: 'contrats',   label: 'Contractualisation',  icon: 'FileCheck', badge: '3', badgeColor: 'amber' },
+
   ],
   daf: [
     { section: 'principal' },

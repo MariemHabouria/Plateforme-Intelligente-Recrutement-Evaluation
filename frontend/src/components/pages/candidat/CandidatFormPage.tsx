@@ -24,8 +24,6 @@ interface OffrePublic {
 
 export function CandidatFormPage() {
   const { token } = useParams<{ token: string }>();
-  const [searchParams] = useSearchParams();
-  const reference = searchParams.get('ref');
   
   const [offre, setOffre] = useState<OffrePublic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +32,6 @@ export function CandidatFormPage() {
   const [fileUploaded, setFileUploaded] = useState(false);
   const [fileName, setFileName] = useState('');
   const [cvFile, setCvFile] = useState<File | null>(null);
-  const [showIA, setShowIA] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [consentRGPD, setConsentRGPD] = useState(false);
@@ -50,11 +47,6 @@ export function CandidatFormPage() {
     email: '',
     telephone: ''
   });
-
-  // IA Feedback state
-  const [skillsMatch, setSkillsMatch] = useState<string[]>([]);
-  const [skillsMiss, setSkillsMiss] = useState<string[]>([]);
-  const [score, setScore] = useState(0);
 
   useEffect(() => {
     chargerOffre();
@@ -80,43 +72,6 @@ export function CandidatFormPage() {
       setFileName(file.name);
       setCvFile(file);
       setFileUploaded(true);
-      
-      // Appel API pour analyser le CV
-      try {
-        const formData = new FormData();
-        formData.append('cv', file);
-        
-        const response = await api.post('/ia/analyser-cv', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        
-        const result = response.data.data;
-        
-        if (offre) {
-          // Compétences détectées vs requises
-          const detected = result.competencesDetectees || [];
-          const missing = offre.competences.filter(c => !detected.includes(c));
-          const calculatedScore = result.scoreGlobal || Math.floor(Math.random() * 30) + 60;
-          
-          setSkillsMatch(detected);
-          setSkillsMiss(missing);
-          setScore(calculatedScore);
-          setShowIA(true);
-        }
-      } catch (err) {
-        console.error('Erreur analyse IA:', err);
-        // Fallback simulation
-        if (offre) {
-          const detected = ['React', 'TypeScript', 'Node.js', 'Git'];
-          const missing = offre.competences.filter(c => !detected.includes(c));
-          const calculatedScore = Math.floor(Math.random() * 30) + 60;
-          
-          setSkillsMatch(detected);
-          setSkillsMiss(missing);
-          setScore(calculatedScore);
-          setShowIA(true);
-        }
-      }
     }
   };
 
@@ -253,7 +208,6 @@ export function CandidatFormPage() {
                   <>
                     <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
                     <div style={{ fontWeight: 600 }}>{fileName}</div>
-                    {!showIA && <div style={{ fontSize: 12, marginTop: 4 }}>Analyse IA en cours...</div>}
                   </>
                 ) : (
                   <>
@@ -264,55 +218,6 @@ export function CandidatFormPage() {
                 )}
                 <input ref={fileRef} type="file" accept=".pdf,.docx" style={{ display: 'none' }} onChange={handleFile} />
               </div>
-
-              {/* IA Feedback */}
-              {showIA && (
-                <div style={{ marginTop: 16, background: 'linear-gradient(135deg,#1D2235,#252B42)', borderRadius: 12, padding: 20, color: '#fff' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Analyse IA - Resultat en temps reel</div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, marginBottom: 16 }}>
-                    <div>
-                      <div style={{ fontSize: 48, fontWeight: 800, color: 'var(--gold-light)', lineHeight: 1 }}>{score}<span style={{ fontSize: 24 }}>%</span></div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 2 }}>Score de matching</div>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}><span>Score experience</span><span>{Math.min(95, score + 10)}%</span></div>
-                        <div style={{ height: 5, background: 'rgba(255,255,255,.15)', borderRadius: 10 }}>
-                          <div style={{ width: `${Math.min(95, score + 10)}%`, height: '100%', background: 'var(--gold-light)', borderRadius: 10 }} />
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}><span>Adequation profil</span><span>{score}%</span></div>
-                        <div style={{ height: 5, background: 'rgba(255,255,255,.15)', borderRadius: 10 }}>
-                          <div style={{ width: `${score}%`, height: '100%', background: '#6EE7B7', borderRadius: 10 }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase', marginBottom: 6 }}>Competences detectees</div>
-                    <div>
-                      {skillsMatch.map(s => (
-                        <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(45,155,111,.2)', color: '#6EE7B7', padding: '3px 9px', borderRadius: 20, fontSize: 11, margin: '2px 3px' }}>{s}</span>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase', marginBottom: 6 }}>Competences recommandees</div>
-                    <div>
-                      {skillsMiss.map(s => (
-                        <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(217,119,6,.2)', color: '#FCD34D', padding: '3px 9px', borderRadius: 20, fontSize: 11, margin: '2px 3px' }}>{s}</span>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div style={{ paddingTop: 14, borderTop: '1px solid rgba(255,255,255,.1)', fontSize: 12, color: 'rgba(255,255,255,.55)', fontStyle: 'italic' }}>
-                    Conseil : Mettez en avant vos experiences pertinentes et les competences recommandees ci-dessus.
-                  </div>
-                </div>
-              )}
             </CardBody>
           </Card>
 
@@ -372,7 +277,7 @@ export function CandidatFormPage() {
             </div>
           ) : (
             <Alert variant="green">
-              <strong>Candidature envoyee !</strong> Reference: <strong>CAND-{Date.now()}</strong>. Un email de confirmation a ete envoye.
+              <strong>Candidature envoyee !</strong> Un email de confirmation a ete envoye.
             </Alert>
           )}
         </div>

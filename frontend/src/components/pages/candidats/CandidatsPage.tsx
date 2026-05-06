@@ -2,15 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Filter, Eye, Check, X, Calendar, Users, UserPlus, Sparkles } from 'lucide-react';
+import { Filter, Eye, Check, X, Calendar, Users, UserPlus, Sparkles, FileText, Send, Clock } from 'lucide-react';
 import { Card, CardBody } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Alert } from '../../ui/Alert';
 import { Avatar } from '../../ui/Avatar';
 import { ScoreBar } from '../../ui/ScoreBar';
-import { Modal } from '../../ui/Modal';  // ✅ IMPORT MANQUANT
-import { PlanifierEntretienModal } from '../entretiens/PlanifierEntretienModal';
+import { Modal } from '../../ui/Modal';
 import api from '../../../services/api';
 import { matchingInverseService } from '../../../services/matchingInverse.service';
 
@@ -36,24 +35,38 @@ interface Candidature {
       niveau: string;
     };
   } | null;
+  ficheRenseignementEnvoyee?: boolean;
+  ficheRenseignementRecue?: boolean;
+  ficheRenseignementRecueAt?: string;
+  ficheRenseignementData?: any;
 }
+
+type BadgeVariant = 'gold' | 'green' | 'red' | 'amber' | 'olive';
 
 export function CandidatsPage() {
   const navigate = useNavigate();
   const [candidatures, setCandidatures] = useState<Candidature[]>([]);
+  const [filteredCandidatures, setFilteredCandidatures] = useState<Candidature[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'actifs' | 'passifs'>('all');
+  const [filterStatut, setFilterStatut] = useState<string>('all');
   const [proposerOffreId, setProposerOffreId] = useState<string | null>(null);
   const [showProposerModal, setShowProposerModal] = useState(false);
   const [selectedCandidature, setSelectedCandidature] = useState<Candidature | null>(null);
-  const [showPlanifierModal, setShowPlanifierModal] = useState(false);
   const [offresDisponibles, setOffresDisponibles] = useState<any[]>([]);
+  const [showFicheModal, setShowFicheModal] = useState(false);
+  const [ficheData, setFicheData] = useState<any>(null);
+  const [currentCandidat, setCurrentCandidat] = useState<Candidature | null>(null);
 
   useEffect(() => {
     fetchCandidatures();
     fetchOffresDisponibles();
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [filterType, filterStatut, candidatures]);
 
   const fetchCandidatures = async () => {
     try {
@@ -79,12 +92,60 @@ export function CandidatsPage() {
     }
   };
 
+  const applyFilters = () => {
+    let result = [...candidatures];
+
+    // Filtre par type (actifs/passifs)
+    if (filterType === 'actifs') {
+      result = result.filter(c => c.offre !== null && c.offre !== undefined);
+    } else if (filterType === 'passifs') {
+      result = result.filter(c => c.offre === null || c.offre === undefined);
+    }
+
+    // Filtre par statut
+    if (filterStatut !== 'all') {
+      result = result.filter(c => c.statut === filterStatut);
+    }
+
+    setFilteredCandidatures(result);
+  };
+
   const updateStatut = async (id: string, newStatut: string) => {
     try {
       await api.patch(`/candidatures/${id}/statut`, { statut: newStatut });
-      fetchCandidatures();
+      await fetchCandidatures();
     } catch (err) {
       console.error('Erreur mise a jour statut:', err);
+    }
+  };
+
+  const envoyerFicheRenseignement = async (candidatureId: string) => {
+    try {
+      await api.post(`/candidatures/${candidatureId}/envoyer-fiche`);
+      alert('Fiche de renseignement envoyee avec succes au candidat');
+      await fetchCandidatures();
+    } catch (err: any) {
+      console.error('Erreur envoi fiche:', err);
+      alert(err.response?.data?.message || 'Erreur lors de l\'envoi de la fiche');
+    }
+  };
+
+  const voirFicheRenseignement = async (candidature: Candidature) => {
+    try {
+      setCurrentCandidat(candidature);
+      const response = await api.get(`/candidatures/${candidature.id}`);
+      const data = response.data.data.candidature;
+      
+      if (data.ficheRenseignementData) {
+        setFicheData(data.ficheRenseignementData);
+      } else {
+        setFicheData(null);
+        alert('Aucune fiche de renseignement disponible pour ce candidat');
+      }
+      setShowFicheModal(true);
+    } catch (err: any) {
+      console.error('Erreur chargement fiche:', err);
+      alert('Erreur lors du chargement de la fiche');
     }
   };
 
@@ -92,62 +153,57 @@ export function CandidatsPage() {
     try {
       await matchingInverseService.creerCandidaturesMatching(offreId, [candidatureId]);
       setError('');
-      fetchCandidatures();
-      alert('Candidat propose avec succes a l offre');
+      await fetchCandidatures();
+      alert('Candidat propose avec succes a l\'offre');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors de la proposition');
     }
   };
 
-  const getStatutVariant = (statut: string): 'gold' | 'green' | 'red' | 'amber' | 'olive' => {
-    const variants: Record<string, any> = {
-      'NOUVELLE': 'amber',
-      'PRESELECTIONNEE': 'olive',
-      'ENTRETIEN': 'gold',
-      'EN_COURS': 'gold',
-      'ACCEPTEE': 'green',
-      'REFUSEE': 'red',
-      'ABANDONNEE': 'amber'
-    };
-    return variants[statut] || 'amber';
+  const getStatutVariant = (statut: string): BadgeVariant => {
+  const variants: Record<string, BadgeVariant> = {
+    'NOUVELLE': 'amber',
+    'PRESELECTIONNEE': 'olive',
+    'FICHE_ENVOYEE': 'amber',
+    'FICHE_RECUE': 'green',
+    'ENTRETIEN': 'gold',
+    'ACCEPTEE': 'green',
+    'REFUSEE': 'red'
   };
+  return variants[statut] || 'amber';
+};
 
   const getStatutLabel = (statut: string): string => {
-    const labels: Record<string, string> = {
-      'NOUVELLE': 'Nouvelle',
-      'PRESELECTIONNEE': 'Pre-selectionnee',
-      'ENTRETIEN': 'Entretien',
-      'EN_COURS': 'En cours',
-      'ACCEPTEE': 'Acceptee',
-      'REFUSEE': 'Refusee',
-      'ABANDONNEE': 'Abandonnee'
-    };
-    return labels[statut] || statut;
+  const labels: Record<string, string> = {
+    'NOUVELLE': 'Nouvelle',
+    'PRESELECTIONNEE': 'Pre-selectionnee',
+    'FICHE_ENVOYEE': 'Fiche envoyee',
+    'FICHE_RECUE': 'Fiche recue',
+    'ENTRETIEN': 'Entretien',
+    'ACCEPTEE': 'Acceptee',
+    'REFUSEE': 'Refusee'
   };
-
-  const openPlanifierModal = (candidature: Candidature) => {
-    setSelectedCandidature(candidature);
-    setShowPlanifierModal(true);
-  };
+  return labels[statut] || statut;
+};
 
   const openProposerModal = (candidature: Candidature) => {
     setSelectedCandidature(candidature);
     setShowProposerModal(true);
   };
 
-  const getFilteredCandidatures = () => {
-    if (filterType === 'actifs') {
-      return candidatures.filter(c => c.offre !== null && c.offre !== undefined);
-    }
-    if (filterType === 'passifs') {
-      return candidatures.filter(c => c.offre === null || c.offre === undefined);
-    }
-    return candidatures;
-  };
-
-  const filteredCandidatures = getFilteredCandidatures();
   const actifsCount = candidatures.filter(c => c.offre !== null && c.offre !== undefined).length;
   const passifsCount = candidatures.filter(c => c.offre === null || c.offre === undefined).length;
+
+  const statutOptions = [
+  { value: 'all', label: 'Tous les statuts' },
+  { value: 'NOUVELLE', label: 'Nouvelle' },
+  { value: 'PRESELECTIONNEE', label: 'Pre-selectionnee' },
+  { value: 'FICHE_ENVOYEE', label: 'Fiche envoyee' },
+  { value: 'FICHE_RECUE', label: 'Fiche recue' },
+  { value: 'ENTRETIEN', label: 'Entretien' },
+  { value: 'ACCEPTEE', label: 'Acceptee' },
+  { value: 'REFUSEE', label: 'Refusee' }
+];
 
   if (loading) {
     return (
@@ -161,7 +217,7 @@ export function CandidatsPage() {
     <div className="page-fade">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>Candidatures & IA</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>Candidatures</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
             {candidatures.length} candidature(s) au total
           </div>
@@ -171,55 +227,97 @@ export function CandidatsPage() {
         </Button>
       </div>
 
-      {/* Filtres actifs/passifs */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-        <button
-          onClick={() => setFilterType('all')}
-          style={{
-            padding: '6px 16px',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            background: filterType === 'all' ? 'var(--gold)' : 'transparent',
-            color: filterType === 'all' ? 'white' : 'var(--text)',
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 500
-          }}
-        >
-          Tous ({candidatures.length})
-        </button>
-        <button
-          onClick={() => setFilterType('actifs')}
-          style={{
-            padding: '6px 16px',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            background: filterType === 'actifs' ? 'var(--green)' : 'transparent',
-            color: filterType === 'actifs' ? 'white' : 'var(--text)',
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 500
-          }}
-        >
-          <Users size={12} style={{ display: 'inline', marginRight: 4 }} />
-          Actifs ({actifsCount})
-        </button>
-        <button
-          onClick={() => setFilterType('passifs')}
-          style={{
-            padding: '6px 16px',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            background: filterType === 'passifs' ? 'var(--olive)' : 'transparent',
-            color: filterType === 'passifs' ? 'white' : 'var(--text)',
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 500
-          }}
-        >
-          <UserPlus size={12} style={{ display: 'inline', marginRight: 4 }} />
-          Passifs ({passifsCount})
-        </button>
+      {/* Filtres */}
+      <div style={{ marginBottom: 20 }}>
+        {/* Filtre type (actifs/passifs) */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setFilterType('all')}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              background: filterType === 'all' ? 'var(--gold)' : 'transparent',
+              color: filterType === 'all' ? 'white' : 'var(--text)',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500
+            }}
+          >
+            Tous ({candidatures.length})
+          </button>
+          <button
+            onClick={() => setFilterType('actifs')}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              background: filterType === 'actifs' ? 'var(--green)' : 'transparent',
+              color: filterType === 'actifs' ? 'white' : 'var(--text)',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500
+            }}
+          >
+            <Users size={12} style={{ display: 'inline', marginRight: 4 }} />
+            Actifs ({actifsCount})
+          </button>
+          <button
+            onClick={() => setFilterType('passifs')}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              background: filterType === 'passifs' ? 'var(--olive)' : 'transparent',
+              color: filterType === 'passifs' ? 'white' : 'var(--text)',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500
+            }}
+          >
+            <UserPlus size={12} style={{ display: 'inline', marginRight: 4 }} />
+            Passifs ({passifsCount})
+          </button>
+        </div>
+
+        {/* Filtre statut */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Statut:</span>
+          <select
+            value={filterStatut}
+            onChange={(e) => setFilterStatut(e.target.value)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              fontSize: 12,
+              background: 'white',
+              cursor: 'pointer'
+            }}
+          >
+            {statutOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {filterStatut !== 'all' && (
+            <button
+              onClick={() => setFilterStatut('all')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 20,
+                border: 'none',
+                background: 'var(--surface)',
+                fontSize: 11,
+                cursor: 'pointer',
+                color: 'var(--text-muted)'
+              }}
+            >
+              Effacer
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -228,11 +326,7 @@ export function CandidatsPage() {
         </div>
       )}
 
-      <div style={{ marginBottom: 16 }}>
-        <Alert variant="gold">
-          <strong>Matching IA :</strong> Les scores sont calcules automatiquement. Les candidats passifs (sans offre) sont disponibles pour le matching inverse.
-        </Alert>
-      </div>
+
 
       <Card>
         <CardBody style={{ padding: 0 }}>
@@ -264,16 +358,23 @@ export function CandidatsPage() {
                 ) : (
                   filteredCandidatures.map((c) => {
                     const isPassif = !c.offre || c.offre === null;
+                    const isFicheRecue = c.statut === 'FICHE_RECUE';
+                    const isFicheEnvoyee = c.statut === 'FICHE_ENVOYEE';
+                    const isPreselectionnee = c.statut === 'PRESELECTIONNEE';
+                    
                     return (
                       <tr
                         key={c.id}
                         style={{ 
                           borderBottom: '1px solid var(--border-light)', 
                           transition: 'background .15s',
-                          background: isPassif ? 'rgba(90, 122, 58, 0.05)' : 'transparent'
+                          background: isPassif ? 'rgba(90, 122, 58, 0.05)' : 
+                                    isFicheRecue ? 'rgba(90, 122, 58, 0.1)' : 'transparent'
                         }}
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--surface)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = isPassif ? 'rgba(90, 122, 58, 0.05)' : ''}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 
+                          isPassif ? 'rgba(90, 122, 58, 0.05)' : 
+                          isFicheRecue ? 'rgba(90, 122, 58, 0.1)' : ''}
                       >
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -322,6 +423,16 @@ export function CandidatsPage() {
                           <Badge variant={getStatutVariant(c.statut)}>
                             {getStatutLabel(c.statut)}
                           </Badge>
+                          {isFicheEnvoyee && !c.ficheRenseignementRecue && (
+                            <div style={{ fontSize: 10, color: 'var(--gold)', marginTop: 4 }}>
+                              <Clock size={10} style={{ display: 'inline' }} /> En attente reponse
+                            </div>
+                          )}
+                          {isFicheRecue && (
+                            <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 4 }}>
+                              Formulaire recu
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -334,19 +445,8 @@ export function CandidatsPage() {
                               <Eye size={12} />
                             </Button>
                             
-                            {/* Actions pour candidats ACTIFS */}
                             {!isPassif && (
                               <>
-                                {c.statut === 'PRESELECTIONNEE' && (
-                                  <Button 
-                                    variant="primary" 
-                                    size="xs" 
-                                    onClick={() => openPlanifierModal(c)} 
-                                    title="Planifier entretien"
-                                  >
-                                    <Calendar size={12} />
-                                  </Button>
-                                )}
                                 {c.statut === 'NOUVELLE' && (
                                   <Button 
                                     variant="success" 
@@ -354,10 +454,46 @@ export function CandidatsPage() {
                                     onClick={() => updateStatut(c.id, 'PRESELECTIONNEE')} 
                                     title="Pre-selectionner"
                                   >
-                                    <Check size={12} />
+                                    <Check size={12} /> Pre-sel.
                                   </Button>
                                 )}
-                                {c.statut !== 'REFUSEE' && c.statut !== 'ACCEPTEE' && c.statut !== 'ENTRETIEN' && (
+                                
+                                {isPreselectionnee && (
+                                  <Button 
+                                    variant="primary" 
+                                    size="xs" 
+                                    onClick={() => envoyerFicheRenseignement(c.id)} 
+                                    title="Envoyer fiche de renseignement"
+                                  >
+                                    <Send size={12} /> Envoyer fiche
+                                  </Button>
+                                )}
+                                
+                                {isFicheEnvoyee && (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="xs" 
+                                    onClick={() => voirFicheRenseignement(c)} 
+                                    title="Voir la fiche remplie"
+                                    disabled={!c.ficheRenseignementRecue}
+                                  >
+                                    <FileText size={12} /> Voir fiche
+                                  </Button>
+                                )}
+                                
+                                {isFicheRecue && (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="xs" 
+                                    onClick={() => voirFicheRenseignement(c)} 
+                                    title="Voir la fiche remplie"
+                                  >
+                                    <FileText size={12} /> Voir fiche
+                                  </Button>
+                                )}
+                                
+                                {c.statut !== 'REFUSEE' && c.statut !== 'ACCEPTEE' && c.statut !== 'ENTRETIEN' && 
+                                 c.statut !== 'FICHE_ENVOYEE' && c.statut !== 'FICHE_RECUE' && (
                                   <Button 
                                     variant="danger" 
                                     size="xs" 
@@ -370,7 +506,6 @@ export function CandidatsPage() {
                               </>
                             )}
                             
-                            {/* Actions pour candidats PASSIFS */}
                             {isPassif && (
                               <Button 
                                 variant="primary" 
@@ -378,7 +513,7 @@ export function CandidatsPage() {
                                 onClick={() => openProposerModal(c)} 
                                 title="Proposer a une offre"
                               >
-                                <Sparkles size={12} />
+                                <Sparkles size={12} /> Proposer
                               </Button>
                             )}
                           </div>
@@ -393,32 +528,6 @@ export function CandidatsPage() {
         </CardBody>
       </Card>
 
-      {/* Modal de planification d'entretien */}
-      {selectedCandidature && selectedCandidature.offre && (
-        <PlanifierEntretienModal
-          open={showPlanifierModal}
-          onClose={() => {
-            setShowPlanifierModal(false);
-            setSelectedCandidature(null);
-          }}
-          onSuccess={() => {
-            fetchCandidatures();
-            setShowPlanifierModal(false);
-            setSelectedCandidature(null);
-          }}
-          candidature={{
-            id: selectedCandidature.id,
-            nom: selectedCandidature.nom,
-            prenom: selectedCandidature.prenom,
-            email: selectedCandidature.email,
-            telephone: selectedCandidature.telephone,
-            offre: selectedCandidature.offre
-          }}
-          defaultType="TECHNIQUE"  
-        />
-      )}
-
-      {/* Modal pour proposer un candidat passif a une offre */}
       <Modal
         open={showProposerModal}
         onClose={() => {
@@ -464,6 +573,86 @@ export function CandidatsPage() {
             ))}
           </select>
         </div>
+      </Modal>
+
+      {/* Modal pour afficher la fiche de renseignement */}
+      <Modal
+        open={showFicheModal}
+        onClose={() => {
+          setShowFicheModal(false);
+          setFicheData(null);
+          setCurrentCandidat(null);
+        }}
+        title={`Fiche de renseignement - ${currentCandidat?.prenom} ${currentCandidat?.nom}`}
+        maxWidth={800}
+        footer={
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <Button variant="ghost" onClick={() => setShowFicheModal(false)}>Fermer</Button>
+          </div>
+        }
+      >
+        {ficheData ? (
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '16px' }}>
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Informations personnelles
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Date naissance:</strong> {ficheData.dateNaissance || '-'}</div>
+                <div><strong>Lieu naissance:</strong> {ficheData.lieuNaissance || '-'}</div>
+                <div><strong>Nationalite:</strong> {ficheData.nationalite || '-'}</div>
+                <div><strong>Situation familiale:</strong> {ficheData.situationFamiliale || '-'}</div>
+                <div><strong>Civilite:</strong> {ficheData.civilite || '-'}</div>
+                <div><strong>Adresse:</strong> {ficheData.adresse || '-'}</div>
+                <div><strong>Ville:</strong> {ficheData.ville || '-'}</div>
+                <div><strong>Telephone:</strong> {ficheData.telephone || ficheData.mobile || '-'}</div>
+                <div><strong>Email:</strong> {ficheData.email || '-'}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Situation professionnelle
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Employeur actuel:</strong> {ficheData.employeurActuel || '-'}</div>
+                <div><strong>Poste actuel:</strong> {ficheData.posteActuel || '-'}</div>
+                <div><strong>Anciennete:</strong> {ficheData.anciennete || '-'}</div>
+                <div><strong>Disponibilite:</strong> {ficheData.disponibilite || '-'}</div>
+                <div><strong>Salaire souhaite:</strong> {ficheData.salaireSouhaite || '-'}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                Formation & Competences
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                <div><strong>Niveau etudes:</strong> {ficheData.niveauEtudes || '-'}</div>
+                <div><strong>Diplomes:</strong> {ficheData.diplomes || '-'}</div>
+                <div><strong>Langues:</strong> {
+                  ficheData.langues && typeof ficheData.langues === 'object'
+                    ? Object.entries(ficheData.langues)
+                        .filter(([key, value]) => value && key !== 'autres')
+                        .map(([key, value]) => `${key}: ${value}`)
+                        .join(', ')
+                    : ficheData.langues || '-'
+                }</div>
+                <div><strong>Permis:</strong> {ficheData.permis || '-'}</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--surface)', borderRadius: 8 }}>
+              <p style={{ fontSize: 12, fontStyle: 'italic', margin: 0 }}>
+                Le candidat certifie la sincerite des renseignements fournis.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <p>Aucune donnee de fiche disponible</p>
+          </div>
+        )}
       </Modal>
     </div>
   );

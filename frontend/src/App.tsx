@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CandidatFormPage } from './components/pages/candidat/CandidatFormPage';
+import { FicheRenseignement } from './components/pages/candidat/FicheRenseignement';
 import { LoginPage } from './components/pages/auth/LoginPage';
 import { ChangePasswordPage } from './components/pages/auth/ChangePasswordPage';
 import { DashboardPage } from './components/pages/dashboard/DashboardPage';
@@ -81,13 +82,12 @@ function AuthenticatedApp() {
   }
 
   const renderContent = () => {
-    // ✅ Passer l'id directement en prop pour éviter le problème useParams
     if (entretienId) {
       return <EntretienDetailPage id={entretienId} />;
     }
     if (candidatId) {
-  return <CandidatDetailPage id={candidatId} />;
-}
+      return <CandidatDetailPage id={candidatId} />;
+    }
     if (demandeId) {
       return <DemandeDetailsPage id={demandeId} />;
     }
@@ -133,6 +133,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/candidature/:token" element={<CandidatFormPage />} />
+          <Route path="/fiche-renseignement/:token" element={<FicheRenseignement />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/*" element={<AuthenticatedApp />} />
