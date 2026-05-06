@@ -1,29 +1,42 @@
 // backend/src/routes/candidatureRoutes.ts
-
 import { Router } from 'express';
+import multer from 'multer';
 import {
   soumettreCandidature,
   getCandidatures,
   getCandidatureById,
   updateCandidatureStatut,
-  deleteCandidature
+  deleteCandidature,
+  getCandidaturesAcceptees,
+  getCandidaturesAccepteesSansContrat,
+  getOffreByToken,
+  uploadCV,
+  envoyerFicheRenseignement,
+  getFicheRenseignement,
+  soumettreFicheRenseignement,
+  getFicheByCandidatureId
 } from '../controllers/candidatureController';
 import { protect, authorize } from '../middlewares/auth';
 
 const router = Router();
+const upload = multer({ dest: 'uploads/' });
 
-// 1. Routes PUBLIQUES (sans auth)
+// Routes publiques (sans authentification)
+router.get('/offre/:token', getOffreByToken);
 router.post('/public/:token', soumettreCandidature);
+router.post('/upload/cv', upload.single('cv'), uploadCV);
 
-// 2. Routes PROTÉGÉES avec paramètres fixes d'abord
-router.get('/statuts', protect, authorize('DRH', 'SUPER_ADMIN'), (req, res) => {
-  res.json({ statuts: ['NOUVELLE', 'PRESELECTIONNEE', 'ENTRETIEN', 'ACCEPTEE', 'REFUSEE'] });
-});
+// Routes pour la fiche de renseignement (public)
+router.get('/fiche-renseignement/:token', getFicheRenseignement);
+router.post('/fiche-renseignement/:token/soumettre', soumettreFicheRenseignement);
 
-// 3. Routes PROTÉGÉES standards
-router.get('/', protect, authorize('DRH', 'SUPER_ADMIN'), getCandidatures);
-router.get('/:id', protect, authorize('DRH', 'SUPER_ADMIN'), getCandidatureById);
+// Routes protégées
+router.get('/', protect, authorize('DRH', 'SUPER_ADMIN', 'MANAGER', 'RESP_PAIE'), getCandidatures);
+router.get('/acceptees', protect, authorize('RESP_PAIE', 'SUPER_ADMIN'), getCandidaturesAcceptees);
+router.get('/acceptees/sans-contrat', protect, authorize('RESP_PAIE', 'SUPER_ADMIN'), getCandidaturesAccepteesSansContrat);
+router.get('/:id', protect, authorize('DRH', 'SUPER_ADMIN', 'MANAGER', 'RESP_PAIE'), getCandidatureById);
 router.patch('/:id/statut', protect, authorize('DRH', 'SUPER_ADMIN'), updateCandidatureStatut);
 router.delete('/:id', protect, authorize('DRH', 'SUPER_ADMIN'), deleteCandidature);
-
+router.post('/:candidatureId/envoyer-fiche', protect, authorize('DRH', 'SUPER_ADMIN'), envoyerFicheRenseignement);
+router.get('/:id/fiche', protect, authorize('DRH', 'SUPER_ADMIN'), getFicheByCandidatureId);
 export default router;

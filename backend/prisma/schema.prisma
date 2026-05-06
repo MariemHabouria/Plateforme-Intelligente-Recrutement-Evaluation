@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 // ============================================
@@ -19,6 +20,7 @@ enum Role {
   DGA
   DG
   RESP_PAIE
+  EMPLOYE
 }
 
 enum Motif {
@@ -74,15 +76,32 @@ enum CircuitType {
   STRATEGIQUE
 }
 
-
 enum TypeEntretien {
-  RH         // Planifié par le DRH, date libre
-  TECHNIQUE  // Manager obligatoire, créneau depuis DisponibiliteInterviewer
-  DIRECTION  // Directeur, uniquement pour CADRE_SUPERIEUR et STRATEGIQUE
+  RH
+  TECHNIQUE
+  DIRECTION
+}
+
+enum DecisionEvaluationPE {
+  CONFIRMATION
+  PROLONGATION
+  RUPTURE
+  CHANGEMENT
+}
+
+enum StatutEvaluationPE {
+  BROUILLON
+  EN_VALIDATION_DIR
+  EN_VALIDATION_DRH
+  EN_VALIDATION_DAF
+  EN_VALIDATION_DGA
+  EN_VALIDATION_DG
+  VALIDEE
+  REJETEE
 }
 
 // ============================================
-// MODÈLE DIRECTION
+// MODELE DIRECTION
 // ============================================
 
 model Direction {
@@ -100,7 +119,7 @@ model Direction {
 }
 
 // ============================================
-// MODÈLE USER
+// MODELE USER
 // ============================================
 
 model User {
@@ -119,19 +138,28 @@ model User {
   directionId String?
   direction   Direction? @relation(fields: [directionId], references: [id])
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  // Hiérarchie
+  managerId String?
+  manager   User?   @relation("ManagerEmployes", fields: [managerId], references: [id])
+  employes  User[]  @relation("ManagerEmployes")
 
+  // Dates
+  dateArrivee    DateTime  @default(now())
+  dateFinContrat DateTime?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations existantes
   demandesCrees   DemandeRecrutement[] @relation("CreateurDemandes")
   demandesManager DemandeRecrutement[] @relation("ManagerDemandes")
   validations     ValidationEtape[]
 
-  evaluationsEmploye EvaluationPE[] @relation("EmployeEvaluations")
-  evaluationsManager EvaluationPE[] @relation("ManagerEvaluations")
-  entretiensRealises Entretien[]    @relation("InterviewerEntretiens")
+  evaluationsEmploye    EvaluationPE[]         @relation("EmployeEvaluations")
+  evaluationsManager    EvaluationPE[]         @relation("ManagerEvaluations")
+  evaluationValidations EvaluationValidation[] @relation("ActeurEvaluationValidations")
 
-  // ✅ NOUVEAU : disponibilités pour entretiens (MANAGER, DIRECTEUR, DRH)
+  entretiensRealises        Entretien[]                @relation("InterviewerEntretiens")
   disponibilitesInterviewer DisponibiliteInterviewer[]
 
   notifications Notification[]
@@ -141,7 +169,7 @@ model User {
 }
 
 // ============================================
-// MODÈLE CIRCUIT CONFIG
+// MODELE CIRCUIT CONFIG
 // ============================================
 
 model CircuitConfig {
@@ -162,32 +190,31 @@ model CircuitConfig {
 }
 
 // ============================================
-// MODÈLE DEMANDE RECRUTEMENT
+// MODELE DEMANDE RECRUTEMENT
 // ============================================
 
 model DemandeRecrutement {
-  id            String        @id @default(uuid())
-  reference     String        @unique
+  id            String  @id @default(uuid())
+  reference     String  @unique
   intitulePoste String
   description   String?
   justification String
-  
-  motif         Motif
-  commentaireMotif String?
+
+  motif                Motif
+  commentaireMotif     String?
   personneRemplaceeNom String?
-  fonctionRemplacee String?
-  
-  typeContrat   TypeContrat
-  priorite      Priorite
-  
-  budgetMin     Decimal?      @db.Decimal(10, 2)
-  budgetMax     Decimal?      @db.Decimal(10, 2)
-  
+  fonctionRemplacee    String?
+
+  typeContrat TypeContrat
+  priorite    Priorite
+
+  budgetMin Decimal? @db.Decimal(10, 2)
+  budgetMax Decimal? @db.Decimal(10, 2)
+
   dateSouhaitee DateTime
   statut        StatutDemande @default(BROUILLON)
-
   niveau        CircuitType   @default(CADRE_CONFIRME)
-  
+
   circuitType     CircuitType?
   totalEtapes     Int?
   etapeActuelle   Int          @default(0)
@@ -197,62 +224,46 @@ model DemandeRecrutement {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  createurId   String
-  createur     User   @relation("CreateurDemandes", fields: [createurId], references: [id])
-  
-  managerId    String
-  manager      User   @relation("ManagerDemandes", fields: [managerId], references: [id])
+  createurId String
+  createur   User   @relation("CreateurDemandes", fields: [createurId], references: [id])
 
-  directionId  String?
-  direction    Direction? @relation(fields: [directionId], references: [id])
+  managerId String
+  manager   User   @relation("ManagerDemandes", fields: [managerId], references: [id])
 
-  circuitConfig  CircuitConfig?    @relation(fields: [circuitConfigId], references: [id])
-  validations    ValidationEtape[]
-  offre          OffreEmploi?
-  disponibilites Disponibilite[]
+  directionId String?
+  direction   Direction? @relation(fields: [directionId], references: [id])
 
-  // ✅ NOUVEAU : disponibilités des interviewers liées à cette demande
+  circuitConfig              CircuitConfig?             @relation(fields: [circuitConfigId], references: [id])
+  validations                ValidationEtape[]
+  offre                      OffreEmploi?
+  disponibilites             Disponibilite[]
   disponibilitesInterviewers DisponibiliteInterviewer[]
 
   @@map("demandes")
 }
 
 // ============================================
-// ✅ NOUVEAU MODÈLE : DISPONIBILITE INTERVIEWER
+// MODELE DISPONIBILITE INTERVIEWER
 // ============================================
-// Stocke les créneaux des interviewers (MANAGER, DIRECTEUR, DRH)
-// liés à une demande de recrutement spécifique.
-// Utilisé par le RH pour planifier les entretiens TECHNIQUE et DIRECTION.
-// Pour l'entretien RH, la date est choisie librement par le DRH.
 
 model DisponibiliteInterviewer {
-  id         String   @id @default(uuid())
-
-  // L'interviewer qui propose ce créneau (MANAGER, DIRECTEUR, DRH)
+  id         String             @id @default(uuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id])
-
-  // La demande à laquelle ce créneau est associé
+  user       User               @relation(fields: [userId], references: [id])
   demandeId  String
   demande    DemandeRecrutement @relation(fields: [demandeId], references: [id], onDelete: Cascade)
-
   date       DateTime
   heureDebut String
   heureFin   String
-
-  // Passe à true quand un entretien est planifié sur ce créneau
-  reservee   Boolean  @default(false)
-
-  createdAt  DateTime @default(now())
-
-  // Un créneau ne peut être utilisé que pour un seul entretien
+  reservee   Boolean            @default(false)
+  createdAt  DateTime           @default(now())
   entretien  Entretien?
 
   @@map("disponibilites_interviewers")
 }
 
 // ============================================
-// MODÈLE VALIDATION ETAPE
+// MODELE VALIDATION ETAPE
 // ============================================
 
 model ValidationEtape {
@@ -275,7 +286,7 @@ model ValidationEtape {
 }
 
 // ============================================
-// MODÈLE RELANCE JOB
+// MODELE RELANCE JOB
 // ============================================
 
 model RelanceJob {
@@ -293,7 +304,7 @@ model RelanceJob {
 }
 
 // ============================================
-// MODÈLE DISPONIBILITE (créneaux demande - entretien technique)
+// MODELE DISPONIBILITE
 // ============================================
 
 model Disponibilite {
@@ -308,7 +319,7 @@ model Disponibilite {
 }
 
 // ============================================
-// MODÈLE OFFRE EMPLOI
+// MODELE OFFRE EMPLOI
 // ============================================
 
 model OffreEmploi {
@@ -322,9 +333,9 @@ model OffreEmploi {
   typeContrat         TypeContrat
   statut              String      @default("BROUILLON")
 
-  datePublication     DateTime?
-  lienCandidature     String?     @unique
-  
+  datePublication DateTime?
+  lienCandidature String?   @unique
+
   demandeId    String?             @unique
   demande      DemandeRecrutement? @relation(fields: [demandeId], references: [id])
   rhId         String
@@ -337,7 +348,7 @@ model OffreEmploi {
 }
 
 // ============================================
-// MODÈLE CANDIDATURE
+// MODELE CANDIDATURE 
 // ============================================
 
 model Candidature {
@@ -358,23 +369,29 @@ model Candidature {
   consentementIA        Boolean  @default(false)
   dateSoumission        DateTime @default(now())
 
-  offreId     String?      // ✅ AJOUTER ? pour rendre optionnel
-  offre       OffreEmploi? @relation(fields: [offreId], references: [id])  // ✅ AJOUTER ?
-  entretiens  Entretien[]
-  contrat     Contrat?
+  // FICHE DE RENSEIGNEMENT (pages 2,3,4)
+  ficheRenseignementEnvoyee   Boolean   @default(false)
+  ficheRenseignementEnvoyeeAt DateTime?
+  ficheRenseignementRecue     Boolean   @default(false)
+  ficheRenseignementRecueAt   DateTime?
+  ficheRenseignementToken     String?   @unique
+  ficheRenseignementData      Json?
+
+  offreId    String?
+  offre      OffreEmploi? @relation(fields: [offreId], references: [id])
+  entretiens Entretien[]
+  contrat    Contrat?     @relation("CandidatureContrat")
 
   @@map("candidatures")
 }
+
 // ============================================
-// MODÈLE ENTRETIEN — CORRIGÉ
+// MODELE ENTRETIEN
 // ============================================
 
 model Entretien {
   id         String        @id @default(uuid())
-
-  // ✅ Enum TypeEntretien (RH | TECHNIQUE | DIRECTION)
   type       TypeEntretien
-
   date       DateTime
   heure      String
   lieu       String
@@ -385,22 +402,17 @@ model Entretien {
   candidatureId String
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
 
-  // Pour RH : interviewerId = DRH lui-même
-  // Pour TECHNIQUE : interviewerId = MANAGER de la direction
-  // Pour DIRECTION : interviewerId = DIRECTEUR
   interviewerId String
-  interviewer   User        @relation("InterviewerEntretiens", fields: [interviewerId], references: [id])
+  interviewer   User   @relation("InterviewerEntretiens", fields: [interviewerId], references: [id])
 
-  // ✅ NOUVEAU : créneau utilisé (null pour entretien RH — date libre)
-  // Pour TECHNIQUE et DIRECTION : obligatoirement un créneau DisponibiliteInterviewer
-  disponibiliteId String?                    @unique
-  disponibilite   DisponibiliteInterviewer?  @relation(fields: [disponibiliteId], references: [id])
+  disponibiliteId String?                   @unique
+  disponibilite   DisponibiliteInterviewer? @relation(fields: [disponibiliteId], references: [id])
 
   @@map("entretiens")
 }
 
 // ============================================
-// MODÈLE CONTRAT
+// MODELE CONTRAT 
 // ============================================
 
 model Contrat {
@@ -413,8 +425,11 @@ model Contrat {
   statut      String      @default("BROUILLON")
   pdfUrl      String?
 
-  candidatureId String        @unique
-  candidature   Candidature   @relation(fields: [candidatureId], references: [id])
+  // ✅ AJOUTER CETTE LIGNE
+  donneesContrat Json?
+
+  candidatureId String?            @unique
+  candidature   Candidature?       @relation("CandidatureContrat", fields: [candidatureId], references: [id])
   evaluationPE  EvaluationPE?
   avenants      Avenant[]
 
@@ -422,18 +437,12 @@ model Contrat {
 }
 
 // ============================================
-// MODÈLE EVALUATION PE
+// MODELE EVALUATION PE
 // ============================================
 
 model EvaluationPE {
-  id                 String   @id @default(uuid())
-  dateDebut          DateTime
-  dateFin            DateTime
-  joursRestants      Int
-  decision           String?
-  commentaire        String?
-  commentaireManager String?
-  etapeActuelle      Int
+  id        String @id @default(uuid())
+  reference String @unique
 
   employeId String
   employe   User    @relation("EmployeEvaluations", fields: [employeId], references: [id])
@@ -442,11 +451,63 @@ model EvaluationPE {
   contratId String  @unique
   contrat   Contrat @relation(fields: [contratId], references: [id])
 
+  dateDebut      DateTime
+  dateFin        DateTime
+  dateEvaluation DateTime @default(now())
+  joursRestants  Int
+
+  decision             DecisionEvaluationPE?
+  dureeProlongation    Int?
+  justificationRupture String?
+
+  evaluationN1     String?
+  commentaireN1    String?
+  dateSoumissionN1 DateTime?
+
+  evaluationN2   String?
+  commentaireN2  String?
+  dateDecisionN2 DateTime?
+
+  evaluationN1Masquee Boolean @default(false)
+
+  statut        StatutEvaluationPE @default(BROUILLON)
+  etapeActuelle Int                @default(0)
+  totalEtapes   Int                @default(5)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  valideeAt DateTime?
+
+  validations EvaluationValidation[]
+
   @@map("evaluations_pe")
 }
 
 // ============================================
-// MODÈLE AVENANT
+// MODELE EVALUATION VALIDATION
+// ============================================
+
+model EvaluationValidation {
+  id             String       @id @default(uuid())
+  evaluationId   String
+  evaluation     EvaluationPE @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  niveauEtape    Int
+  role           String
+  acteurId       String
+  acteur         User         @relation("ActeurEvaluationValidations", fields: [acteurId], references: [id])
+  decision       String       @default("EN_ATTENTE")
+  commentaire    String?
+  dateLimite     DateTime
+  dateDecision   DateTime?
+  relanceEnvoyee Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@map("evaluations_validations")
+}
+
+// ============================================
+// MODELE AVENANT
 // ============================================
 
 model Avenant {
@@ -462,7 +523,7 @@ model Avenant {
 }
 
 // ============================================
-// MODÈLE NOTIFICATION
+// MODELE NOTIFICATION
 // ============================================
 
 model Notification {
@@ -485,7 +546,7 @@ model Notification {
 }
 
 // ============================================
-// MODÈLE AUDIT LOG
+// MODELE AUDIT LOG
 // ============================================
 
 model AuditLog {

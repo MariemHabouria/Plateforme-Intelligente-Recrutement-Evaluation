@@ -4,8 +4,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound } from '../utils/helpers';
 import { scoringService } from '../services/scoring.service';
-
-// Générer une référence unique
+// Générer une référence uniqu
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const count = await prisma.candidature.count({
@@ -123,7 +122,7 @@ export const getCandidatures = async (req: Request, res: Response) => {
       where.offreId = offreId;
     }
 
-    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN' && userRole !== 'MANAGER') {
+    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN' && userRole !== 'MANAGER' && userRole !== 'RESP_PAIE') {
       return sendError(res, 'Non autorise', 403);
     }
 
@@ -179,6 +178,76 @@ export const getCandidatures = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('getCandidatures error:', error);
     sendError(res, 'Erreur lors de la recuperation des candidatures');
+  }
+};
+
+// ============================================
+// RECUPERER LES CANDIDATURES ACCEPTEES (toutes)
+// ============================================
+export const getCandidaturesAcceptees = async (req: Request, res: Response) => {
+  try {
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'RESP_PAIE' && userRole !== 'SUPER_ADMIN') {
+      return sendError(res, 'Non autorise', 403);
+    }
+
+    const candidatures = await prisma.candidature.findMany({
+      where: { statut: 'ACCEPTEE' },
+      include: {
+        offre: {
+          select: {
+            id: true,
+            reference: true,
+            intitule: true
+          }
+        }
+      },
+      orderBy: { dateSoumission: 'desc' }
+    });
+
+    sendSuccess(res, { candidatures });
+
+  } catch (error) {
+    console.error('getCandidaturesAcceptees error:', error);
+    sendError(res, 'Erreur lors de la recuperation');
+  }
+};
+
+// ============================================
+// ✅ NOUVEAU: RECUPERER LES CANDIDATURES ACCEPTEES SANS CONTRAT
+// ============================================
+export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Response) => {
+  try {
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'RESP_PAIE' && userRole !== 'SUPER_ADMIN') {
+      return sendError(res, 'Non autorise', 403);
+    }
+
+    const candidatures = await prisma.candidature.findMany({
+      where: { 
+        statut: 'ACCEPTEE',
+        contrat: null  // ✅ Pas de contrat associé
+      },
+      include: {
+        offre: {
+          select: {
+            id: true,
+            reference: true,
+            intitule: true
+          }
+        }
+      },
+      orderBy: { dateSoumission: 'desc' }
+    });
+
+    console.log(`📋 Candidatures ACCEPTEE sans contrat: ${candidatures.length}`);
+    sendSuccess(res, { candidatures });
+
+  } catch (error) {
+    console.error('getCandidaturesAccepteesSansContrat error:', error);
+    sendError(res, 'Erreur lors de la recuperation');
   }
 };
 
@@ -270,5 +339,221 @@ export const deleteCandidature = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('deleteCandidature error:', error);
     sendError(res, 'Erreur lors de la suppression');
+  }
+  
+};
+export const getOffreByToken = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+
+    const offre = await prisma.offreEmploi.findFirst({
+      where: {
+        lienCandidature: { contains: token },
+        statut: 'PUBLIEE'
+      },
+      select: {
+        id: true,
+        reference: true,
+        intitule: true,
+        description: true,
+        profilRecherche: true,
+        competences: true,
+        fourchetteSalariale: true,
+        typeContrat: true
+      }
+    });
+
+    if (!offre) {
+      return sendNotFound(res, 'Offre non trouvée ou expirée');
+    }
+
+    sendSuccess(res, { offre });
+  } catch (error) {
+    console.error('getOffreByToken error:', error);
+    sendError(res, 'Erreur lors de la récupération de l\'offre');
+  }
+};
+
+// ============================================
+// UPLOAD DE CV (public)
+// ============================================
+export const uploadCV = async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return sendError(res, 'Aucun fichier fourni', 400);
+    }
+
+    // Générer un nom de fichier unique
+    const timestamp = Date.now();
+    const originalName = req.file.originalname;
+    const extension = originalName.split('.').pop();
+    const filename = `cv_${timestamp}.${extension}`;
+    const cvUrl = `/uploads/cv/${filename}`;
+
+    // Ici vous devriez déplacer le fichier vers le bon dossier
+    // Pour l'instant, on simule
+    
+    sendSuccess(res, { cvUrl }, 'CV uploadé avec succès');
+  } catch (error) {
+    console.error('uploadCV error:', error);
+    sendError(res, 'Erreur lors de l\'upload du CV');
+  }
+};
+
+// ============================================
+// ENVOYER LA FICHE DE RENSEIGNEMENT
+// ============================================
+export const envoyerFicheRenseignement = async (req: Request, res: Response) => {
+  try {
+    const { candidatureId } = req.params;
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
+      return sendError(res, 'Non autorisé', 403);
+    }
+
+    const candidature = await prisma.candidature.findUnique({
+      where: { id: candidatureId },
+      include: { offre: true }
+    });
+
+    if (!candidature) {
+      return sendNotFound(res, 'Candidature non trouvée');
+    }
+
+    if (candidature.statut !== 'PRESELECTIONNEE') {
+      return sendError(res, 'La fiche ne peut être envoyée qu\'à un candidat présélectionné', 400);
+    }
+
+    // Générer un token unique
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const ficheUrl = `${process.env.FRONTEND_URL}/fiche-renseignement/${token}`;
+
+    // Mettre à jour la candidature
+    await prisma.candidature.update({
+      where: { id: candidatureId },
+      data: {
+        ficheRenseignementEnvoyee: true,
+        ficheRenseignementEnvoyeeAt: new Date(),
+        ficheRenseignementToken: token,
+        statut: 'FICHE_ENVOYEE'
+      }
+    });
+
+    // Ici vous devriez envoyer un email au candidat avec le lien
+    console.log(`📧 Email à envoyer à ${candidature.email}: ${ficheUrl}`);
+
+    sendSuccess(res, { token, ficheUrl }, 'Fiche de renseignement envoyée avec succès');
+  } catch (error) {
+    console.error('envoyerFicheRenseignement error:', error);
+    sendError(res, 'Erreur lors de l\'envoi de la fiche');
+  }
+};
+
+// ============================================
+// RECUPERER LA FICHE DE RENSEIGNEMENT (public)
+// ============================================
+export const getFicheRenseignement = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+
+    const candidature = await prisma.candidature.findFirst({
+      where: {
+        ficheRenseignementToken: token,
+        ficheRenseignementEnvoyee: true,
+        ficheRenseignementRecue: false
+      },
+      include: {
+        offre: {
+          select: {
+            intitule: true
+          }
+        }
+      }
+    });
+
+    if (!candidature) {
+      return sendNotFound(res, 'Fiche invalide ou déjà soumise');
+    }
+
+    sendSuccess(res, {
+      token,
+      candidat: {
+        nom: candidature.nom,
+        prenom: candidature.prenom,
+        email: candidature.email,
+        poste: candidature.offre?.intitule || ''
+      }
+    });
+  } catch (error) {
+    console.error('getFicheRenseignement error:', error);
+    sendError(res, 'Erreur lors de la récupération de la fiche');
+  }
+};
+
+// ============================================
+// SOUMETTRE LA FICHE DE RENSEIGNEMENT (public)
+// ============================================
+export const soumettreFicheRenseignement = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const { data } = req.body;
+
+    const candidature = await prisma.candidature.findFirst({
+      where: {
+        ficheRenseignementToken: token,
+        ficheRenseignementEnvoyee: true,
+        ficheRenseignementRecue: false
+      }
+    });
+
+    if (!candidature) {
+      return sendNotFound(res, 'Fiche invalide ou déjà soumise');
+    }
+
+    await prisma.candidature.update({
+      where: { id: candidature.id },
+      data: {
+        ficheRenseignementRecue: true,
+        ficheRenseignementRecueAt: new Date(),
+        ficheRenseignementData: data,
+        statut: 'FICHE_RECUE'
+      }
+    });
+
+    sendSuccess(res, null, 'Fiche de renseignement soumise avec succès');
+  } catch (error) {
+    console.error('soumettreFicheRenseignement error:', error);
+    sendError(res, 'Erreur lors de la soumission de la fiche');
+  }
+};
+export const getFicheByCandidatureId = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const candidature = await prisma.candidature.findUnique({
+      where: { id },
+      select: {
+        ficheRenseignementData: true,
+        ficheRenseignementRecue: true,
+        ficheRenseignementRecueAt: true,
+        nom: true,
+        prenom: true
+      }
+    });
+
+    if (!candidature) {
+      return sendNotFound(res, 'Candidature non trouvée');
+    }
+
+    sendSuccess(res, {
+      ficheData: candidature.ficheRenseignementData,
+      recue: candidature.ficheRenseignementRecue,
+      recueAt: candidature.ficheRenseignementRecueAt
+    });
+  } catch (error) {
+    console.error('getFicheByCandidatureId error:', error);
+    sendError(res, 'Erreur lors de la récupération de la fiche');
   }
 };

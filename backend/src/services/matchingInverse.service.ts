@@ -1,10 +1,5 @@
 // backend/src/services/matchingInverse.service.ts
 
-// ❌ Supprimer cette ligne
-// import { PrismaClient } from '@prisma/client';
-// const prisma = new PrismaClient();
-
-// ✅ Importer l'instance déjà configurée
 import prisma from '../config/prisma';
 
 interface OffreInput {
@@ -30,6 +25,7 @@ interface CandidatureInput {
   scoreExp: number;
   statut: string;
   consentementRGPD: boolean;
+  telephone?: string;
   offre?: {
     demande?: {
       direction?: { nom: string };
@@ -153,6 +149,90 @@ class MatchingInverseService {
   }
   
   /**
+   * Récupère une offre par son ID
+   */
+  async getOffreById(offreId: string): Promise<OffreInput | null> {
+    const offre = await prisma.offreEmploi.findUnique({
+      where: { id: offreId },
+      include: {
+        demande: {
+          include: {
+            direction: true
+          }
+        }
+      }
+    });
+    
+    if (!offre) return null;
+    
+    return {
+      id: offre.id,
+      intitule: offre.intitule,
+      description: offre.description || '',
+      profilRecherche: offre.profilRecherche || '',
+      competences: offre.competences,
+      typeContrat: offre.typeContrat,
+      demande: offre.demande ? {
+        niveau: offre.demande.niveau,
+        direction: offre.demande.direction ? { nom: offre.demande.direction.nom } : undefined
+      } : undefined
+    };
+  }
+
+  /**
+   * Récupère toutes les candidatures passives
+   */
+  async getCandidaturesPassives(): Promise<CandidatureInput[]> {
+    const candidatures = await prisma.candidature.findMany({
+      where: {
+        offreId: null,
+        consentementRGPD: true,
+        statut: { notIn: ['ACCEPTEE', 'REFUSEE'] }
+      },
+      include: {
+        offre: {
+          include: {
+            demande: {
+              include: {
+                direction: true
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    return candidatures.map(c => ({
+      id: c.id,
+      nom: c.nom,
+      prenom: c.prenom,
+      email: c.email,
+      cvTexte: c.cvTexte || '',
+      competencesDetectees: c.competencesDetectees,
+      scoreExp: c.scoreExp || 0,
+      statut: c.statut,
+      consentementRGPD: c.consentementRGPD,
+      telephone: c.telephone || undefined,
+      offre: c.offre ? {
+        demande: c.offre.demande ? {
+          direction: c.offre.demande.direction ? { nom: c.offre.demande.direction.nom } : undefined
+        } : undefined
+      } : undefined
+    }));
+  }
+
+  /**
+   * ✅ AJOUTER CETTE MÉTHODE - Exécute le matching pour une offre spécifique
+   */
+  async executerMatching(offreId: string): Promise<MatchingResult[]> {
+    const offre = await this.getOffreById(offreId);
+    if (!offre) throw new Error('Offre non trouvée');
+    
+    const candidatures = await this.getCandidaturesPassives();
+    return this.executerMatchingInverse(offre, candidatures);
+  }
+
+  /**
    * Exécute le matching inverse pour une nouvelle offre
    */
   async executerMatchingInverse(
@@ -165,7 +245,6 @@ class MatchingInverseService {
     for (const candidature of candidaturesExistantes) {
       if (!candidature.consentementRGPD) continue;
       if (candidature.statut === 'ACCEPTEE') continue;
-      if (candidature.statut === 'MATCHING_INVERSE') continue;
       
       const { score, competencesMatch, competencesManquantes } = this.calculerScore(offre, candidature);
       
@@ -175,7 +254,7 @@ class MatchingInverseService {
           candidatNom: candidature.nom,
           candidatPrenom: candidature.prenom,
           email: candidature.email,
-          telephone: (candidature as any).telephone,
+          telephone: candidature.telephone,
           score,
           competencesMatch,
           competencesManquantes,
