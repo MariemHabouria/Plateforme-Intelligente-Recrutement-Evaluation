@@ -1,3 +1,5 @@
+// frontend/src/contexts/AuthContext.tsx
+
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../services/api';
 import type { User, Direction } from '../types';
@@ -13,7 +15,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mapping des rôles backend -> frontend
+// Mapping des roles backend -> frontend
 const roleMap: Record<string, string> = {
   'SUPER_ADMIN': 'superadmin',
   'MANAGER': 'manager',
@@ -21,11 +23,11 @@ const roleMap: Record<string, string> = {
   'DRH': 'rh',
   'DAF': 'daf',
   'DGA': 'dga',
-  'DG': 'dga',
+  'DG': 'dg',
   'RESP_PAIE': 'paie'
 };
 
-// Routes par défaut (utilisées seulement pour le login)
+// Routes par defaut
 const DEFAULT_ROUTES: Record<string, string> = {
   superadmin: '/admin/users',
   manager: '/demandes',
@@ -33,6 +35,7 @@ const DEFAULT_ROUTES: Record<string, string> = {
   rh: '/validations',
   daf: '/validations',
   dga: '/validations',
+  dg: '/validations',
   paie: '/evaluations'
 };
 
@@ -40,22 +43,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fonction pour rafraîchir les données de l'utilisateur
+  // Fonction pour rafraichir les donnees de l'utilisateur
   const refreshUser = async () => {
     try {
       const response = await api.get('/auth/me');
       const freshUser = response.data.user;
+
+      const normalizedRole = roleMap[freshUser.role] || freshUser.role;
       
-      // Normaliser le rôle si nécessaire
-      if (freshUser.role && roleMap[freshUser.role]) {
-        freshUser.role = roleMap[freshUser.role];
-      }
+      const normalizedUser = { ...freshUser, role: normalizedRole };
       
-      setUser(freshUser);
-      localStorage.setItem('user', JSON.stringify(freshUser));
-      console.log('✅ Utilisateur rafraîchi:', freshUser.prenom, freshUser.nom);
+      setUser(normalizedUser);
+      localStorage.setItem('user', JSON.stringify(normalizedUser));
     } catch (error) {
-      console.error('❌ Erreur refreshUser:', error);
+      console.error('Erreur refreshUser:', error);
     }
   };
 
@@ -63,25 +64,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
     
+    console.log('[Auth] Restauration - token present:', !!token);
+    console.log('[Auth] Restauration - user present:', !!savedUser);
+    
     if (token && savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
+        console.log('[Auth] Utilisateur restaure:', parsedUser?.email);
         setUser(parsedUser);
       } catch (e) {
+        console.error('[Auth] Erreur parsing user:', e);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
+    } else {
+      console.log('[Auth] Aucun utilisateur en cache');
     }
     setLoading(false);
 
-    // ÉCOUTEUR D'ÉVÉNEMENTS
+    // Ecouteur d'evenements
     const handleUserUpdate = (event: CustomEvent) => {
-      console.log('🔄 Événement userUpdated reçu');
+      console.log('[Auth] Evenement userUpdated recu');
       
       if (event.detail) {
         setUser(event.detail);
         localStorage.setItem('user', JSON.stringify(event.detail));
-        console.log('✅ Utilisateur mis à jour via événement');
+        console.log('[Auth] Utilisateur mis a jour via evenement');
       } else {
         refreshUser();
       }
@@ -98,13 +106,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await api.post('/auth/login', { email, password });
       
+      console.log('[Auth] Login reussi pour:', response.data.user?.email);
+      
       const normalizedRole = roleMap[response.data.user.role] || 'candidat';
       
       const userData: User = {
         ...response.data.user,
         role: normalizedRole,
-        directionId: response.data.user.directionId,  // ⬅️ NOUVEAU
-        direction: response.data.user.direction       // ⬅️ NOUVEAU
+        directionId: response.data.user.directionId,
+        direction: response.data.user.direction
       };
       
       localStorage.setItem('token', response.data.token);
@@ -121,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       return { forcePasswordChange: false };
     } catch (error: any) {
+      console.error('[Auth] Erreur login:', error);
       throw new Error(error.response?.data?.message || 'Erreur de connexion');
     }
   };
@@ -133,11 +144,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updatedUser = { ...user, mustChangePassword: false };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
-        
-        // DÉCLENCHER L'ÉVÉNEMENT POUR METTRE À JOUR LA SIDEBAR
-        window.dispatchEvent(new CustomEvent('userUpdated', { detail: updatedUser }));
-        
-        // NE PAS REDIRIGER - L'UTILISATEUR RESTE SUR LA MÊME PAGE
       }
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Erreur changement mot de passe');
@@ -145,6 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    console.log('[Auth] Deconnexion');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);

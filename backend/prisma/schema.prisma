@@ -132,25 +132,23 @@ model User {
   poste              String?
   telephone          String?
   actif              Boolean   @default(true)
+  
   mustChangePassword Boolean   @default(true)
   dernierConnexion   DateTime?
 
   directionId String?
   direction   Direction? @relation(fields: [directionId], references: [id])
 
-  // Hiérarchie
   managerId String?
   manager   User?   @relation("ManagerEmployes", fields: [managerId], references: [id])
   employes  User[]  @relation("ManagerEmployes")
 
-  // Dates
   dateArrivee    DateTime  @default(now())
   dateFinContrat DateTime?
-  
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
 
-  // Relations existantes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   demandesCrees   DemandeRecrutement[] @relation("CreateurDemandes")
   demandesManager DemandeRecrutement[] @relation("ManagerDemandes")
   validations     ValidationEtape[]
@@ -348,7 +346,7 @@ model OffreEmploi {
 }
 
 // ============================================
-// MODELE CANDIDATURE 
+// MODELE CANDIDATURE
 // ============================================
 
 model Candidature {
@@ -369,7 +367,6 @@ model Candidature {
   consentementIA        Boolean  @default(false)
   dateSoumission        DateTime @default(now())
 
-  // FICHE DE RENSEIGNEMENT (pages 2,3,4)
   ficheRenseignementEnvoyee   Boolean   @default(false)
   ficheRenseignementEnvoyeeAt DateTime?
   ficheRenseignementRecue     Boolean   @default(false)
@@ -412,7 +409,7 @@ model Entretien {
 }
 
 // ============================================
-// MODELE CONTRAT 
+// MODELE CONTRAT
 // ============================================
 
 model Contrat {
@@ -424,8 +421,6 @@ model Contrat {
   dateFin     DateTime?
   statut      String      @default("BROUILLON")
   pdfUrl      String?
-
-  // ✅ AJOUTER CETTE LIGNE
   donneesContrat Json?
 
   candidatureId String?            @unique
@@ -566,4 +561,23 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+// ============================================
+// MODELE SCORING CONFIG (nouveau — IA)
+// ============================================
+
+model ScoringConfig {
+  id               String   @id @default(uuid())
+  poidsCompetences Float    @default(0.35)
+  poidsExperience  Float    @default(0.25)
+  poidsFormation   Float    @default(0.20)
+  poidsSemantique  Float    @default(0.12)
+  poidsCompletude  Float    @default(0.08)
+  seuilMatching    Int      @default(70)
+  updatedBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("scoring_configs")
 }

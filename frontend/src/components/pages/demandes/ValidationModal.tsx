@@ -7,6 +7,7 @@ import { Modal } from '../../ui/Modal';
 import { Button } from '../../ui/Button';
 import { FormGroup, FormLabel, Textarea } from '../../ui/FormField';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 
 interface ValidationModalProps {
   open: boolean;
@@ -23,9 +24,9 @@ interface Disponibilite {
 }
 
 const MOTIF_LABELS: Record<string, string> = {
-  CREATION: 'Création de poste',
+  CREATION: 'Creation de poste',
   REMPLACEMENT: 'Remplacement',
-  RENFORCEMENT: "Renforcement d'équipe",
+  RENFORCEMENT: "Renforcement d'equipe",
   NOUVEAU_POSTE: 'Nouveau poste',
   EXPANSION: 'Expansion',
 };
@@ -38,33 +39,35 @@ const CONTRAT_LABELS: Record<string, string> = {
   FREELANCE: 'Freelance',
 };
 
-// Niveaux qui nécessitent un entretien direction
+// Niveaux qui necessitent un entretien direction
 const NIVEAUX_AVEC_DIRECTION = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
 
 export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAction }: ValidationModalProps) => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [commentaire, setCommentaire] = useState('');
   const [loading, setLoading] = useState(false);
   const [disponibilites, setDisponibilites] = useState<Disponibilite[]>([
     { date: '', heureDebut: '', heureFin: '' }
   ]);
 
-  // Vérifier si l'utilisateur doit saisir ses disponibilités
+  // Recuperer le token depuis l'URL
+  const token = searchParams.get('token');
+
+  // Verifier si l'utilisateur doit saisir ses disponibilites
   const needsDisponibilites = (): boolean => {
     if (!user || !demande) return false;
     
-    // Manager → toujours (entretien technique)
-    if (user.role === 'manager') return true;
+    if (user.role === 'MANAGER') return true;
     
-    // Directeur → uniquement pour cadres supérieurs ou stratégiques
-    if (user.role === 'directeur') {
+    if (user.role === 'DIRECTEUR') {
       return NIVEAUX_AVEC_DIRECTION.includes(demande.niveau);
     }
     
     return false;
   };
 
-  // Reset à chaque ouverture
+  // Reset a chaque ouverture
   useEffect(() => {
     if (open) {
       setCommentaire('');
@@ -97,12 +100,12 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
       today.setHours(0, 0, 0, 0);
       
       if (dispoDate < today) {
-        alert('La date de disponibilité ne peut pas être dans le passé');
+        alert('La date de disponibilite ne peut pas etre dans le passe');
         return false;
       }
       
       if (dispo.heureDebut >= dispo.heureFin) {
-        alert('L\'heure de début doit être antérieure à l\'heure de fin');
+        alert('L heure de debut doit etre anterieure a l heure de fin');
         return false;
       }
     }
@@ -112,18 +115,16 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
   const handleConfirm = async () => {
     if (!defaultAction) return;
     
-    // Validation du commentaire pour un refus
     if (defaultAction === 'Refusee' && !commentaire) {
       alert('Veuillez indiquer un motif de refus');
       return;
     }
     
-    // Validation des disponibilités pour Manager/Directeur
     let disponibilitesToSend = undefined;
     if (needsDisponibilites() && defaultAction === 'Validee') {
       const validDispos = disponibilites.filter(d => d.date && d.heureDebut && d.heureFin);
       if (validDispos.length === 0) {
-        alert('Veuillez saisir au moins une disponibilité pour les entretiens');
+        alert('Veuillez saisir au moins une disponibilite pour les entretiens');
         return;
       }
       if (!validateDisponibilites()) return;
@@ -146,8 +147,8 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
   const budgetText = demande.budgetMin && demande.budgetMax
     ? `${demande.budgetMin} - ${demande.budgetMax} DT / mois`
     : demande.budgetMin
-    ? `À partir de ${demande.budgetMin} DT / mois`
-    : 'Non spécifié';
+    ? `A partir de ${demande.budgetMin} DT / mois`
+    : 'Non specifie';
 
   return (
     <Modal
@@ -190,11 +191,26 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
           fontWeight: 500,
         }}>
           {isRefus
-            ? '⚠️ Vous êtes sur le point de refuser cette demande. Cette action notifiera le créateur.'
-            : '✅ Vous êtes sur le point de valider cette demande et de la transmettre à l\'étape suivante.'}
+            ? 'Vous etes sur le point de refuser cette demande. Cette action notifiera le createur.'
+            : 'Vous etes sur le point de valider cette demande et de la transmettre a l etape suivante.'}
         </div>
 
-        {/* Récap demande */}
+        {/* Token de validation (debug) */}
+        {token && (
+          <div style={{
+            marginBottom: 16,
+            padding: '8px 12px',
+            background: '#f0fdf4',
+            borderRadius: 4,
+            fontSize: 11,
+            color: '#15803d',
+            wordBreak: 'break-all'
+          }}>
+            Token de validation: {token}
+          </div>
+        )}
+
+        {/* Recap demande */}
         <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface)', borderRadius: 8 }}>
           <p style={{ marginBottom: 6 }}><strong>Poste :</strong> {demande.intitulePoste}</p>
           <p style={{ marginBottom: 6 }}><strong>Budget :</strong> {budgetText}</p>
@@ -228,27 +244,27 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
           )}
         </FormGroup>
 
-        {/* ✅ Section disponibilités pour Manager/Directeur */}
+        {/* Section disponibilites pour Manager/Directeur */}
         {showDisponibilites && (
           <div style={{ marginTop: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <FormLabel>
-                Mes disponibilités pour entretiens
-                {user?.role === 'directeur' && (
+                Mes disponibilites pour entretiens
+                {user?.role === 'DIRECTEUR' && (
                   <span style={{ fontSize: 11, marginLeft: 8, fontWeight: 'normal' }}>
-                    (Cadre supérieur / Stratégique uniquement)
+                    (Cadre superieur / Strategique uniquement)
                   </span>
                 )}
               </FormLabel>
               <Button variant="ghost" size="xs" onClick={addDisponibilite}>
-                <Plus size={14} /> Ajouter un créneau
+                <Plus size={14} /> Ajouter un creneau
               </Button>
             </div>
             
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-              {user?.role === 'manager' 
-                ? 'En tant que manager, veuillez saisir vos créneaux disponibles pour les entretiens techniques.'
-                : 'En tant que directeur, veuillez saisir vos créneaux disponibles pour les entretiens direction.'}
+              {user?.role === 'MANAGER' 
+                ? 'En tant que manager, veuillez saisir vos creneaux disponibles pour les entretiens techniques.'
+                : 'En tant que directeur, veuillez saisir vos creneaux disponibles pour les entretiens direction.'}
             </div>
             
             {disponibilites.map((dispo, index) => (
@@ -272,7 +288,7 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
                   value={dispo.heureDebut}
                   onChange={(e) => updateDisponibilite(index, 'heureDebut', e.target.value)}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6 }}
-                  placeholder="Début"
+                  placeholder="Debut"
                 />
                 <input
                   type="time"
@@ -290,7 +306,7 @@ export const ValidationModal = ({ open, demande, onClose, onValidate, defaultAct
             ))}
             
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-              Ces créneaux seront utilisés pour planifier les entretiens avec les candidats.
+              Ces creneaux seront utilises pour planifier les entretiens avec les candidats.
             </div>
           </div>
         )}

@@ -1,158 +1,175 @@
 // backend/src/services/evaluationPE.service.ts
+// ✅ CORRECTIONS :
+//   1. verifierContratsEcheance : filtre J-30 correct (dateFin entre aujourd'hui et J+30)
+//   2. employeId : cherche le vrai User via email de la candidature
+//   3. joursRestants : calculé depuis dateFin (fin PE), pas dateDebut
+//   4. Emails logués en console (intégration n8n prévue)
 
 import prisma from '../config/prisma';
-import { emailService } from './email.service';
 
 export const evaluationPEService = {
-  verifierContratsEcheance: async () => {
-    console.log('🔍 Vérification des contrats pour évaluations PE...');
-    
+
+  // ============================================
+  // Appelé via POST /evaluations/declencher (manuellement ou webhook n8n)
+  // ============================================
+  async verifierContratsEcheance(): Promise<number> {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const dateLimite = new Date(today);
-    dateLimite.setDate(today.getDate() + 30);
-    
-    console.log(`Période: du ${today.toLocaleDateString()} au ${dateLimite.toLocaleDateString()}`);
-    
-    // Récupérer les contrats avec dateFin dans les 30 jours
-    const contrats = await prisma.contrat.findMany({
+    const j30 = new Date(today);
+    j30.setDate(j30.getDate() + 30);
+
+    console.log(`\n🔍 Vérification J-30`);
+    console.log(`   Aujourd'hui : ${today.toLocaleDateString('fr-FR')}`);
+    console.log(`   Seuil J+30  : ${j30.toLocaleDateString('fr-FR')}`);
+
+    // ✅ Contrats ACTIF dont dateFin (fin PE) est entre aujourd'hui et J+30
+    const contratsEcheance = await prisma.contrat.findMany({
       where: {
-        dateFin: { 
-          gte: today, 
-          lte: dateLimite 
-        },
         statut: 'ACTIF',
-        evaluationPE: null
+        dateFin: {
+          gte: today,
+          lte: j30
+        }
       },
       include: {
         candidature: {
           include: {
             offre: {
               include: {
-                demande: { 
-                  include: { direction: true } 
-                }
+                demande: { include: { direction: true } }
               }
             }
           }
-        }
+        },
+        evaluationPE: true
       }
     });
-    
-    console.log(`📊 Contrats trouvés: ${contrats.length}`);
-    
-    if (contrats.length === 0) {
-      console.log('⚠️ Aucun contrat à traiter');
-      return 0;
-    }
-    
-    let evaluationsCrees = 0;
-    
-    for (const contrat of contrats) {
+
+    console.log(`📋 Contrats en approche J-30 : ${contratsEcheance.length}`);
+
+    let count = 0;
+
+    for (const contrat of contratsEcheance) {
+      // ✅ Évaluation déjà existante → juste mettre à jour joursRestants
+      if (contrat.evaluationPE) {
+        if (!['VALIDEE', 'REJETEE'].includes(contrat.evaluationPE.statut)) {
+          const jours = Math.ceil(
+            (new Date(contrat.dateFin!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          await prisma.evaluationPE.update({
+            where: { id: contrat.evaluationPE.id },
+            data: { joursRestants: jours > 0 ? jours : 0 }
+          });
+          console.log(`   🔄 ${contrat.evaluationPE.reference} → joursRestants = ${jours}j`);
+        }
+        continue;
+      }
+
+      // ✅ Créer l'évaluation manquante
       try {
-        // Vérifications de sécurité
-        if (!contrat.candidature) {
-          console.log(`⚠️ Contrat ${contrat.reference}: pas de candidature associée`);
-          continue;
+        // Chercher le User via email de la candidature
+        const candidatureEmail = contrat.candidature?.email;
+        let employe = null;
+
+        if (candidatureEmail) {
+          employe = await prisma.user.findFirst({
+            where: { email: candidatureEmail, actif: true }
+          });
         }
-        
-        if (!contrat.candidature.offre) {
-          console.log(`⚠️ Contrat ${contrat.reference}: pas d'offre associée`);
-          continue;
-        }
-        
-        if (!contrat.candidature.offre.demande) {
-          console.log(`⚠️ Contrat ${contrat.reference}: pas de demande associée`);
-          continue;
-        }
-        
-        const directionId = contrat.candidature.offre.demande.directionId;
-        
-        if (!directionId) {
-          console.log(`⚠️ Contrat ${contrat.reference}: pas de direction associée`);
-          continue;
-        }
-        
-        // Calculer les jours restants
-        const joursRestants = Math.ceil(
-          (contrat.dateFin!.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-        );
-        
-        // Trouver le manager de la même direction
-        const manager = await prisma.user.findFirst({
-          where: {
-            role: 'MANAGER',
-            directionId: directionId,
-            actif: true
+
+        // Fallback nom/prénom si pas de user avec cet email
+        if (!employe) {
+          const nom = contrat.candidature?.nom;
+          const prenom = contrat.candidature?.prenom;
+          if (nom && prenom) {
+            employe = await prisma.user.findFirst({
+              where: { nom, prenom, actif: true }
+            });
           }
-        });
-        
-        if (!manager) {
-          console.log(`⚠️ Contrat ${contrat.reference}: aucun manager trouvé pour la direction ${directionId}`);
-          continue;
         }
-        
-        // Générer une référence unique
+
+        const directionId = contrat.candidature?.offre?.demande?.directionId
+          || employe?.directionId
+          || null;
+
+        const manager = directionId
+          ? await prisma.user.findFirst({
+              where: { role: 'MANAGER', directionId, actif: true }
+            })
+          : null;
+
+        const dateFinPE = new Date(contrat.dateFin!);
+        const joursRestants = Math.ceil(
+          (dateFinPE.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
         const year = new Date().getFullYear();
-        const count = await prisma.evaluationPE.count();
-        const reference = `EVAL-${year}-${String(count + 1).padStart(4, '0')}`;
-        
-        // Créer l'évaluation
+        const evalCount = await prisma.evaluationPE.count();
+        const reference = `EVAL-${year}-${String(evalCount + 1).padStart(4, '0')}`;
+
         const evaluation = await prisma.evaluationPE.create({
           data: {
             reference,
-            employeId: contrat.candidature.id,
-            managerId: manager.id,
+            employeId: employe?.id || contrat.candidature!.id,
+            managerId: manager?.id || '',
             contratId: contrat.id,
-            dateDebut: contrat.dateDebut,
-            dateFin: contrat.dateFin!,
+            dateDebut: new Date(contrat.dateDebut),
+            dateFin: dateFinPE,
             joursRestants: joursRestants > 0 ? joursRestants : 0,
             statut: 'BROUILLON',
             etapeActuelle: 0,
-            totalEtapes: 3  // ✅ Changé de 5 à 3 (Paie → Manager → Directeur)
+            totalEtapes: 3
           }
         });
-        
-        evaluationsCrees++;
-        console.log(`✅ Évaluation créée: ${evaluation.reference} pour ${contrat.candidature.prenom} ${contrat.candidature.nom}`);
-        
-        // Notifier le manager
-        if (manager) {
-          await emailService.sendEvaluationNotification({
-            nom: manager.nom,
-            prenom: manager.prenom,
-            email: manager.email,
-            evaluationRef: evaluation.reference,
-            employeNom: contrat.candidature.nom,
-            employePrenom: contrat.candidature.prenom,
-            joursRestants,
-            actionUrl: `${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`
-          });
-          console.log(`📧 Email envoyé au manager: ${manager.email}`);
+
+        console.log(`\n   ✅ Évaluation créée : ${evaluation.reference}`);
+        console.log(`      Employé  : ${contrat.candidature?.prenom} ${contrat.candidature?.nom}`);
+        console.log(`      Fin PE   : ${dateFinPE.toLocaleDateString('fr-FR')} (J-${joursRestants})`);
+        console.log(`      Manager  : ${manager ? `${manager.prenom} ${manager.nom}` : 'Non trouvé'}`);
+
+        // ✅ Email simulé en console — n8n webhook prendra le relais
+        const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
+        if (respPaie) {
+          console.log(`\n   📧 [EMAIL → RESP_PAIE] ${respPaie.email}`);
+          console.log(`      Sujet : ⚠️ J-${joursRestants} — Évaluation PE à traiter`);
+          console.log(`      Corps : ${contrat.candidature?.prenom} ${contrat.candidature?.nom} — fin PE le ${dateFinPE.toLocaleDateString('fr-FR')}`);
+          console.log(`      URL   : ${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`);
         }
-        
-      } catch (error) {
-        console.error(`❌ Erreur pour contrat ${contrat.reference}:`, error);
+
+        count++;
+      } catch (err) {
+        console.error(`   ❌ Erreur pour contrat ${contrat.reference}:`, err);
       }
     }
-    
-    console.log(`✨ ${evaluationsCrees} évaluation(s) PE créée(s)`);
-    return evaluationsCrees;
+
+    // Recalcule joursRestants pour toutes les évaluations encore actives
+    await evaluationPEService.mettreAJourJoursRestants();
+
+    console.log(`\n✅ Vérification terminée — ${count} évaluation(s) créée(s)\n`);
+    return count;
   },
-  
-  calculerJoursRestants: (dateFin: Date): number => {
+
+  // ============================================
+  // Recalcule joursRestants pour toutes les évaluations non finalisées
+  // ============================================
+  async mettreAJourJoursRestants(): Promise<void> {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Math.ceil((dateFin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  },
-  
-  peutVoirEvaluationN1: (userRole: string, etapeActuelle: number, evaluationN1Masquee: boolean): boolean => {
-    // Manager et Directeur peuvent toujours voir l'évaluation N1
-    if (userRole === 'MANAGER' || userRole === 'DIRECTEUR') {
-      return true;
+
+    const evaluationsActives = await prisma.evaluationPE.findMany({
+      where: { statut: { notIn: ['VALIDEE', 'REJETEE'] } }
+    });
+
+    for (const eval_ of evaluationsActives) {
+      const jours = Math.ceil(
+        (new Date(eval_.dateFin).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      await prisma.evaluationPE.update({
+        where: { id: eval_.id },
+        data: { joursRestants: jours }
+      });
     }
-    // Les autres rôles ne voient l'évaluation N1 que si elle n'est pas masquée
-    return !evaluationN1Masquee;
+
+    if (evaluationsActives.length > 0) {
+      console.log(`🔄 joursRestants recalculés pour ${evaluationsActives.length} évaluation(s)`);
+    }
   }
 };

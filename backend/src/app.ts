@@ -4,13 +4,13 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import dotenv from 'dotenv';
-import path from 'path';  // ✅ AJOUTER CET IMPORT
+import path from 'path';
 import { testConnection } from './config/database';
 import { startRelanceJobs } from './jobs/relanceJob';
 
 // Routes
 import authRoutes from './routes/authRoutes';
-import userRoutes from './routes/user.routes';  
+import userRoutes from './routes/user.routes';
 import demandeRoutes from './routes/demandeRoutes';
 import adminRoutes from './routes/adminRoutes';
 import directionRoutes from './routes/directionRoutes';
@@ -45,7 +45,7 @@ app.use(cors({
         if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
             callback(null, true);
         } else {
-            callback(new Error('Non autorisé par CORS'));
+            callback(new Error('Non autorise par CORS'));
         }
     },
     credentials: true,
@@ -54,10 +54,17 @@ app.use(cors({
 }));
 app.use(compression());
 app.use(morgan('dev'));
+
+// Force UTF-8 sur toutes les reponses JSON
+app.use((req, res, next) => {
+    res.charset = 'utf-8';
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ SERVIR LES FICHIERS STATIQUES (CVs uploadés)
+// Servir les fichiers statiques (CVs uploades)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
@@ -79,34 +86,34 @@ app.post('/api/upload/cv', uploadMiddleware, uploadCV);
 
 // Health check
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'OK', 
-        message: 'Serveur opérationnel',
+    res.status(200).json({
+        status: 'OK',
+        message: 'Serveur operationnel',
         timestamp: new Date().toISOString()
     });
 });
 
 // Gestion des erreurs 404
 app.use('*', (req, res) => {
-    res.status(404).json({ 
+    res.status(404).json({
         success: false,
-        message: 'Route non trouvée' 
+        message: 'Route non trouvee'
     });
 });
 
-// Démarrage du serveur
+// Demarrage du serveur
 const startServer = async () => {
     try {
         await testConnection();
-        
+
         app.listen(PORT, () => {
-            console.log(` Serveur démarré sur http://localhost:${PORT}`);
-            console.log(` Environnement: ${process.env.NODE_ENV}`);
-            console.log(` Frontend: ${process.env.FRONTEND_URL}`);
-            console.log(` CORS accepte: ${allowedOrigins.join(', ')}`);
+            console.log('Serveur demarre sur http://localhost:' + PORT);
+            console.log('Environnement: ' + process.env.NODE_ENV);
+            console.log('Frontend: ' + process.env.FRONTEND_URL);
+            console.log('CORS accepte: ' + allowedOrigins.join(', '));
         });
     } catch (error) {
-        console.error('❌ Erreur au démarrage:', error);
+        console.error('Erreur au demarrage:', error);
         process.exit(1);
     }
     startRelanceJobs();

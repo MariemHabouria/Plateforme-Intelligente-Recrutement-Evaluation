@@ -9,21 +9,26 @@ export const LoginPage = () => {
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    try {
-      const result = await login(email, password);
-      if (result?.forcePasswordChange) {
-        window.location.href = '/change-password';
-      }
-    } catch (err: any) {
-      setError(err.message || 'Email ou mot de passe incorrect');
-    } finally {
-      setLoading(false);
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+  
+  try {
+    const result = await login(email, password);
+    if (result?.forcePasswordChange) {
+      window.location.href = '/change-password';
+    } else {
+      // Récupérer le redirect param
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect');
+      window.location.href = redirect || '/dashboard';
     }
-  };
+  } catch (err: any) {
+    setError(err.message || 'Email ou mot de passe incorrect');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div style={{ 
@@ -71,7 +76,7 @@ export const LoginPage = () => {
             borderRadius: 20,
             display: 'inline-block'
           }}>
-            🔐 Accès réservé au personnel interne
+             Accès réservé au personnel interne
           </p>
         </div>
 
@@ -173,27 +178,7 @@ export const LoginPage = () => {
           borderTop: '1px solid #eee',
           borderBottom: '1px solid #eee'
         }}>
-          <span style={{ fontSize: 13, color: '#666' }}>
-            Vous êtes candidat ?{' '}
-          </span>
-          <a 
-            href="/candidature" 
-            style={{ 
-              color: 'var(--gold)', 
-              fontSize: 13, 
-              fontWeight: 600,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '6px 12px',
-              background: 'var(--gold-pale)',
-              borderRadius: 20,
-              marginLeft: 8
-            }}
-          >
-            📝 Postuler ici
-          </a>
+          
         </div>
 
         <p style={{ 

@@ -1,10 +1,14 @@
 // backend/src/controllers/candidatureController.ts
 
 import { Request, Response } from 'express';
+import path from 'path';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound } from '../utils/helpers';
-import { scoringService } from '../services/scoring.service';
-// Générer une référence uniqu
+import { iaService } from '../services/ia.service';
+
+// ============================================
+// GENERER UNE REFERENCE UNIQUE
+// ============================================
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const count = await prisma.candidature.count({
@@ -14,8 +18,18 @@ const generateReference = async (): Promise<string> => {
 };
 
 // ============================================
+// CONSTRUIRE LE CHEMIN ABSOLU DU CV
+// ============================================
+const getCvAbsPath = (cvUrl: string): string => {
+  // cvUrl ressemble à "/uploads/cv/cv_1234567890.pdf"
+  const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+  return path.join(uploadsDir, cvUrl.replace(/^\/uploads\//, ''));
+};
+
+// ============================================
 // SOUMETTRE UNE CANDIDATURE (public)
 // ============================================
+
 export const soumettreCandidature = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
@@ -25,7 +39,6 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
       email,
       telephone,
       cvUrl,
-      cvTexte,
       consentementRGPD,
       consentementIA
     } = req.body;
@@ -58,15 +71,28 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
       return sendError(res, 'Vous avez deja postule a cette offre', 400);
     }
 
-    const scoring = await scoringService.calculerScore({
-      cvTexte: cvTexte || '',
-      offreDescription: offre.description || '',
-      offreProfilRecherche: offre.profilRecherche || '',
-      offreCompetences: offre.competences || []
-    });
-
     const reference = await generateReference();
 
+    // 🔥 Parser le CV via l'API IA pour obtenir cvTexte
+    let cvTexte = '';
+    let competencesDetectees: string[] = [];
+    
+    if (cvUrl && consentementIA) {
+      try {
+        const cvAbsPath = getCvAbsPath(cvUrl);
+        // Appeler l'API /parse-cv pour extraire le texte
+        const parseResult = await iaService.parseCV(cvAbsPath);
+        if (parseResult.success) {
+          cvTexte = parseResult.texte_brut || '';
+          competencesDetectees = parseResult.competences || [];
+          console.log(`✅ CV parsé: ${cvTexte.length} caractères, ${competencesDetectees.length} compétences`);
+        }
+      } catch (err) {
+        console.error(`❌ Parsing CV échoué:`, err);
+      }
+    }
+
+    // 1. Créer la candidature AVEC le cvTexte parsé
     const candidature = await prisma.candidature.create({
       data: {
         reference,
@@ -75,11 +101,11 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
         email,
         telephone,
         cvUrl,
-        cvTexte: cvTexte || '',
-        scoreGlobal: scoring.scoreGlobal,
-        scoreExp: scoring.scoreExp,
-        competencesDetectees: scoring.competencesDetectees,
-        competencesManquantes: scoring.competencesManquantes,
+        cvTexte,
+        scoreGlobal: 0,
+        scoreExp: 0,
+        competencesDetectees: competencesDetectees,
+        competencesManquantes: [],
         statut: 'NOUVELLE',
         consentementRGPD,
         consentementIA: consentementIA || false,
@@ -87,18 +113,93 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
       }
     });
 
+    // 2. Calculer le score IA (si consentement)
+    let scoringResult = null;
+    
+    if (consentementIA && cvUrl) {
+      try {
+        const cvAbsPath = getCvAbsPath(cvUrl);
+        scoringResult = await iaService.scorerCV(cvAbsPath, offre.id, candidature.id);
+        console.log(`✅ Scoring IA terminé pour ${candidature.reference}: ${scoringResult.score_global}/100`);
+      } catch (err) {
+        console.error(`❌ Scoring IA échoué pour ${candidature.reference}:`, err);
+      }
+    }
+
+    // 3. Mettre à jour la candidature avec le score calculé
+    let candidatureMaj = candidature;
+    if (scoringResult && scoringResult.success) {
+      candidatureMaj = await prisma.candidature.update({
+        where: { id: candidature.id },
+        data: {
+          scoreGlobal: scoringResult.score_global,
+          scoreExp: scoringResult.score_experience,
+          competencesDetectees: scoringResult.competences_detectees || competencesDetectees,
+          competencesManquantes: scoringResult.competences_manquantes,
+        },
+        include: { offre: true }
+      });
+    }
+
     sendCreated(res, {
       candidature: {
-        id: candidature.id,
-        reference: candidature.reference,
-        statut: candidature.statut,
-        scoreGlobal: candidature.scoreGlobal
+        id: candidatureMaj.id,
+        reference: candidatureMaj.reference,
+        statut: candidatureMaj.statut,
+        scoreGlobal: candidatureMaj.scoreGlobal,
+        scoreExp: candidatureMaj.scoreExp,
+        competencesDetectees: candidatureMaj.competencesDetectees,
+        competencesManquantes: candidatureMaj.competencesManquantes,
       }
     }, 'Candidature envoyee avec succes');
 
   } catch (error) {
     console.error('soumettreCandidature error:', error);
     sendError(res, 'Erreur lors de la soumission de la candidature');
+  }
+};
+
+// ============================================
+// RELANCER LE SCORING IA D'UNE CANDIDATURE
+// ============================================
+export const rescorerCandidature = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userRole = (req as any).user?.role;
+
+    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
+      return sendError(res, 'Non autorisé', 403);
+    }
+
+    const candidature = await prisma.candidature.findUnique({
+      where: { id },
+      include: { offre: true }
+    });
+
+    if (!candidature) {
+      return sendNotFound(res, 'Candidature non trouvée');
+    }
+
+    if (!candidature.cvUrl || !candidature.offreId) {
+      return sendError(res, 'CV ou offre manquant pour le scoring', 400);
+    }
+
+    const cvAbsPath = getCvAbsPath(candidature.cvUrl);
+    const scoring = await iaService.scorerCV(cvAbsPath, candidature.offreId, candidature.id);
+
+    return sendSuccess(res, {
+      scoreGlobal:           scoring.score_global,
+      scoreExp:              scoring.score_experience,
+      recommandation:        scoring.recommandation,
+      competencesDetectees:  scoring.competences_detectees,
+      competencesManquantes: scoring.competences_manquantes,
+      shapDetails:           scoring.shap_details,
+      versionModele:         scoring.version_modele,
+    }, 'Score recalculé avec succès');
+
+  } catch (error) {
+    console.error('rescorerCandidature error:', error);
+    return sendError(res, 'Erreur lors du rescoring');
   }
 };
 
@@ -113,7 +214,7 @@ export const getCandidatures = async (req: Request, res: Response) => {
     const where: any = {};
 
     if (statut) where.statut = statut;
-    
+
     if (type === 'actifs') {
       where.offreId = { not: null };
     } else if (type === 'passifs') {
@@ -122,7 +223,12 @@ export const getCandidatures = async (req: Request, res: Response) => {
       where.offreId = offreId;
     }
 
-    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN' && userRole !== 'MANAGER' && userRole !== 'RESP_PAIE') {
+    if (
+      userRole !== 'DRH' &&
+      userRole !== 'SUPER_ADMIN' &&
+      userRole !== 'MANAGER' &&
+      userRole !== 'RESP_PAIE'
+    ) {
       return sendError(res, 'Non autorise', 403);
     }
 
@@ -138,10 +244,7 @@ export const getCandidatures = async (req: Request, res: Response) => {
               reference: true,
               intitule: true,
               demande: {
-                select: {
-                  id: true,
-                  niveau: true
-                }
+                select: { id: true, niveau: true }
               }
             }
           }
@@ -162,11 +265,7 @@ export const getCandidatures = async (req: Request, res: Response) => {
 
     sendSuccess(res, {
       candidatures,
-      stats: {
-        total,
-        actifs: actifsCount,
-        passifs: passifsCount
-      },
+      stats: { total, actifs: actifsCount, passifs: passifsCount },
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -196,11 +295,7 @@ export const getCandidaturesAcceptees = async (req: Request, res: Response) => {
       where: { statut: 'ACCEPTEE' },
       include: {
         offre: {
-          select: {
-            id: true,
-            reference: true,
-            intitule: true
-          }
+          select: { id: true, reference: true, intitule: true }
         }
       },
       orderBy: { dateSoumission: 'desc' }
@@ -215,7 +310,7 @@ export const getCandidaturesAcceptees = async (req: Request, res: Response) => {
 };
 
 // ============================================
-// ✅ NOUVEAU: RECUPERER LES CANDIDATURES ACCEPTEES SANS CONTRAT
+// RECUPERER LES CANDIDATURES ACCEPTEES SANS CONTRAT
 // ============================================
 export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Response) => {
   try {
@@ -226,17 +321,13 @@ export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Res
     }
 
     const candidatures = await prisma.candidature.findMany({
-      where: { 
+      where: {
         statut: 'ACCEPTEE',
-        contrat: null  // ✅ Pas de contrat associé
+        contrat: null
       },
       include: {
         offre: {
-          select: {
-            id: true,
-            reference: true,
-            intitule: true
-          }
+          select: { id: true, reference: true, intitule: true }
         }
       },
       orderBy: { dateSoumission: 'desc' }
@@ -268,10 +359,7 @@ export const getCandidatureById = async (req: Request, res: Response) => {
         offre: {
           include: {
             demande: {
-              select: {
-                id: true,
-                niveau: true
-              }
+              select: { id: true, niveau: true }
             }
           }
         },
@@ -291,7 +379,48 @@ export const getCandidatureById = async (req: Request, res: Response) => {
       return sendNotFound(res, 'Candidature non trouvee');
     }
 
-    return sendSuccess(res, { candidature });
+    // 🔥 Récupérer les détails IA depuis le microservice
+    let iaDetails = null;
+    if (candidature.offreId && candidature.cvUrl) {
+      try {
+        const cvAbsPath = getCvAbsPath(candidature.cvUrl);
+        const scoring = await iaService.scorerCV(cvAbsPath, candidature.offreId, candidature.id);
+        iaDetails = {
+          recommandation: scoring.recommandation,
+          shapDetails: scoring.shap_details,
+          versionModele: scoring.version_modele,
+          scoreGlobal: scoring.score_global,
+          scoreExp: scoring.score_experience,
+          competencesDetectees: scoring.competences_detectees,
+          competencesManquantes: scoring.competences_manquantes,
+        };
+        
+        // Mettre à jour la BDD avec les scores si nécessaire
+        if (candidature.scoreGlobal !== scoring.score_global) {
+          await prisma.candidature.update({
+            where: { id: candidature.id },
+            data: {
+              scoreGlobal: scoring.score_global,
+              scoreExp: scoring.score_experience,
+              competencesDetectees: scoring.competences_detectees,
+              competencesManquantes: scoring.competences_manquantes,
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Erreur récupération scoring IA:', err);
+      }
+    }
+
+    // Fusionner les données
+    const responseData = {
+      ...candidature,
+      recommandation: iaDetails?.recommandation || 'FAIBLE',
+      shapDetails: iaDetails?.shapDetails || [],
+      versionModele: iaDetails?.versionModele || 'M3-Hybride-v1.0',
+    };
+
+    return sendSuccess(res, { candidature: responseData });
 
   } catch (error) {
     console.error('getCandidatureById error:', error);
@@ -307,7 +436,10 @@ export const updateCandidatureStatut = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { statut } = req.body;
 
-    const statutsValides = ['NOUVELLE', 'PRESELECTIONNEE', 'ENTRETIEN', 'ACCEPTEE', 'REFUSEE'];
+    const statutsValides = [
+      'NOUVELLE', 'PRESELECTIONNEE', 'FICHE_ENVOYEE',
+      'FICHE_RECUE', 'ENTRETIEN', 'ACCEPTEE', 'REFUSEE'
+    ];
     if (!statutsValides.includes(statut)) {
       return sendError(res, 'Statut invalide', 400);
     }
@@ -340,8 +472,11 @@ export const deleteCandidature = async (req: Request, res: Response) => {
     console.error('deleteCandidature error:', error);
     sendError(res, 'Erreur lors de la suppression');
   }
-  
 };
+
+// ============================================
+// RECUPERER L'OFFRE PAR TOKEN (public)
+// ============================================
 export const getOffreByToken = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
@@ -383,16 +518,22 @@ export const uploadCV = async (req: Request, res: Response) => {
       return sendError(res, 'Aucun fichier fourni', 400);
     }
 
-    // Générer un nom de fichier unique
     const timestamp = Date.now();
     const originalName = req.file.originalname;
     const extension = originalName.split('.').pop();
     const filename = `cv_${timestamp}.${extension}`;
     const cvUrl = `/uploads/cv/${filename}`;
 
-    // Ici vous devriez déplacer le fichier vers le bon dossier
-    // Pour l'instant, on simule
+    // Sauvegarder le fichier
+    const fs = require('fs');
+    const uploadDir = path.join(__dirname, '../../uploads/cv');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
     
+    const targetPath = path.join(uploadDir, filename);
+    fs.renameSync(req.file.path, targetPath);
+
     sendSuccess(res, { cvUrl }, 'CV uploadé avec succès');
   } catch (error) {
     console.error('uploadCV error:', error);
@@ -406,7 +547,6 @@ export const uploadCV = async (req: Request, res: Response) => {
 export const envoyerFicheRenseignement = async (req: Request, res: Response) => {
   try {
     const { candidatureId } = req.params;
-    const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
 
     if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
@@ -426,11 +566,10 @@ export const envoyerFicheRenseignement = async (req: Request, res: Response) => 
       return sendError(res, 'La fiche ne peut être envoyée qu\'à un candidat présélectionné', 400);
     }
 
-    // Générer un token unique
-    const token = require('crypto').randomBytes(32).toString('hex');
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
     const ficheUrl = `${process.env.FRONTEND_URL}/fiche-renseignement/${token}`;
 
-    // Mettre à jour la candidature
     await prisma.candidature.update({
       where: { id: candidatureId },
       data: {
@@ -441,7 +580,6 @@ export const envoyerFicheRenseignement = async (req: Request, res: Response) => 
       }
     });
 
-    // Ici vous devriez envoyer un email au candidat avec le lien
     console.log(`📧 Email à envoyer à ${candidature.email}: ${ficheUrl}`);
 
     sendSuccess(res, { token, ficheUrl }, 'Fiche de renseignement envoyée avec succès');
@@ -465,11 +603,7 @@ export const getFicheRenseignement = async (req: Request, res: Response) => {
         ficheRenseignementRecue: false
       },
       include: {
-        offre: {
-          select: {
-            intitule: true
-          }
-        }
+        offre: { select: { intitule: true } }
       }
     });
 
@@ -528,6 +662,10 @@ export const soumettreFicheRenseignement = async (req: Request, res: Response) =
     sendError(res, 'Erreur lors de la soumission de la fiche');
   }
 };
+
+// ============================================
+// RECUPERER LA FICHE PAR ID CANDIDATURE
+// ============================================
 export const getFicheByCandidatureId = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -555,5 +693,83 @@ export const getFicheByCandidatureId = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('getFicheByCandidatureId error:', error);
     sendError(res, 'Erreur lors de la récupération de la fiche');
+  }
+};
+export const classifierCandidaturesOffre = async (req: Request, res: Response) => {
+  try {
+    const { offreId } = req.params;
+    const userRole = (req as any).user?.role;
+
+    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
+      return sendError(res, 'Non autorisé', 403);
+    }
+
+    // Récupérer toutes les candidatures NOUVELLE de cette offre
+    const candidatures = await prisma.candidature.findMany({
+      where: {
+        offreId,
+        statut: { in: ['NOUVELLE', 'PRESELECTIONNEE'] }, // reclassifier aussi les déjà traitées
+      },
+      select: { id: true, scoreGlobal: true, statut: true },
+    });
+
+    if (candidatures.length === 0) {
+      return sendSuccess(res, { classes: [], total: 0 }, 'Aucune candidature à classifier');
+    }
+
+    // ── Stratégie S3 : Percentile dynamique ──────────────────────────────────
+    const scores = candidatures.map(c => c.scoreGlobal);
+    const n      = scores.length;
+
+    const percentile = (arr: number[], p: number) => {
+      const sorted = [...arr].sort((a, b) => a - b);
+      const idx    = Math.ceil((p / 100) * sorted.length) - 1;
+      return sorted[Math.max(0, idx)];
+    };
+
+    const seuilEntretien    = percentile(scores, 85);
+    const seuilPreselection = percentile(scores, 60);
+    const seuilNouvelle     = percentile(scores, 35);
+    const PLANCHER          = 45;
+
+    const classifier = (score: number): string => {
+      if (score < PLANCHER)            return 'REFUSEE';
+      if (score >= seuilEntretien)     return 'ENTRETIEN';
+      if (score >= seuilPreselection)  return 'PRESELECTIONNEE';
+      if (score >= seuilNouvelle)      return 'NOUVELLE';
+      return 'REFUSEE';
+    };
+
+    // ── Appliquer en base (transaction) ──────────────────────────────────────
+    const updates = await prisma.$transaction(
+      candidatures.map(c =>
+        prisma.candidature.update({
+          where: { id: c.id },
+          data:  { statut: classifier(c.scoreGlobal) },
+        })
+      )
+    );
+
+    // ── Résumé ────────────────────────────────────────────────────────────────
+    const resume = { ENTRETIEN: 0, PRESELECTIONNEE: 0, NOUVELLE: 0, REFUSEE: 0 };
+    updates.forEach(c => {
+      if (c.statut in resume) resume[c.statut as keyof typeof resume]++;
+    });
+
+    return sendSuccess(res, {
+      total: candidatures.length,
+      seuils: {
+        entretien:     seuilEntretien,
+        preselection:  seuilPreselection,
+        nouvelle:      seuilNouvelle,
+        plancher:      PLANCHER,
+      },
+      resume,
+      classes: updates.map(c => ({ id: c.id, statut: c.statut, score: c.scoreGlobal })),
+    }, `${candidatures.length} candidature(s) classifiées automatiquement`);
+
+  } catch (error) {
+    console.error('classifierCandidaturesOffre error:', error);
+    return sendError(res, 'Erreur lors de la classification');
   }
 };

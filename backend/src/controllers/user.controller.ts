@@ -26,14 +26,14 @@ export const getUsers = async (req: Request, res: Response) => {
         mustChangePassword: true,
         dernierConnexion: true,
         createdAt: true,
-        directionId: true,
         direction: {
-          select: {
-            id: true,
-            code: true,
-            nom: true
-          }
-        }
+  select: {
+    id: true,
+    code: true,
+    nom: true,
+    actif: true  
+  }
+}
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -392,9 +392,8 @@ export const resetPassword = async (req: Request, res: Response) => {
 export const updateOwnProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { nom, prenom, telephone, poste } = req.body;
+    const { nom, prenom, telephone, poste } = req.body; // ✅ departement retiré
 
-    // Validation basique
     if (nom === '' || prenom === '') {
       return res.status(400).json({
         success: false,
@@ -402,13 +401,12 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
       });
     }
 
-    // Récupérer l'ancien profil pour comparer les changements
     const oldUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { nom: true, prenom: true, telephone: true, poste: true, email: true }
+      // ✅ departement retiré du select
     });
 
-    // Seuls ces champs peuvent être modifiés par l'utilisateur
     const updateData: any = {};
     const changes: string[] = [];
 
@@ -428,6 +426,7 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
       updateData.poste = poste;
       changes.push(`Poste : "${oldUser?.poste || 'Non renseigné'}" → "${poste}"`);
     }
+    // ✅ bloc departement entièrement supprimé
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
@@ -458,7 +457,6 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
       }
     });
 
-    // Envoyer email de confirmation si des changements ont été faits
     if (changes.length > 0) {
       await emailService.sendProfileUpdateConfirmation({
         nom: updatedUser.nom,
@@ -467,7 +465,6 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
         changes,
         profileUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/profile`
       });
-      console.log(`📧 Email de confirmation envoyé à ${updatedUser.email}`);
     }
 
     res.json({
@@ -482,5 +479,104 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
       success: false,
       message: 'Erreur serveur lors de la mise à jour du profil'
     });
+  }
+};
+export const getCurrentUser = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        nom: true,
+        prenom: true,
+        role: true,
+        poste: true,
+        telephone: true,
+        actif: true,
+        mustChangePassword: true,
+        dernierConnexion: true,
+        createdAt: true,
+        directionId: true,
+        direction: {
+          select: { id: true, code: true, nom: true, actif: true }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ success: true, user });
+  } catch (error) {
+    console.error('❌ Erreur getCurrentUser:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+};
+export const getUserByRole = async (req: Request, res: Response) => {
+  try {
+    // n8n internal token check
+    const authHeader = req.headers.authorization;
+    if (authHeader !== `Bearer ${process.env.N8N_INTERNAL_TOKEN}`) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { role } = req.params;
+
+    const user = await prisma.user.findFirst({
+      where: {
+        role: role as any,
+        actif: true
+      },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        email: true,
+        role: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: `No active user found with role ${role}`
+      });
+    }
+
+    res.json({ success: true, data: user });
+
+  } catch (error) {
+    console.error('❌ Erreur getUserByRole:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+};
+export const getUserByRoleAndDirection = async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader !== `Bearer ${process.env.N8N_INTERNAL_TOKEN}`) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { role, directionId } = req.params;
+
+    const user = await prisma.user.findFirst({
+      where: { role: role as any, directionId, actif: true },
+      select: { id: true, nom: true, prenom: true, email: true, role: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: `Aucun ${role} actif trouvé pour cette direction`
+      });
+    }
+
+    res.json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
