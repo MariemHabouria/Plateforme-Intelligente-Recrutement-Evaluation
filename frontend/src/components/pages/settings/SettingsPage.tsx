@@ -1,23 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Card, CardHeader, CardTitle, CardBody } from '../../ui/Card';
+import { Card, CardBody } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { Alert } from '../../ui/Alert';
 import { Input, FormGroup, FormLabel } from '../../ui/FormField';
 import { Modal } from '../../ui/Modal';
 import { userService } from '../../../services/user.service';
-import { User, Settings, Bell, Shield, Moon, Sun, Key, Mail, Smartphone, Save } from 'lucide-react';
+import { User, Settings, Bell, Key, Mail, Smartphone, Save } from 'lucide-react';
 
-type SettingsTab = 'profile' | 'account' | 'notifications' | 'appearance';
+// Retiré : 'appearance' tab
+type SettingsTab = 'profile' | 'account' | 'notifications';
 
 export const SettingsPage = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
-  // Modal states
+
+  // Modal mot de passe
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -25,193 +26,138 @@ export const SettingsPage = () => {
     confirmPassword: ''
   });
 
-  // Profil state
+  // Profil
   const [profileData, setProfileData] = useState({
-    nom: user?.nom || '',
-    prenom: user?.prenom || '',
-    telephone: user?.telephone || '',
-    departement: user?.departement || '',
-    poste: user?.poste || ''
+    nom:         user?.nom         || '',
+    prenom:      user?.prenom      || '',
+    telephone:   user?.telephone   || '',
+    poste:       user?.poste       || ''
+
   });
 
-  // Date du dernier changement (simulée pour l'instant)
-  const [lastPasswordChange] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 1); // Hier
-    return date;
-  });
-
-  const formatPasswordDate = () => {
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - lastPasswordChange.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return "aujourd'hui";
-    if (diffDays === 1) return "hier";
-    return `il y a ${diffDays} jours`;
-  };
-
-  // Notifications state (sauvegardé dans localStorage)
+  // Notifications (localStorage)
   const [notifications, setNotifications] = useState(() => {
-    const saved = localStorage.getItem('notifications');
-    return saved ? JSON.parse(saved) : {
-      emailNewDemande: true,
-      emailValidation: true,
-      emailNewCandidat: false,
-      emailRappel: true
-    };
+    try {
+      const saved = localStorage.getItem('notifications');
+      return saved ? JSON.parse(saved) : {
+        emailNewDemande: true,
+        emailValidation: true,
+        emailNewCandidat: false,
+        emailRappel: true
+      };
+    } catch {
+      return { emailNewDemande: true, emailValidation: true, emailNewCandidat: false, emailRappel: true };
+    }
   });
 
-  // Apparence state
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(
-    (localStorage.getItem('theme') as 'light' | 'dark' | 'system') || 'system'
-  );
-
-  // Appliquer le thème
-  useEffect(() => {
-    const applyTheme = (t: string) => {
-      const root = document.documentElement;
-      if (t === 'dark') {
-        root.style.setProperty('--bg-primary', '#1E1A0E');
-        root.style.setProperty('--text-primary', '#EDE5CA');
-        root.style.setProperty('--surface', '#2A2413');
-      } else if (t === 'light') {
-        root.style.setProperty('--bg-primary', '#f8f9fa');
-        root.style.setProperty('--text-primary', '#1E1A0E');
-        root.style.setProperty('--surface', '#ffffff');
-      }
-    };
-    
-    applyTheme(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  // Helper : affiche un message et l'efface après 3s
+  const showMessage = (setter: (v: string) => void, msg: string) => {
+    setter(msg);
+    setTimeout(() => setter(''), 3000);
+  };
 
   // ===== PROFIL =====
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setLoading(true);
 
+    if (!profileData.nom.trim() || !profileData.prenom.trim()) {
+      setError('Le nom et le prénom sont obligatoires');
+      return;
+    }
+
+    setLoading(true);
     try {
       const updatedUser = await userService.updateOwnProfile(profileData);
-      
-      // Mettre à jour le state local avec les nouvelles données
-      setProfileData({
-        nom: updatedUser.nom,
-        prenom: updatedUser.prenom,
-        telephone: updatedUser.telephone || '',
-        departement: updatedUser.departement || '',
-        poste: updatedUser.poste || ''
-      });
-      
-      // Récupérer l'utilisateur mis à jour
+
+      // Sync localStorage + sidebar
       const freshUser = await userService.getCurrentUser();
-      
-      // Mettre à jour le localStorage
       localStorage.setItem('user', JSON.stringify(freshUser));
-      
-      // Déclencher un événement personnalisé pour la Sidebar
       window.dispatchEvent(new CustomEvent('userUpdated', { detail: freshUser }));
-      
-      // Afficher le message de succès
-      setSuccess('✅ Profil mis à jour avec succès !');
-      
-      // Le message disparaîtra après 3 secondes
-      setTimeout(() => {
-        setSuccess('');
-      }, 3000);
-      
+
+      // Mettre à jour le state local
+      setProfileData({
+        nom:       updatedUser.nom,
+        prenom:    updatedUser.prenom,
+        telephone: updatedUser.telephone || '',
+        poste:     updatedUser.poste     || ''
+      });
+
+      showMessage(setSuccess, 'Profil mis à jour avec succès !');
     } catch (err: any) {
-      setError(err.response?.data?.message || '❌ Erreur lors de la mise à jour');
+      showMessage(setError, err.response?.data?.message || '❌ Erreur lors de la mise à jour');
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== SÉCURITÉ =====
+  // ===== MOT DE PASSE =====
   const handleChangePassword = async () => {
     setError('');
     setSuccess('');
 
-    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+    const { currentPassword, newPassword, confirmPassword } = passwordData;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
       setError('Tous les champs sont requis');
       return;
     }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (newPassword !== confirmPassword) {
       setError('Les nouveaux mots de passe ne correspondent pas');
       return;
     }
-
-    if (passwordData.newPassword.length < 8) {
+    if (newPassword.length < 8) {
       setError('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
 
     setLoading(true);
-
     try {
-      await userService.changePassword({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword
-      });
-      
-      setSuccess('✅ Mot de passe changé avec succès !');
+      await userService.changePassword({ currentPassword, newPassword });
       setShowPasswordModal(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      
-      setTimeout(() => {
-        setSuccess('');
-      }, 3000);
-      
+      showMessage(setSuccess, 'Mot de passe changé avec succès !');
     } catch (err: any) {
+      //  L'erreur reste visible dans le modal tant qu'il est ouvert
       setError(err.response?.data?.message || '❌ Erreur lors du changement de mot de passe');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleClosePasswordModal = () => {
+    setShowPasswordModal(false);
+    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    setError(''); // Nettoyer l'erreur à la fermeture
+  };
+
   // ===== NOTIFICATIONS =====
   const handleSaveNotifications = () => {
-    localStorage.setItem('notifications', JSON.stringify(notifications));
-    setSuccess('✅ Préférences de notifications enregistrées !');
-    
-    setTimeout(() => {
-      setSuccess('');
-    }, 3000);
+    try {
+      localStorage.setItem('notifications', JSON.stringify(notifications));
+      showMessage(setSuccess, ' Préférences de notifications enregistrées !');
+    } catch {
+      showMessage(setError, ' Impossible de sauvegarder les préférences');
+    }
   };
 
   const tabs = [
-    { id: 'profile', label: 'Profil', icon: User },
-    { id: 'account', label: 'Compte', icon: Settings },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'appearance', label: 'Apparence', icon: Sun },
-  ];
+    { id: 'profile',       label: 'Profil',        icon: User     },
+    { id: 'account',       label: 'Compte',         icon: Settings },
+    { id: 'notifications', label: 'Notifications',  icon: Bell     },
+  ] as const;
 
   return (
     <div className="page-fade">
-      {/* En-tête */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>
-          Paramètres
-        </h1>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Gérez vos préférences et informations personnelles
-        </p>
+        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Paramètres</h1>
+        <p style={{ color: 'var(--text-muted)' }}>Gérez vos préférences et informations personnelles</p>
       </div>
 
-      {/* Messages - Maintenant ils restent sans rediriger */}
-      {error && (
-        <Alert variant="red" style={{ marginBottom: 20 }}>
-          {error}
-        </Alert>
-      )}
-      {success && (
-        <Alert variant="green" style={{ marginBottom: 20 }}>
-          {success}
-        </Alert>
-      )}
+      {/* Alert sans prop style — wrapper div à la place */}
+      {error   && <div style={{ marginBottom: 20 }}><Alert variant="red">{error}</Alert></div>}
+      {success && <div style={{ marginBottom: 20 }}><Alert variant="green">{success}</Alert></div>}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
@@ -221,20 +167,15 @@ export const SettingsPage = () => {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as SettingsTab)}
+              onClick={() => { setActiveTab(tab.id); setError(''); setSuccess(''); }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 16px',
-                background: 'transparent',
-                border: 'none',
+                background: 'transparent', border: 'none',
                 borderBottom: isActive ? '2px solid var(--gold)' : '2px solid transparent',
                 color: isActive ? 'var(--gold)' : 'var(--text-muted)',
-                fontSize: 14,
-                fontWeight: isActive ? 600 : 400,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
+                fontSize: 14, fontWeight: isActive ? 600 : 400,
+                cursor: 'pointer', transition: 'all 0.2s'
               }}
             >
               <Icon size={18} />
@@ -244,20 +185,19 @@ export const SettingsPage = () => {
         })}
       </div>
 
-      {/* Contenu des onglets - Le reste du code inchangé */}
       <Card>
         <CardBody>
           {/* ===== PROFIL ===== */}
           {activeTab === 'profile' && (
             <form onSubmit={handleProfileUpdate}>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Informations personnelles</h3>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                 <FormGroup>
                   <FormLabel>Prénom</FormLabel>
                   <Input
                     value={profileData.prenom}
-                    onChange={(e) => setProfileData({...profileData, prenom: e.target.value})}
+                    onChange={(e) => setProfileData({ ...profileData, prenom: e.target.value })}
                     placeholder="Votre prénom"
                   />
                 </FormGroup>
@@ -265,39 +205,36 @@ export const SettingsPage = () => {
                   <FormLabel>Nom</FormLabel>
                   <Input
                     value={profileData.nom}
-                    onChange={(e) => setProfileData({...profileData, nom: e.target.value})}
+                    onChange={(e) => setProfileData({ ...profileData, nom: e.target.value })}
                     placeholder="Votre nom"
                   />
                 </FormGroup>
               </div>
 
               <FormGroup>
+                <FormLabel>Email</FormLabel>
+                {/*  Email en lecture seule, pas de onChange */}
+                <Input value={user?.email || ''} disabled style={{ background: '#f5f5f5' }} />
+                <small style={{ color: 'var(--text-muted)' }}>L'email ne peut pas être modifié</small>
+              </FormGroup>
+
+              <FormGroup>
                 <FormLabel>Téléphone</FormLabel>
                 <Input
                   value={profileData.telephone}
-                  onChange={(e) => setProfileData({...profileData, telephone: e.target.value})}
+                  onChange={(e) => setProfileData({ ...profileData, telephone: e.target.value })}
                   placeholder="+216 XX XXX XXX"
                 />
               </FormGroup>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                <FormGroup>
-                  <FormLabel>Département</FormLabel>
-                  <Input
-                    value={profileData.departement}
-                    onChange={(e) => setProfileData({...profileData, departement: e.target.value})}
-                    placeholder="ex: Direction Industrielle"
-                  />
-                </FormGroup>
-                <FormGroup>
-                  <FormLabel>Poste</FormLabel>
-                  <Input
-                    value={profileData.poste}
-                    onChange={(e) => setProfileData({...profileData, poste: e.target.value})}
-                    placeholder="ex: Chef de service"
-                  />
-                </FormGroup>
-              </div>
+              <FormGroup>
+                <FormLabel>Poste</FormLabel>
+                <Input
+                  value={profileData.poste}
+                  onChange={(e) => setProfileData({ ...profileData, poste: e.target.value })}
+                  placeholder="ex: Chef de service"
+                />
+              </FormGroup>
 
               <Button type="submit" variant="primary" disabled={loading}>
                 <Save size={16} style={{ marginRight: 8 }} />
@@ -310,30 +247,26 @@ export const SettingsPage = () => {
           {activeTab === 'account' && (
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Sécurité du compte</h3>
-              
+
               {/* Mot de passe */}
-              <div style={{ marginBottom: 24, padding: 16, background: 'var(--surface)', borderRadius: 8 }}>
+              <div style={{ marginBottom: 16, padding: 16, background: 'var(--surface)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Key size={16} color="var(--gold)" /> Mot de passe
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                      Dernière modification : {formatPasswordDate()}
+                      Modifiez votre mot de passe de connexion
                     </div>
                   </div>
-                  <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    onClick={() => setShowPasswordModal(true)}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => setShowPasswordModal(true)}>
                     Changer
                   </Button>
                 </div>
               </div>
 
-              {/* Email */}
-              <div style={{ marginBottom: 24, padding: 16, background: 'var(--surface)', borderRadius: 8 }}>
+              {/* Email — lecture seule */}
+              <div style={{ padding: 16, background: 'var(--surface)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -344,21 +277,6 @@ export const SettingsPage = () => {
                   <Button variant="secondary" size="sm" disabled>Vérifié</Button>
                 </div>
               </div>
-
-              {/* 2FA */}
-              <div style={{ padding: 16, background: 'var(--surface)', borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Smartphone size={16} color="var(--gold)" /> Double authentification (2FA)
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                      Protégez votre compte avec une vérification en deux étapes
-                    </div>
-                  </div>
-                  <Button variant="secondary" size="sm" disabled>Bientôt</Button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -366,47 +284,24 @@ export const SettingsPage = () => {
           {activeTab === 'notifications' && (
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Notifications email</h3>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={notifications.emailNewDemande}
-                    onChange={(e) => setNotifications({...notifications, emailNewDemande: e.target.checked})}
-                    style={{ accentColor: 'var(--gold)' }}
-                  />
-                  <span style={{ fontSize: 13 }}>Nouvelles demandes de recrutement</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={notifications.emailValidation}
-                    onChange={(e) => setNotifications({...notifications, emailValidation: e.target.checked})}
-                    style={{ accentColor: 'var(--gold)' }}
-                  />
-                  <span style={{ fontSize: 13 }}>Validations en attente</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={notifications.emailNewCandidat}
-                    onChange={(e) => setNotifications({...notifications, emailNewCandidat: e.target.checked})}
-                    style={{ accentColor: 'var(--gold)' }}
-                  />
-                  <span style={{ fontSize: 13 }}>Nouvelles candidatures</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={notifications.emailRappel}
-                    onChange={(e) => setNotifications({...notifications, emailRappel: e.target.checked})}
-                    style={{ accentColor: 'var(--gold)' }}
-                  />
-                  <span style={{ fontSize: 13 }}>Rappels (évaluations, contrats)</span>
-                </label>
+                {([
+                  { key: 'emailNewDemande',  label: 'Nouvelles demandes de recrutement' },
+                  { key: 'emailValidation',  label: 'Validations en attente' },
+                  { key: 'emailNewCandidat', label: 'Nouvelles candidatures' },
+                  { key: 'emailRappel',      label: 'Rappels (évaluations, contrats)' },
+                ] as const).map(({ key, label }) => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={notifications[key]}
+                      onChange={(e) => setNotifications({ ...notifications, [key]: e.target.checked })}
+                      style={{ accentColor: 'var(--gold)' }}
+                    />
+                    <span style={{ fontSize: 13 }}>{label}</span>
+                  </label>
+                ))}
               </div>
 
               <div style={{ marginTop: 24 }}>
@@ -417,115 +312,38 @@ export const SettingsPage = () => {
               </div>
             </div>
           )}
-
-          {/* ===== APPARENCE ===== */}
-          {activeTab === 'appearance' && (
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Thème</h3>
-              
-              <div style={{ display: 'flex', gap: 16 }}>
-                <button
-                  onClick={() => setTheme('light')}
-                  style={{
-                    flex: 1,
-                    padding: 16,
-                    background: theme === 'light' ? 'var(--gold-pale)' : 'transparent',
-                    border: `2px solid ${theme === 'light' ? 'var(--gold)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 8,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Sun size={24} color={theme === 'light' ? 'var(--gold)' : 'var(--text-muted)'} />
-                  <span style={{ fontSize: 13, fontWeight: theme === 'light' ? 600 : 400 }}>
-                    Clair
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setTheme('dark')}
-                  style={{
-                    flex: 1,
-                    padding: 16,
-                    background: theme === 'dark' ? 'var(--gold-pale)' : 'transparent',
-                    border: `2px solid ${theme === 'dark' ? 'var(--gold)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 8,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Moon size={24} color={theme === 'dark' ? 'var(--gold)' : 'var(--text-muted)'} />
-                  <span style={{ fontSize: 13, fontWeight: theme === 'dark' ? 600 : 400 }}>
-                    Sombre
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setTheme('system')}
-                  style={{
-                    flex: 1,
-                    padding: 16,
-                    background: theme === 'system' ? 'var(--gold-pale)' : 'transparent',
-                    border: `2px solid ${theme === 'system' ? 'var(--gold)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 8,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Settings size={24} color={theme === 'system' ? 'var(--gold)' : 'var(--text-muted)'} />
-                  <span style={{ fontSize: 13, fontWeight: theme === 'system' ? 600 : 400 }}>
-                    Système
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
         </CardBody>
       </Card>
 
-      {/* ===== MODAL CHANGEMENT MOT DE PASSE ===== */}
+      {/* ===== MODAL MOT DE PASSE ===== */}
       <Modal
         open={showPasswordModal}
-        onClose={() => {
-          setShowPasswordModal(false);
-          setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        }}
+        onClose={handleClosePasswordModal}
         title="Changer le mot de passe"
         maxWidth={500}
         footer={
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-            <Button variant="ghost" onClick={() => setShowPasswordModal(false)}>
+            <Button variant="ghost" onClick={handleClosePasswordModal}>
               Annuler
             </Button>
-            <Button 
-              variant="primary" 
-              onClick={handleChangePassword} 
-              disabled={loading}
-            >
+            <Button variant="primary" onClick={handleChangePassword} disabled={loading}>
               {loading ? 'Changement...' : 'Changer'}
             </Button>
           </div>
         }
       >
         <div style={{ padding: '16px 0' }}>
+          {/*  Erreur affichée DANS le modal pour le changement de mot de passe */}
+          {error && showPasswordModal && (
+            <div style={{ marginBottom: 16 }}><Alert variant="red">{error}</Alert></div>
+          )}
+
           <FormGroup>
             <FormLabel>Mot de passe actuel</FormLabel>
             <Input
               type="password"
               value={passwordData.currentPassword}
-              onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
+              onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
               placeholder="Entrez votre mot de passe actuel"
             />
           </FormGroup>
@@ -535,7 +353,7 @@ export const SettingsPage = () => {
             <Input
               type="password"
               value={passwordData.newPassword}
-              onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+              onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
               placeholder="Minimum 8 caractères"
             />
           </FormGroup>
@@ -545,7 +363,7 @@ export const SettingsPage = () => {
             <Input
               type="password"
               value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
               placeholder="Confirmez votre nouveau mot de passe"
             />
           </FormGroup>

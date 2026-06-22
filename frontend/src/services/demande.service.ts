@@ -26,6 +26,7 @@ export interface Demande {
   disponibilites?: Disponibilite[];
   disponibilitesInterviewers?: DisponibiliteInterviewer[];
   createdAt: string;
+  dgaActif?: boolean;
 }
 
 export interface Disponibilite {
@@ -80,20 +81,25 @@ export interface CreateDemandeData {
   disponibilites?: { date: string; heureDebut: string; heureFin: string }[];
 }
 
-// ✅ Exporter l'objet demandeService (pas la classe)
 export const demandeService = {
-  async getDemandes(params?: { page?: number; limit?: number; statut?: string; priorite?: string }) {
-  const response = await api.get('/demandes', { 
-    params: {
-      ...params,
-      _t: Date.now()  // ← Ajouter pour bypass cache
-    }
-  });
-  return response.data;
-},
+  async getDemandes(params?: { page?: number; limit?: number; statut?: string; priorite?: string; aValider?: boolean }) {
+    const response = await api.get('/demandes', { 
+      params: {
+        ...params,
+        _t: Date.now()
+      }
+    });
+    return response.data;
+  },
 
   async getDemandeById(id: string) {
     const response = await api.get(`/demandes/${id}`);
+    return response.data;
+  },
+
+  // ✅ Nouvelle methode pour la validation avec token
+  async getDemandeWithToken(id: string, token: string) {
+    const response = await api.get(`/demandes/validation/${id}?token=${token}`);
     return response.data;
   },
 
@@ -117,12 +123,20 @@ export const demandeService = {
     return response.data;
   },
 
-  validerDemande: async (id: string, decision: 'Validee' | 'Refusee', commentaire?: string, disponibilites?: any[]) => {
-    const response = await api.patch(`/demandes/${id}/valider`, {
-      decision,
-      commentaire,
-      disponibilites  // ✅ Ajout des disponibilités
-    });
+  validerDemande: async (id: string, decision: 'Validee' | 'Refusee', commentaire?: string, disponibilites?: any[], token?: string) => {
+     const url = token
+    ? `/demandes/${id}/valider?token=${token}`
+    : `/demandes/${id}/valider`;
+    
+  const response = await api.patch(url, {
+    decision,
+    commentaire,
+    disponibilites
+  });
     return response.data;
   },
+  async relancerManuellement(id: string) {
+  const response = await api.post(`/demandes/${id}/relancer`);
+  return response.data;
+},
 };

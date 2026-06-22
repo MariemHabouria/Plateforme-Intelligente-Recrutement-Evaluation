@@ -1,5 +1,3 @@
-// frontend/src/components/pages/dashboard/DashboardPage.tsx
-
 import { useState, useEffect } from 'react';
 import { 
   TrendingUp, TrendingDown, Users, FileText, Briefcase, Calendar, 
@@ -62,14 +60,13 @@ export function DashboardPage() {
     return <Alert variant="gold">Aucune donnee disponible</Alert>;
   }
 
-  const pieDataNiveaux = Object.entries(stats.demandes.parNiveau || {}).map(([name, value]) => ({ name, value }));
-  const pieColors = ['#4a90d9', '#2ecc71', '#f39c12', '#e74c3c', '#9b59b6', '#1abc9c'];
-  const role = user?.role;
+const pieDataNiveaux = Object.entries(stats.counters?.demandes?.parNiveau || {}).map(([name, value]) => ({ name, value }));  const pieColors = ['#4a90d9', '#2ecc71', '#f39c12', '#e74c3c', '#9b59b6', '#1abc9c'];
+  const userRole = user?.role?.toLowerCase();
 
   // ============================================
   // SUPER ADMIN
   // ============================================
-  if (role === 'superadmin') {
+  if (userRole === 'superadmin') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
@@ -77,53 +74,57 @@ export function DashboardPage() {
           <p style={{ color: 'var(--text-muted)' }}>Vue d'ensemble globale de la plateforme</p>
         </div>
 
-        {/* KPIS Globaux */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Utilisateurs actifs</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>0</div>
-                  <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}>+3 ce mois</div>
+                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.utilisateursActifs || 0}</div>
+                  <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}>
+                    {stats.kpis?.tauxOccupation || 0}% d'occupation
+                  </div>
                 </div>
                 <Users size={32} style={{ opacity: 0.5 }} />
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes totales</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.demandes.validees} validees</div>
+                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.total || 0}</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.counters?.demandes?.validees || 0} validées</div>
                 </div>
                 <FileText size={32} style={{ opacity: 0.5 }} />
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux global</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis.tauxValidationDemandes}%</div>
+                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.tauxValidation || 0}%</div>
                   <div style={{ fontSize: 12, marginTop: 4 }}>Validation demandes</div>
                 </div>
                 <CheckCircle size={32} style={{ opacity: 0.5 }} />
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Delai moyen</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{formatDelai(stats.kpis.delaiMoyenRecrutement)}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Recrutement complet</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Budget total engagé</div>
+                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.budgetTotalEngage?.toLocaleString() || 0} DT</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>Tous recrutements validés</div>
                 </div>
-                <Clock size={32} style={{ opacity: 0.5 }} />
+                <DollarSign size={32} style={{ opacity: 0.5 }} />
               </div>
             </CardBody>
           </Card>
@@ -132,16 +133,16 @@ export function DashboardPage() {
         {/* Graphique tendance */}
         <Card style={{ marginBottom: 24 }}>
           <CardHeader>
-            <CardTitle>Activite globale</CardTitle>
-            <CardSubtitle>Evolution des demandes et offres sur 6 mois</CardSubtitle>
+            <CardTitle>Activité globale</CardTitle>
+            <CardSubtitle>Évolution des demandes et offres sur 6 mois</CardSubtitle>
           </CardHeader>
           <CardBody>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={stats.tendances.mois.map((mois, i) => ({
+              <LineChart data={stats.tendances?.mois?.map((mois, i) => ({
                 mois,
-                demandes: stats.tendances.demandes[i],
-                offres: stats.tendances.offres[i]
-              }))}>
+                demandes: stats.tendances?.demandes?.[i] || 0,
+                offres: stats.tendances?.offres?.[i] || 0
+              })) || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="mois" />
                 <YAxis />
@@ -154,29 +155,40 @@ export function DashboardPage() {
           </CardBody>
         </Card>
 
-        {/* Actions rapides admin */}
+        {/* Alertes */}
+        {stats.alertes && stats.alertes.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            {stats.alertes.map((alerte, idx) => (
+              <Alert key={idx} variant={alerte.type === 'danger' ? 'red' : alerte.type === 'warning' ? 'amber' : 'blue'}>
+                {alerte.message}
+              </Alert>
+            ))}
+          </div>
+        )}
+
+        {/* Logs d'audit */}
         <Card>
           <CardHeader>
-            <CardTitle>Actions rapides</CardTitle>
+            <CardTitle>Logs d'audit récents</CardTitle>
+            <CardSubtitle>Activité système et actions des utilisateurs</CardSubtitle>
           </CardHeader>
           <CardBody>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-              <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 8, textAlign: 'center' }}>
-                <Users size={24} style={{ margin: '0 auto 8px', color: 'var(--gold)' }} />
-                <div style={{ fontWeight: 500 }}>Gestion utilisateurs</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ajouter / modifier</div>
+            {stats.auditLogs && stats.auditLogs.length > 0 ? (
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {stats.auditLogs.map((log, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 150 }}>
+                      {new Date(log.createdAt).toLocaleString('fr-FR')}
+                    </span>
+                    <Badge variant="blue" style={{ width: 120 }}>{log.action}</Badge>
+                    <span style={{ flex: 1, fontSize: 13 }}>{log.details || `${log.entityType} - ${log.entityId}`}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{log.acteur}</span>
+                  </div>
+                ))}
               </div>
-              <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 8, textAlign: 'center' }}>
-                <GitBranch size={24} style={{ margin: '0 auto 8px', color: 'var(--gold)' }} />
-                <div style={{ fontWeight: 500 }}>Circuits validation</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Parametrage</div>
-              </div>
-              <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 8, textAlign: 'center' }}>
-                <Shield size={24} style={{ margin: '0 auto 8px', color: 'var(--gold)' }} />
-                <div style={{ fontWeight: 500 }}>Logs audit</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Consulter historique</div>
-              </div>
-            </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun log récent</div>
+            )}
           </CardBody>
         </Card>
       </div>
@@ -186,73 +198,74 @@ export function DashboardPage() {
   // ============================================
   // MANAGER
   // ============================================
-  if (role === 'manager') {
+  if (userRole === 'manager') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - Manager</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Suivi de vos demandes et entretiens</p>
+          <p style={{ color: 'var(--text-muted)' }}>Suivi de vos demandes, entretiens et évaluations</p>
         </div>
 
-        {/* KPIS Manager */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Mes demandes</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.demandes.enCours} en cours</div>
-                </div>
-                <FileText size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Mes demandes</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.total || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{stats.counters?.demandes?.enCours || 0} en cours</div>
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Mes entretiens</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.entretiens.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.entretiens.planifies} a venir</div>
-                </div>
-                <Calendar size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Mes entretiens</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.entretiens?.total || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{stats.kpis?.entretiensASaisir || 0} feedback à donner</div>
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux validation</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.tauxValidation}%</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Mes demandes</div>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Évaluations PE</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: (stats.kpis?.evaluationsAPreparer || 0) > 0 ? 'var(--amber)' : 'var(--green)' }}>
+                  {stats.kpis?.evaluationsAPreparer || 0}
                 </div>
-                <CheckCircle size={32} style={{ opacity: 0.5 }} />
+                <div style={{ fontSize: 12, marginTop: 4 }}>à réaliser</div>
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Evaluation PE</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>0</div>
-                  <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 4 }}>En attente</div>
-                </div>
-                <UserCheck size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Mon équipe</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.monEquipe || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>collaborateurs actifs</div>
               </div>
             </CardBody>
           </Card>
         </div>
 
-        {/* Activite recente */}
-        <Card>
+        {stats.alertes && stats.alertes.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            {stats.alertes.map((alerte, idx) => (
+              <Alert key={idx} variant={alerte.type === 'danger' ? 'red' : alerte.type === 'warning' ? 'amber' : 'blue'}>
+                {alerte.message}
+              </Alert>
+            ))}
+          </div>
+        )}
+
+        <Card style={{ marginBottom: 24 }}>
           <CardHeader>
-            <CardTitle>Mes demandes recentes</CardTitle>
+            <CardTitle>Mes demandes récentes</CardTitle>
           </CardHeader>
           <CardBody>
-            {stats.activiteRecente.demandes.length > 0 ? (
+            {stats.activiteRecente?.demandes?.length > 0 ? (
               stats.activiteRecente.demandes.map((d, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 100 }}>{new Date(d.date).toLocaleDateString('fr-FR')}</span>
@@ -263,7 +276,28 @@ export function DashboardPage() {
                 </div>
               ))
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucune demande recente</div>
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucune demande récente</div>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Historique de mes actions</CardTitle>
+          </CardHeader>
+          <CardBody>
+            {stats.auditLogs && stats.auditLogs.length > 0 ? (
+              stats.auditLogs.map((log, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 150 }}>
+                    {new Date(log.createdAt).toLocaleString('fr-FR')}
+                  </span>
+                  <Badge variant="blue">{log.action}</Badge>
+                  <span style={{ flex: 1, fontSize: 13 }}>{log.details}</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun historique récent</div>
             )}
           </CardBody>
         </Card>
@@ -274,7 +308,7 @@ export function DashboardPage() {
   // ============================================
   // DIRECTEUR
   // ============================================
-  if (role === 'directeur') {
+  if (userRole === 'directeur') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
@@ -287,7 +321,7 @@ export function DashboardPage() {
             <CardBody>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes totales</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.total}</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.total || 0}</div>
               </div>
             </CardBody>
           </Card>
@@ -295,7 +329,7 @@ export function DashboardPage() {
             <CardBody>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>En attente validation</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.demandes.enCours}</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.counters?.demandes?.enCours || 0}</div>
               </div>
             </CardBody>
           </Card>
@@ -303,7 +337,7 @@ export function DashboardPage() {
             <CardBody>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux validation</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.tauxValidation}%</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.tauxValidation || 0}%</div>
               </div>
             </CardBody>
           </Card>
@@ -311,10 +345,10 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Demandes a valider</CardTitle>
+            <CardTitle>Demandes à valider</CardTitle>
           </CardHeader>
           <CardBody>
-            {stats.activiteRecente.demandes.filter(d => d.statut !== 'VALIDEE' && d.statut !== 'REJETEE').length > 0 ? (
+            {stats.activiteRecente?.demandes?.filter(d => d.statut !== 'VALIDEE' && d.statut !== 'REJETEE').length > 0 ? (
               stats.activiteRecente.demandes.filter(d => d.statut !== 'VALIDEE' && d.statut !== 'REJETEE').map((d, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
                   <span style={{ fontWeight: 500, flex: 1 }}>{d.intitulePoste}</span>
@@ -333,7 +367,7 @@ export function DashboardPage() {
   // ============================================
   // DRH
   // ============================================
-  if (role === 'rh') {
+  if (userRole === 'rh') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
@@ -341,59 +375,45 @@ export function DashboardPage() {
           <p style={{ color: 'var(--text-muted)' }}>Vue d'ensemble du recrutement</p>
         </div>
 
-        {/* KPIS RH */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.demandes.validees} validees</div>
-                </div>
-                <FileText size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.total || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{stats.counters?.demandes?.validees || 0} validées</div>
               </div>
             </CardBody>
           </Card>
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Offres</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.offres.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.offres.publiees} publiees</div>
-                </div>
-                <Briefcase size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Offres</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.offres?.total || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{stats.counters?.offres?.publiees || 0} publiées</div>
               </div>
             </CardBody>
           </Card>
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Candidatures</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.candidatures.total}</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>{stats.candidatures.acceptees} acceptees</div>
-                </div>
-                <Users size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Candidatures</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.candidatures?.total || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>{stats.counters?.candidatures?.acceptees || 0} acceptées</div>
               </div>
             </CardBody>
           </Card>
           <Card>
             <CardBody>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux transformation</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis.tauxTransformation}%</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Candidatures vers embauches</div>
-                </div>
-                <Award size={32} style={{ opacity: 0.5 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux transformation</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.tauxTransformation || 0}%</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>Candidatures → embauches</div>
               </div>
             </CardBody>
           </Card>
         </div>
 
-        {/* Graphiques */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardHeader>
@@ -401,12 +421,12 @@ export function DashboardPage() {
             </CardHeader>
             <CardBody>
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={stats.tendances.mois.map((mois, i) => ({
+                <LineChart data={stats.tendances?.mois?.map((mois, i) => ({
                   mois,
-                  demandes: stats.tendances.demandes[i],
-                  offres: stats.tendances.offres[i],
-                  candidatures: stats.tendances.candidatures[i]
-                }))}>
+                  demandes: stats.tendances?.demandes?.[i] || 0,
+                  offres: stats.tendances?.offres?.[i] || 0,
+                  candidatures: stats.tendances?.candidatures?.[i] || 0
+                })) || []}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="mois" />
                   <YAxis />
@@ -441,14 +461,13 @@ export function DashboardPage() {
           </Card>
         </div>
 
-        {/* Activite recente */}
         <Card>
           <CardHeader>
-            <CardTitle>Activite recente</CardTitle>
+            <CardTitle>Activité récente</CardTitle>
           </CardHeader>
           <CardBody>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {stats.activiteRecente.demandes.slice(0, 3).map((d, i) => (
+              {stats.activiteRecente?.demandes?.slice(0, 3).map((d, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                   <FileText size={14} style={{ color: 'var(--text-muted)' }} />
                   <span style={{ flex: 1 }}>{d.intitulePoste}</span>
@@ -463,57 +482,108 @@ export function DashboardPage() {
   }
 
   // ============================================
-  // DAF
+  // RESPONSABLE PAIE
   // ============================================
-  if (role === 'daf') {
+  if (userRole === 'paie') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - DAF</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Suivi budgetaire et validations financieres</p>
+          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - Paie</h1>
+          <p style={{ color: 'var(--text-muted)' }}>Gestion des contrats et périodes d'essai</p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>A valider (DAF)</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.demandes.enCours}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Contrats à préparer</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.kpis?.contratsAPreparer || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>candidatures acceptées</div>
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Budget total engagé</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>0 DT</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Évaluations PE</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.evaluationsASaisir || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>données à saisir</div>
               </div>
             </CardBody>
           </Card>
+          
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux validation</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.tauxValidation}%</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Contrats actifs</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.contratsActifs || 0}</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>en période d'essai</div>
+              </div>
+            </CardBody>
+          </Card>
+          
+          <Card>
+            <CardBody>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Périodes critiques</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: (stats.kpis?.periodesEssai || 0) > 0 ? 'var(--red)' : 'var(--green)' }}>
+                  {stats.kpis?.periodesEssai || 0}
+                </div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>fin dans -30 jours</div>
               </div>
             </CardBody>
           </Card>
         </div>
+
+        {stats.alertes && stats.alertes.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            {stats.alertes.map((alerte, idx) => (
+              <Alert key={idx} variant={alerte.type === 'danger' ? 'red' : alerte.type === 'warning' ? 'amber' : 'blue'}>
+                {alerte.message}
+              </Alert>
+            ))}
+          </div>
+        )}
+
+        <Card style={{ marginBottom: 24 }}>
+          <CardHeader>
+            <CardTitle>Candidats à contracter</CardTitle>
+          </CardHeader>
+          <CardBody>
+            {stats.activiteRecente?.candidatures?.filter(c => c.statut === 'ACCEPTEE').length > 0 ? (
+              stats.activiteRecente.candidatures
+                .filter(c => c.statut === 'ACCEPTEE')
+                .map((c, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
+                    <span style={{ fontWeight: 500, flex: 1 }}>{c.prenom} {c.nom}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.offre}</span>
+                    <Badge variant="green">À contracter</Badge>
+                  </div>
+                ))
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun candidat à contracter</div>
+            )}
+          </CardBody>
+        </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Demandes en attente de validation budgetaire</CardTitle>
+            <CardTitle>Contrats récents</CardTitle>
           </CardHeader>
           <CardBody>
-            {stats.activiteRecente.demandes.filter(d => d.statut === 'EN_VALIDATION_DAF').length > 0 ? (
-              stats.activiteRecente.demandes.filter(d => d.statut === 'EN_VALIDATION_DAF').map((d, i) => (
+            {stats.activiteRecente?.contrats?.length > 0 ? (
+              stats.activiteRecente.contrats.map((c, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontWeight: 500, flex: 1 }}>{d.intitulePoste}</span>
-                  <Badge variant="amber">A valider</Badge>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 120 }}>{c.reference}</span>
+                  <span style={{ flex: 1 }}>{c.employe}</span>
+                  <Badge variant={c.statut === 'ACTIF' ? 'green' : c.statut === 'ENVOYE' ? 'amber' : 'blue'}>
+                    {c.statut}
+                  </Badge>
                 </div>
               ))
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucune demande en attente</div>
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun contrat récent</div>
             )}
           </CardBody>
         </Card>
@@ -522,30 +592,71 @@ export function DashboardPage() {
   }
 
   // ============================================
-  // DGA
+  // DAF
   // ============================================
-  if (role === 'dga') {
+  if (userRole === 'daf') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - DGA</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Validations strategiques</p>
+          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - DAF</h1>
+          <p style={{ color: 'var(--text-muted)' }}>Suivi budgétaire et validations financières</p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>A valider (DGA)</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.demandes.enCours}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>À valider (DAF)</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.counters?.demandes?.enCours || 0}</div>
               </div>
             </CardBody>
           </Card>
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes validees</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.demandes.validees}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Budget total engagé</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis?.budgetTotalEngage?.toLocaleString() || 0} DT</div>
+              </div>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux validation</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.tauxValidation || 0}%</div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================
+  // DGA
+  // ============================================
+  if (userRole === 'dga') {
+    return (
+      <div className="page-fade">
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - DGA</h1>
+          <p style={{ color: 'var(--text-muted)' }}>Validations stratégiques</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
+          <Card>
+            <CardBody>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>À valider (DGA)</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.counters?.demandes?.enCours || 0}</div>
+              </div>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Demandes validées</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.validees || 0}</div>
               </div>
             </CardBody>
           </Card>
@@ -557,20 +668,20 @@ export function DashboardPage() {
   // ============================================
   // DG
   // ============================================
-  if (role === 'dg') {
+  if (userRole === 'dg') {
     return (
       <div className="page-fade">
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - DG</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Validation finale et vision strategique</p>
+          <p style={{ color: 'var(--text-muted)' }}>Validation finale et vision stratégique</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 24 }}>
           <Card>
             <CardBody>
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>A valider (DG)</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.demandes.enCours}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>À valider (DG)</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.counters?.demandes?.enCours || 0}</div>
               </div>
             </CardBody>
           </Card>
@@ -578,7 +689,7 @@ export function DashboardPage() {
             <CardBody>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recrutements en cours</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.candidatures.entretien}</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.candidatures?.entretien || 0}</div>
               </div>
             </CardBody>
           </Card>
@@ -586,7 +697,7 @@ export function DashboardPage() {
             <CardBody>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Taux global</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.kpis.tauxValidationDemandes}%</div>
+                <div style={{ fontSize: 32, fontWeight: 700 }}>{stats.counters?.demandes?.tauxValidation || 0}%</div>
               </div>
             </CardBody>
           </Card>
@@ -597,7 +708,7 @@ export function DashboardPage() {
             <CardTitle>Demandes en attente de validation finale</CardTitle>
           </CardHeader>
           <CardBody>
-            {stats.activiteRecente.demandes.filter(d => d.statut === 'EN_VALIDATION_DG').length > 0 ? (
+            {stats.activiteRecente?.demandes?.filter(d => d.statut === 'EN_VALIDATION_DG').length > 0 ? (
               stats.activiteRecente.demandes.filter(d => d.statut === 'EN_VALIDATION_DG').map((d, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
                   <span style={{ fontWeight: 500, flex: 1 }}>{d.intitulePoste}</span>
@@ -606,66 +717,6 @@ export function DashboardPage() {
               ))
             ) : (
               <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucune demande en attente</div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
-
-  // ============================================
-  // RESPONSABLE PAIE
-  // ============================================
-  if (role === 'paie') {
-    return (
-      <div className="page-fade">
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Tableau de bord - Paie</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Gestion des contrats et periodes d'essai</p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 24 }}>
-          <Card>
-            <CardBody>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Contrats a generer</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--amber)' }}>{stats.candidatures.acceptees}</div>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Periodes d'essai</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>0</div>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Contrats signes</div>
-                <div style={{ fontSize: 32, fontWeight: 700 }}>0</div>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Candidats a contracter</CardTitle>
-          </CardHeader>
-          <CardBody>
-            {stats.activiteRecente.candidatures.length > 0 ? (
-              stats.activiteRecente.candidatures.map((c, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontWeight: 500, flex: 1 }}>{c.prenom} {c.nom}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.offre}</span>
-                  <Badge variant="green">A contracter</Badge>
-                </div>
-              ))
-            ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun candidat a contracter</div>
             )}
           </CardBody>
         </Card>

@@ -36,7 +36,6 @@ export const getDonneesPrecontrat = async (req: Request, res: Response) => {
 
     if (!candidature) return sendNotFound(res, 'Candidature non trouvée');
 
-    // ✅ Cast correct — ficheRenseignementData est un champ Json dans Prisma
     const ficheData = (candidature.ficheRenseignementData as Record<string, any>) || {};
 
     const donnees = {
@@ -79,7 +78,6 @@ export const getDonneesPrecontrat = async (req: Request, res: Response) => {
 
 // ============================================
 // CRÉER UN CONTRAT
-// ✅ CORRIGÉ : on sauvegarde TOUTES les données du formulaire en JSON
 // ============================================
 export const createContrat = async (req: Request, res: Response) => {
   try {
@@ -119,7 +117,6 @@ export const createContrat = async (req: Request, res: Response) => {
       return sendError(res, 'Tous les champs requis sont obligatoires', 400);
     }
 
-    // ✅ CORRIGÉ : plus de `ficheRenseignementData: true` dans include (ce n'est pas une relation)
     const candidature = await prisma.candidature.findUnique({
       where: { id: candidatureId },
       include: {
@@ -153,12 +150,9 @@ export const createContrat = async (req: Request, res: Response) => {
       dateFinPeriodeEssai.setMonth(dateFinPeriodeEssai.getMonth() + dureeEssai);
     }
 
-    // ✅ Récupérer les données de la fiche de renseignement
     const ficheData = (candidature.ficheRenseignementData as Record<string, any>) || {};
 
-    // ✅ Construire l'objet donneesContrat complet pour le PDF
     const donneesContrat = {
-      // Données candidat (depuis candidature + fiche)
       candidat: {
         nom: candidature.nom,
         prenom: candidature.prenom,
@@ -171,20 +165,17 @@ export const createContrat = async (req: Request, res: Response) => {
         situationFamiliale: ficheData.situationFamiliale || '',
         nombreEnfants: ficheData.nombreEnfants || ''
       },
-      // Données poste
       poste: {
         intitule: employePoste || candidature.offre?.intitule || '',
         direction: employeDirection || candidature.offre?.demande?.direction?.nom || '',
         superieur: employeSuperieur || 'Manager direct',
         lieuTravail: employeLieuTravail || 'Siège social - Tunis'
       },
-      // Données employeur
       employeur: {
         nom: employeurNom || 'KILANI GROUPE',
         representant: employeurRepresentant || 'M. Karim Kilani, Directeur Général',
         adresse: employeurAdresse || 'Immeuble Kilani, Centre Urbain Nord, Tunis'
       },
-      // Données contrat
       contrat: {
         typeContrat,
         salaire,
@@ -202,7 +193,6 @@ export const createContrat = async (req: Request, res: Response) => {
       }
     };
 
-    // ✅ Sauvegarde du contrat avec toutes les données
     const contrat = await prisma.contrat.create({
       data: {
         reference: finalReference,
@@ -212,7 +202,7 @@ export const createContrat = async (req: Request, res: Response) => {
         dateFin: dateFinPeriodeEssai,
         statut: 'BROUILLON',
         candidatureId,
-        donneesContrat  // ✅ toutes les données sauvegardées en JSON
+        donneesContrat
       },
       include: {
         candidature: {
@@ -399,7 +389,7 @@ export const signerContrat = async (req: Request, res: Response) => {
 
     const contrat = await prisma.contrat.findUnique({
       where: { id },
-      include: { 
+      include: {
         candidature: {
           include: {
             offre: {
@@ -419,14 +409,22 @@ export const signerContrat = async (req: Request, res: Response) => {
       return sendError(res, 'Seuls les contrats envoyés peuvent être signés', 400);
     }
 
-    // ✅ Mettre à jour le contrat en ACTIF
+    // Mettre à jour le contrat en ACTIF
     const updated = await prisma.contrat.update({
       where: { id },
       data: { statut: 'ACTIF' }
     });
 
-    // ✅ DÉCLENCHER L'ÉVALUATION PE AUTOMATIQUEMENT
-    await declencherEvaluationPE(contrat);
+    // ✅ CRÉER L'ÉVALUATION PE APRÈS LA SIGNATURE
+    try {
+      const evaluation = await creerEvaluationPEDepuisContrat(contrat);
+      if (evaluation) {
+        console.log(`✅ Évaluation PE créée avec succès: ${evaluation.reference}`);
+      }
+    } catch (evalError) {
+      console.error('❌ Erreur lors de la création de l\'évaluation PE:', evalError);
+      // Ne pas bloquer la signature si l'évaluation échoue
+    }
 
     await emailService.sendNotificationEmail({
       nom: contrat.candidature!.nom,
@@ -443,85 +441,120 @@ export const signerContrat = async (req: Request, res: Response) => {
     sendError(res, 'Erreur lors de la signature');
   }
 };
-async function declencherEvaluationPE(contrat: any) {
-  try {
-    console.log(`🔍 Déclenchement évaluation PE pour contrat ${contrat.reference}...`);
-    
-    // Vérifier si une évaluation existe déjà
-    const existingEval = await prisma.evaluationPE.findFirst({
-      where: { contratId: contrat.id }
-    });
 
-    if (existingEval) {
-      console.log(`⚠️ Une évaluation existe déjà pour ce contrat`);
-      return;
-    }
+// ============================================
+// ✅ NOUVELLE FONCTION : Créer l'évaluation PE depuis un contrat
+// ============================================
+async function creerEvaluationPEDepuisContrat(contrat: any) {
+  console.log(`🔍 Création évaluation PE pour contrat ${contrat.reference}...`);
 
-    // Calculer la date de fin de période d'essai (3 mois après date début)
-    const dateFinPE = new Date(contrat.dateDebut);
-    dateFinPE.setMonth(dateFinPE.getMonth() + 3);
-    
-    // Calculer les jours restants
-    const today = new Date();
-    const joursRestants = Math.ceil((dateFinPE.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
-    // Trouver le manager de la même direction
-    const directionId = contrat.candidature?.offre?.demande?.directionId;
-    const manager = await prisma.user.findFirst({
-      where: {
-        role: 'MANAGER',
-        directionId: directionId,
-        actif: true
-      }
-    });
+  // Vérifier si une évaluation existe déjà
+  const existingEval = await prisma.evaluationPE.findFirst({
+    where: { contratId: contrat.id }
+  });
 
-    if (!manager) {
-      console.log(`⚠️ Aucun manager trouvé pour la direction ${directionId}`);
-    }
-
-    // Générer la référence
-    const year = new Date().getFullYear();
-    const count = await prisma.evaluationPE.count();
-    const reference = `EVAL-${year}-${String(count + 1).padStart(4, '0')}`;
-
-    // Créer l'évaluation
-    const evaluation = await prisma.evaluationPE.create({
-      data: {
-        reference,
-        employeId: contrat.candidature!.id,
-        managerId: manager?.id || '',
-        contratId: contrat.id,
-        dateDebut: contrat.dateDebut,
-        dateFin: dateFinPE,
-        joursRestants: joursRestants > 0 ? joursRestants : 0,
-        statut: 'BROUILLON',
-        etapeActuelle: 0,
-        totalEtapes: 3
-      }
-    });
-
-    console.log(`✅ Évaluation PE créée: ${evaluation.reference}`);
-    
-    // Notifier le responsable paie
-    const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
-    if (respPaie) {
-      await emailService.sendNotificationEmail({
-        nom: respPaie.nom,
-        prenom: respPaie.prenom,
-        email: respPaie.email,
-        message: `Une nouvelle évaluation PE a été créée pour ${contrat.candidature?.prenom} ${contrat.candidature?.nom}. Veuillez saisir les données contractuelles.`,
-        actionUrl: `${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`
-      });
-    }
-    
-  } catch (error) {
-    console.error('Erreur lors du déclenchement PE:', error);
+  if (existingEval) {
+    console.log(`⚠️ Une évaluation existe déjà pour ce contrat (${existingEval.reference})`);
+    return null;
   }
+
+  // Récupérer la candidature associée
+  const candidature = await prisma.candidature.findUnique({
+    where: { id: contrat.candidatureId! },
+    include: { offre: { include: { demande: { include: { direction: true } } } } }
+  });
+
+  if (!candidature) {
+    console.log(`⚠️ Candidature non trouvée pour contrat ${contrat.reference}`);
+    return null;
+  }
+
+  // Trouver ou créer un employé (User avec role EMPLOYE)
+  // On utilise l'email de la candidature pour trouver l'employé correspondant
+  let employe = await prisma.user.findFirst({
+    where: { email: candidature.email, role: 'EMPLOYE' }
+  });
+
+  if (!employe) {
+    // Créer un employé à partir de la candidature
+    const defaultPassword = await require('bcrypt').hash('Password123!', 10);
+    employe = await prisma.user.create({
+      data: {
+        email: candidature.email,
+        password: defaultPassword,
+        nom: candidature.nom,
+        prenom: candidature.prenom,
+        role: 'EMPLOYE',
+        poste: contrat.donneesContrat?.poste?.intitule || candidature.offre?.intitule || 'Employé',
+        telephone: candidature.telephone,
+        directionId: candidature.offre?.demande?.directionId,
+        dateArrivee: contrat.dateDebut,
+        actif: true,
+        mustChangePassword: true
+      }
+    });
+    console.log(`✅ Employé créé: ${employe.prenom} ${employe.nom} (${employe.email})`);
+  }
+
+  // Trouver le manager de la même direction
+  const manager = await prisma.user.findFirst({
+    where: {
+      role: 'MANAGER',
+      directionId: candidature.offre?.demande?.directionId,
+      actif: true
+    }
+  });
+
+  if (!manager) {
+    console.log(`⚠️ Aucun manager trouvé pour la direction ${candidature.offre?.demande?.directionId}`);
+    return null;
+  }
+
+  // Calculer les jours restants
+  const today = new Date();
+  const dateFin = contrat.dateFin;
+  const joursRestants = Math.ceil((dateFin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Générer la référence
+  const year = new Date().getFullYear();
+  const count = await prisma.evaluationPE.count();
+  const reference = `EVAL-${year}-${String(count + 1).padStart(4, '0')}`;
+
+  // Créer l'évaluation
+  const evaluation = await prisma.evaluationPE.create({
+    data: {
+      reference,
+      employeId: employe.id,
+      managerId: manager.id,
+      contratId: contrat.id,
+      dateDebut: contrat.dateDebut,
+      dateFin: dateFin,
+      joursRestants: joursRestants > 0 ? joursRestants : 0,
+      statut: 'BROUILLON',
+      etapeActuelle: 0,
+      totalEtapes: 3
+    }
+  });
+
+  console.log(`✅ Évaluation PE créée: ${evaluation.reference} (J-${joursRestants})`);
+  
+  // Notifier le responsable paie
+  const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
+  if (respPaie) {
+    await emailService.sendNotificationEmail({
+      nom: respPaie.nom,
+      prenom: respPaie.prenom,
+      email: respPaie.email,
+      message: `Une nouvelle évaluation PE a été créée pour ${candidature.prenom} ${candidature.nom}. Veuillez saisir les données contractuelles.`,
+      actionUrl: `${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`
+    });
+  }
+
+  return evaluation;
 }
 
 // ============================================
 // GÉNÉRER ET TÉLÉCHARGER LE PDF
-// ✅ CORRIGÉ : lit les données depuis la DB (donneesContrat), pas req.body
 // ============================================
 export const telechargerPDF = async (req: Request, res: Response) => {
   try {
@@ -544,14 +577,12 @@ export const telechargerPDF = async (req: Request, res: Response) => {
 
     if (!contrat) return res.status(404).json({ message: 'Contrat non trouvé' });
 
-    // ✅ Lire les données depuis donneesContrat (sauvegardé lors de la création)
     const donnees = (contrat.donneesContrat as any) || {};
     const candidat = donnees.candidat || {};
     const poste = donnees.poste || {};
     const employeur = donnees.employeur || {};
     const contratData = donnees.contrat || {};
 
-    // Fallbacks depuis les relations Prisma si donneesContrat est vide (contrats du seed)
     const ficheData = (contrat.candidature?.ficheRenseignementData as Record<string, any>) || {};
     const offre = contrat.candidature?.offre;
     const demande = offre?.demande;
@@ -589,122 +620,178 @@ export const telechargerPDF = async (req: Request, res: Response) => {
 <html>
 <head>
   <meta charset="UTF-8">
+  <title>Contrat de travail ${contrat.reference}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Times New Roman', serif; padding: 40px; font-size: 13px; color: #222; }
-    .header-logo { text-align: right; margin-bottom: 30px; font-size: 12px; color: #555; }
-    .header-logo strong { font-size: 16px; color: #2c3e50; display: block; }
-    h1 { text-align: center; color: #2c3e50; font-size: 22px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: 2px; }
-    .ref-line { text-align: center; font-size: 12px; color: #777; margin-bottom: 30px; }
-    h2 { font-size: 14px; margin: 24px 0 10px; color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
-    table { width: 100%; border-collapse: collapse; margin: 0 0 16px; }
-    td { padding: 8px 12px; border: 1px solid #ddd; }
-    .bold { font-weight: bold; background: #f0f4f8; width: 38%; color: #2c3e50; }
-    .section-text { margin: 8px 0 16px; padding: 10px 14px; background: #fafafa; border-left: 3px solid #2c3e50; font-size: 13px; }
-    .notice { background: #fff8e1; border: 1px solid #f9a825; padding: 12px 16px; margin: 24px 0; border-radius: 6px; font-size: 12px; text-align: center; color: #555; }
-    .signature-block { margin-top: 50px; display: flex; justify-content: space-between; }
-    .signature-box { width: 44%; text-align: center; }
-    .signature-box p { font-size: 12px; color: #444; margin-bottom: 4px; }
-    .signature-line { margin-top: 50px; border-top: 1px solid #333; padding-top: 6px; font-size: 11px; color: #777; }
-    .footer { margin-top: 40px; font-size: 10px; text-align: center; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
-    .badge { display: inline-block; background: #e8f4fd; color: #1a73e8; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 12pt;
+      line-height: 1.4;
+      color: #000;
+      background: white;
+      padding: 40px;
+      margin: 0;
+    }
+    .header {
+      text-align: right;
+      margin-bottom: 30px;
+    }
+    .header strong {
+      font-size: 14pt;
+    }
+    h1 {
+      text-align: center;
+      font-size: 18pt;
+      text-transform: uppercase;
+      margin: 20px 0;
+      letter-spacing: 2px;
+    }
+    h2 {
+      font-size: 14pt;
+      margin: 20px 0 10px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+    }
+    td {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      vertical-align: top;
+    }
+    .bold {
+      font-weight: bold;
+      background-color: #f5f5f5;
+      width: 35%;
+    }
+    .notice {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 12px;
+      margin: 20px 0;
+      text-align: center;
+      font-size: 11pt;
+    }
+    .signature-block {
+      margin-top: 50px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .signature-box {
+      width: 45%;
+      text-align: center;
+    }
+    .signature-line {
+      margin-top: 50px;
+      border-top: 1px solid #000;
+      padding-top: 5px;
+    }
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 9pt;
+      color: #666;
+      border-top: 1px solid #eee;
+      padding-top: 15px;
+    }
   </style>
 </head>
 <body>
 
-  <div class="header-logo">
-    <strong>${employeurNomFinal}</strong>
-    ${directionFinal}<br>
-    Tunis, le ${new Date().toLocaleDateString('fr-FR')}
+<div class="header">
+  <strong>KILANI GROUPE</strong><br>
+  ${directionFinal}<br>
+  Tunis, le ${new Date().toLocaleDateString('fr-FR')}
+</div>
+
+<h1>CONTRAT DE TRAVAIL</h1>
+
+<p style="text-align:center; margin-bottom:20px;">
+  <strong>Référence :</strong> ${contrat.reference} &nbsp;|&nbsp; 
+  <strong>Type :</strong> ${contrat.typeContrat}
+</p>
+
+<h2>ARTICLE 1 - IDENTITÉ DES PARTIES</h2>
+<table>
+  <tr><td class="bold">Employeur</td><td>${employeurNomFinal}</td></tr>
+  <tr><td class="bold">Représentant légal</td><td>${employeurRepFinal}</td></tr>
+  <tr><td class="bold">Adresse siège social</td><td>${employeurAdrFinal}</td></tr>
+  <tr><td class="bold">Salarié(e)</td><td>${prenomCandidatFinal} ${nomCandidatFinal}</td></tr>
+  <tr><td class="bold">Date de naissance</td><td>${dateNaissanceFinal}</td></tr>
+  <tr><td class="bold">Nationalité</td><td>${nationaliteFinal}</td></tr>
+  <tr><td class="bold">Adresse personnelle</td><td>${adresseFinal}</td></tr>
+  <tr><td class="bold">Téléphone</td><td>${telephoneFinal}</td></tr>
+  <tr><td class="bold">Email</td><td>${emailFinal}</td></tr>
+</table>
+
+<h2>ARTICLE 2 - POSTE ET AFFECTATION</h2>
+<table>
+  <tr><td class="bold">Poste occupé</td><td>${posteFinal}</td></tr>
+  <tr><td class="bold">Direction / Service</td><td>${directionFinal}</td></tr>
+  <tr><td class="bold">Supérieur hiérarchique</td><td>${superieurFinal}</td></tr>
+  <tr><td class="bold">Lieu de travail</td><td>${lieuFinal}</td></tr>
+</table>
+
+<h2>ARTICLE 3 - CONDITIONS DU CONTRAT</h2>
+<table>
+  <tr><td class="bold">Type de contrat</td><td>${contrat.typeContrat}</td></tr>
+  <tr><td class="bold">Date de prise de poste</td><td>${new Date(contrat.dateDebut).toLocaleDateString('fr-FR')}</td></tr>
+  <tr><td class="bold">Fin de période d'essai</td><td>${contrat.dateFin ? new Date(contrat.dateFin).toLocaleDateString('fr-FR') : 'Non définie'}</td></tr>
+  <tr><td class="bold">Période d'essai renouvelable</td><td>${periodeRenouvelable}</td></tr>
+</table>
+
+<h2>ARTICLE 4 - RÉMUNÉRATION ET AVANTAGES</h2>
+<table>
+  <tr><td class="bold">Salaire brut mensuel</td><td><strong>${salaireFinal}</strong></td></tr>
+  <tr><td class="bold">Prime / Bonus</td><td>${primeFinal}</td></tr>
+  <tr><td class="bold">Avantages</td><td>${avantagesFinal || 'Aucun avantage particulier'}</td></tr>
+</table>
+
+<h2>ARTICLE 5 - DURÉE DU TRAVAIL ET CONGÉS</h2>
+<table>
+  <tr><td class="bold">Durée hebdomadaire</td><td>${horairesHebdoFinal}</td></tr>
+  <tr><td class="bold">Horaires</td><td>${horairesPrecisionFinal}</td></tr>
+  <tr><td class="bold">Congés payés annuels</td><td>${congesPayesFinal}</td></tr>
+  <tr><td class="bold">Préavis de rupture</td><td>${preavisFinal}</td></tr>
+</table>
+
+${clauseFinal ? `
+<h2>ARTICLE 6 - CLAUSES PARTICULIÈRES</h2>
+<div style="margin:10px 0; padding:10px; background:#f5f5f5;">${clauseFinal}</div>
+` : ''}
+
+${observationsFinal ? `
+<h2>OBSERVATIONS</h2>
+<div style="margin:10px 0; padding:10px; background:#f5f5f5;">${observationsFinal}</div>
+` : ''}
+
+<div class="notice">
+  <strong>⚠️ Document à titre de consultation</strong><br>
+  La signature définitive sera effectuée physiquement au siège social de l'entreprise.
+</div>
+
+<div class="signature-block">
+  <div class="signature-box">
+    <div class="signature-line"></div>
+    <p><strong>L'Employeur</strong><br>${employeurRepFinal}</p>
   </div>
-
-  <h1>Contrat de Travail</h1>
-  <div class="ref-line">Référence : <strong>${contrat.reference}</strong> &nbsp;|&nbsp; Type : <span class="badge">${contrat.typeContrat}</span></div>
-
-  <!-- PARTIE I : PARTIES -->
-  <h2>Article 1 — Identité des parties</h2>
-  <table>
-    <tr><td class="bold">Employeur</td><td>${employeurNomFinal}</td></tr>
-    <tr><td class="bold">Représentant légal</td><td>${employeurRepFinal}</td></tr>
-    <tr><td class="bold">Adresse siège social</td><td>${employeurAdrFinal}</td></tr>
-  </table>
-  <table>
-    <tr><td class="bold">Salarié(e)</td><td>${prenomCandidatFinal} ${nomCandidatFinal}</td></tr>
-    <tr><td class="bold">Date de naissance</td><td>${dateNaissanceFinal}</td></tr>
-    <tr><td class="bold">Nationalité</td><td>${nationaliteFinal}</td></tr>
-    <tr><td class="bold">Adresse personnelle</td><td>${adresseFinal}</td></tr>
-    <tr><td class="bold">Téléphone</td><td>${telephoneFinal}</td></tr>
-    <tr><td class="bold">Email</td><td>${emailFinal}</td></tr>
-  </table>
-
-  <!-- PARTIE II : POSTE -->
-  <h2>Article 2 — Poste et affectation</h2>
-  <table>
-    <tr><td class="bold">Poste occupé</td><td>${posteFinal}</td></tr>
-    <tr><td class="bold">Direction / Service</td><td>${directionFinal}</td></tr>
-    <tr><td class="bold">Supérieur hiérarchique</td><td>${superieurFinal}</td></tr>
-    <tr><td class="bold">Lieu de travail</td><td>${lieuFinal}</td></tr>
-  </table>
-
-  <!-- PARTIE III : CONDITIONS -->
-  <h2>Article 3 — Conditions du contrat</h2>
-  <table>
-    <tr><td class="bold">Type de contrat</td><td>${contrat.typeContrat}</td></tr>
-    <tr><td class="bold">Date de prise de poste</td><td>${new Date(contrat.dateDebut).toLocaleDateString('fr-FR')}</td></tr>
-    <tr><td class="bold">Fin de période d'essai</td><td>${contrat.dateFin ? new Date(contrat.dateFin).toLocaleDateString('fr-FR') : 'Non définie'}</td></tr>
-    <tr><td class="bold">Période d'essai renouvelable</td><td>${periodeRenouvelable}</td></tr>
-  </table>
-
-  <!-- PARTIE IV : RÉMUNÉRATION -->
-  <h2>Article 4 — Rémunération et avantages</h2>
-  <table>
-    <tr><td class="bold">Salaire brut mensuel</td><td><strong>${salaireFinal}</strong></td></tr>
-    <tr><td class="bold">Prime / Bonus</td><td>${primeFinal}</td></tr>
-    <tr><td class="bold">Avantages</td><td>${avantagesFinal || 'Aucun avantage particulier'}</td></tr>
-  </table>
-
-  <!-- PARTIE V : HORAIRES -->
-  <h2>Article 5 — Durée du travail et congés</h2>
-  <table>
-    <tr><td class="bold">Durée hebdomadaire</td><td>${horairesHebdoFinal}</td></tr>
-    <tr><td class="bold">Horaires</td><td>${horairesPrecisionFinal}</td></tr>
-    <tr><td class="bold">Congés payés annuels</td><td>${congesPayesFinal}</td></tr>
-    <tr><td class="bold">Préavis de rupture</td><td>${preavisFinal}</td></tr>
-  </table>
-
-  ${clauseFinal ? `
-  <!-- PARTIE VI : CLAUSES -->
-  <h2>Article 6 — Clauses particulières</h2>
-  <div class="section-text">${clauseFinal}</div>
-  ` : ''}
-
-  ${observationsFinal ? `
-  <h2>Observations</h2>
-  <div class="section-text">${observationsFinal}</div>
-  ` : ''}
-
-  <div class="notice">
-     Ce document est fourni à titre de consultation.<br>
-    La signature définitive sera effectuée physiquement au siège social de l'entreprise.
+  <div class="signature-box">
+    <div class="signature-line"></div>
+    <p><strong>Le(La) Salarié(e)</strong><br>${prenomCandidatFinal} ${nomCandidatFinal}</p>
   </div>
+</div>
 
-  <div class="signature-block">
-    <div class="signature-box">
-      <p><strong>L'Employeur</strong></p>
-      <p>${employeurRepFinal}</p>
-      <div class="signature-line">Signature et cachet</div>
-    </div>
-    <div class="signature-box">
-      <p><strong>Le(La) Salarié(e)</strong></p>
-      <p>${prenomCandidatFinal} ${nomCandidatFinal}</p>
-      <div class="signature-line">Signature précédée de « Lu et approuvé »</div>
-    </div>
-  </div>
-
-  <div class="footer">
-    <p>Fait à Tunis, en deux exemplaires originaux, le ${new Date().toLocaleDateString('fr-FR')}</p>
-    <p style="margin-top:6px">${employeurNomFinal} — Tous droits réservés</p>
-  </div>
+<div class="footer">
+  <p>Fait à Tunis, en deux exemplaires originaux, le ${new Date().toLocaleDateString('fr-FR')}</p>
+  <p>${employeurNomFinal} — Tous droits réservés</p>
+</div>
 
 </body>
 </html>`;

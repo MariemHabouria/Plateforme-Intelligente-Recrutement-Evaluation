@@ -1,337 +1,638 @@
 // backend/prisma/seed-candidatures.ts
-
+// Kilani Groupe — Seed candidatures v4 (flux corrige)
+//
+// Flux respecte : NOUVELLE → PRESELECTIONNEE → FICHE_ENVOYEE → FICHE_RECUE → ENTRETIEN → ACCEPTEE/REFUSEE
+// Regles : entretiens uniquement si statut === 'FICHE_RECUE' ou 'ENTRETIEN'
+//          statut 'ENTRETIEN' signifie qu'au moins un entretien a ete planifie
 
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
-// Interface pour les candidats
+const prisma  = new PrismaClient({ adapter });
+
+// ============================================================
+// TYPES
+// ============================================================
+interface EntretienSeed {
+  type: 'RH' | 'TECHNIQUE' | 'DIRECTION';
+  interviewerRole: string;
+  offsetDays: number;
+  heure: string;
+  lieu: string;
+  statut: 'PLANIFIE' | 'REALISE' | 'ANNULE';
+  feedback?: string;
+  evaluation?: number;
+}
 
 interface CandidatSeed {
   nom: string;
   prenom: string;
   email: string;
   telephone: string;
+  cvUrl: string;
   cvTexte: string;
-  statut: string;
   scoreGlobal: number;
   scoreExp: number;
   competencesDetectees: string[];
   competencesManquantes: string[];
+  statut: string;
   consentementRGPD: boolean;
   consentementIA: boolean;
-  offreCible: string | null;
+  offreCible: string;
+  ficheRenseignementEnvoyee?: boolean;
+  ficheRenseignementRecue?: boolean;
+  ficheRenseignementData?: object;
+  entretiens?: EntretienSeed[];
 }
 
+interface MatchingInverseSeed {
+  emailCandidat: string;
+  offreCible: string;
+  scoreGlobal: number;
+  scoreExp: number;
+}
+
+// ============================================================
+// CANDIDATS (candidatures classiques)
+// ============================================================
 const CANDIDATS: CandidatSeed[] = [
-  // CANDIDATS ACTIFS
+
+  // ==========================================================
+  // BLOC 1 — DIRECTEUR COMMERCIAL (MKT — CAS 08)
+  // ==========================================================
+
   {
-    nom: 'Ben Salah',
-    prenom: 'Amira',
-    email: 'amira.bensalah@example.com',
-    telephone: '+216 50 111 111',
-    cvTexte: `Pharmacienne industrielle avec 5 ans d'experience en assurance qualite.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 85,
-    scoreExp: 80,
-    competencesDetectees: ['BPF', 'Audit qualite', 'Gestion des risques'],
-    competencesManquantes: ['Affaires reglementaires'],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur Commercial'
+    nom: 'Cherif', prenom: 'Mehdi', email: 'mehdi.cherif@gmail.com',
+    telephone: '+216 50 100 111',
+    cvUrl: '/uploads/cv/cherif_mehdi.pdf',
+    cvTexte: `Directeur commercial avec 10 ans d'experience dans l'industrie pharmaceutique et la grande distribution en Tunisie et au Maghreb. Expert en negociation grands comptes, developpement reseau de distribution et management d'equipes commerciales (15 personnes). Succes mesurables : +32% CA sur 3 ans chez Sanofi Tunisie, ouverture de 4 nouveaux marches Afrique subsaharienne. Maitrise CRM Salesforce, force de vente terrain et digital selling. MBA Tunis Business School. Bilingue francais/arabe, anglais professionnel.`,
+    scoreGlobal: 91, scoreExp: 90,
+    competencesDetectees: ['Direction commerciale', 'Negociation grands comptes', 'CRM', 'Force de vente', 'Management commercial', 'Developpement business'],
+    competencesManquantes: ['Revenue Management'],
+    statut: 'ENTRETIEN',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur Commercial',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '8 500 DT', disponibilite: 'Preavis 2 mois',
+      mobilite: 'Tunis, Sfax', motivations: 'Rejoindre un groupe industriel solide avec une vision africaine.',
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -7, heure: '10:00', lieu: 'Siege Kilani — Salle RH', statut: 'REALISE', feedback: 'Profil tres solide, excellent parcours commercial pharma. A valider en entretien direction.', evaluation: 9 },
+      { type: 'DIRECTION', interviewerRole: 'DGA', offsetDays: 3, heure: '14:00', lieu: 'Siege Kilani — Salle direction', statut: 'PLANIFIE' },
+    ],
   },
+
   {
-    nom: 'Mbarek',
-    prenom: 'Fathi',
-    email: 'fathi.mbarek@example.com',
-    telephone: '+216 50 222 222',
-    cvTexte: `Chef de produit pharmaceutique avec 6 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 92,
-    scoreExp: 88,
-    competencesDetectees: ['Marketing strategique', 'Lancement produit'],
+    nom: 'Ayari', prenom: 'Sarra', email: 'sarra.ayari@outlook.com',
+    telephone: '+216 55 200 222',
+    cvUrl: '/uploads/cv/ayari_sarra.pdf',
+    cvTexte: `Directrice regionale des ventes (Tunisie Nord) dans le secteur pharmaceutique depuis 6 ans. Expertise en management d'une force de vente de 12 delegues medicaux, animation de reseaux de pharmacies et hopitaux. Certifiee en Digital Selling (HubSpot). Track record : croissance de +28% sur le secteur nord en 2 ans. Diplomee IHEC Tunis — Master Marketing.`,
+    scoreGlobal: 84, scoreExp: 82,
+    competencesDetectees: ['Direction commerciale', 'Force de vente', 'CRM', 'Management commercial'],
+    competencesManquantes: ['Negociation grands comptes', 'Developpement business', 'Revenue Management'],
+    statut: 'FICHE_ENVOYEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur Commercial',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: false,
+  },
+
+  {
+    nom: 'Ben Hamida', prenom: 'Khalil', email: 'khalil.benhamida@yahoo.fr',
+    telephone: '+216 98 300 333',
+    cvUrl: '/uploads/cv/benhamida_khalil.pdf',
+    cvTexte: `Responsable grands comptes avec 8 ans d'experience en FMCG et parapharmacie. Specialiste en trade marketing et negociation avec les chaines de distribution. Diplome IHEC Carthage — MBA Marketing.`,
+    scoreGlobal: 70, scoreExp: 75,
+    competencesDetectees: ['Force de vente', 'Negociation grands comptes', 'CRM'],
+    competencesManquantes: ['Direction commerciale', 'Management commercial', 'Revenue Management', 'Developpement business'],
+    statut: 'REFUSEE',
+    consentementRGPD: true, consentementIA: false,
+    offreCible: 'Directeur Commercial',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
+
+  {
+    nom: 'Khadhraoui', prenom: 'Anis', email: 'anis.khadhraoui@business-dev.tn',
+    telephone: '+216 50 999 009',
+    cvUrl: '/uploads/cv/khadhraoui_anis.pdf',
+    cvTexte: `Directeur commercial avec 9 ans d'experience dans la distribution pharmaceutique et la parapharmacie en Tunisie, Algerie et Libye. Management d'une force de vente de 20 delegues. Expert en developpement de reseaux de distribution, CRM et Revenue Management. Diplome EM Lyon Business School.`,
+    scoreGlobal: 88, scoreExp: 87,
+    competencesDetectees: ['Direction commerciale', 'Force de vente', 'Negociation grands comptes', 'CRM', 'Developpement business', 'Management commercial', 'Revenue Management'],
+    competencesManquantes: ['Digital selling'],
+    statut: 'PRESELECTIONNEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur Commercial',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
+
+  // ==========================================================
+  // BLOC 2 — DIRECTEUR GENERAL ADJOINT (PHARMA — CAS 09)
+  // ==========================================================
+
+  {
+    nom: 'Marzouki', prenom: 'Leila', email: 'leila.marzouki@kilani-ext.tn',
+    telephone: '+216 52 400 444',
+    cvUrl: '/uploads/cv/marzouki_leila.pdf',
+    cvTexte: `Dirigeante avec 15 ans d'experience en management de groupe en Tunisie et en France. Ex-DGA d'un groupe agroalimentaire cote en bourse (CA 280M DT). Expertise en gouvernance, strategie groupe, relations institutionnelles et expansion internationale (Afrique de l'Ouest). MBA HEC Paris.`,
+    scoreGlobal: 95, scoreExp: 95,
+    competencesDetectees: ['Direction generale', 'Strategie groupe', 'Gouvernance', 'Management senior', 'Finance groupe', 'Relations institutionnelles', 'Expansion internationale'],
     competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur Commercial'
-  },
-  {
-    nom: 'Marzouk',
-    prenom: 'Leila',
-    email: 'leila.marzouk@example.com',
-    telephone: '+216 50 999 999',
-    cvTexte: `Responsable R&D avec 8 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 91,
-    scoreExp: 88,
-    competencesDetectees: ['R&D', 'Innovation', 'Management strategique'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur General Adjoint'
-  },
-  {
-    nom: 'Karray',
-    prenom: 'Slim',
-    email: 'slim.karray@example.com',
-    telephone: '+216 50 151 515',
-    cvTexte: `Directeur marketing avec 8 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 89,
-    scoreExp: 87,
-    competencesDetectees: ['Marketing strategique', 'Brand management', 'Digital marketing'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur General Adjoint'
-  },
-  {
-    nom: 'Alternatif',
-    prenom: 'Profil',
-    email: 'profil.alternatif@example.com',
-    telephone: '+216 50 131 313',
-    cvTexte: `Commercial senior avec 10 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 86,
-    scoreExp: 84,
-    competencesDetectees: ['Negociation', 'Force de vente', 'CRM'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Nouveau',
-    prenom: 'Candidate',
-    email: 'candidate.sansoffre@example.com',
-    telephone: '+216 50 121 212',
-    cvTexte: `Expert en IA avec 7 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 94,
-    scoreExp: 92,
-    competencesDetectees: ['Python', 'TensorFlow', 'PyTorch'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Gharbi',
-    prenom: 'Karim',
-    email: 'karim.gharbi@example.com',
-    telephone: '+216 50 666 666',
-    cvTexte: `DevOps Engineer avec 6 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 95,
-    scoreExp: 90,
-    competencesDetectees: ['Docker', 'Kubernetes', 'CI/CD'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Boukadida',
-    prenom: 'Sonia',
-    email: 'sonia.boukadida@example.com',
-    telephone: '+216 50 555 555',
-    cvTexte: `Data Engineer avec 5 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 88,
-    scoreExp: 85,
-    competencesDetectees: ['Python', 'SQL', 'Spark'],
-    competencesManquantes: ['Kubernetes'],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Mansour',
-    prenom: 'Leila',
-    email: 'leila.mansour@example.com',
-    telephone: '+216 50 777 777',
-    cvTexte: `Responsable marketing digital avec 4 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 75,
-    scoreExp: 70,
-    competencesDetectees: ['SEO', 'Google Analytics', 'Social Media'],
-    competencesManquantes: ['CRM'],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Haddad',
-    prenom: 'Mehdi',
-    email: 'mehdi.haddad@example.com',
-    telephone: '+216 50 141 414',
-    cvTexte: `Responsable RH avec 6 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 82,
-    scoreExp: 80,
-    competencesDetectees: ['Recrutement', 'Paie', 'SIRH'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Ben Ali',
-    prenom: 'Rami',
-    email: 'rami.benali@example.com',
-    telephone: '+216 50 101 010',
-    cvTexte: `Controleur de gestion avec 5 ans d'experience.`,
-    statut: 'NOUVELLE',
-    scoreGlobal: 82,
-    scoreExp: 78,
-    competencesDetectees: ['Comptabilite analytique', 'Budget', 'Reporting'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: null
-  },
-  {
-    nom: 'Test',
-    prenom: 'SansContrat',
-    email: 'candidat.sanscontrat@kilani.tn',
-    telephone: '+216 50 999 003',
-    cvTexte: `Candidat accepte sans contrat pour tester la generation.`,
     statut: 'ACCEPTEE',
-    scoreGlobal: 85,
-    scoreExp: 80,
-    competencesDetectees: ['Test', 'Qualite'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur Commercial'
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur General Adjoint',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '18 000 DT', disponibilite: 'Immediate',
+      mobilite: 'Tunis — deplacements internationaux acceptes',
+      motivations: "Contribuer a l'expansion africaine du groupe Kilani.",
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -21, heure: '09:00', lieu: 'Siege Kilani — Salle RH', statut: 'REALISE', feedback: 'Profil exceptionnel. Parcours international parfaitement aligne avec les ambitions du groupe.', evaluation: 10 },
+      { type: 'DIRECTION', interviewerRole: 'DG', offsetDays: -14, heure: '11:00', lieu: 'Siege Kilani — Bureau DG', statut: 'REALISE', feedback: 'Entretien tres positif. Offre transmise et acceptee.', evaluation: 10 },
+    ],
   },
+
   {
-    nom: 'Accepte',
-    prenom: 'Candidat1',
-    email: 'candidat.accepte1@kilani.tn',
-    telephone: '+216 50 999 001',
-    cvTexte: `Candidat accepte pour test contrat.`,
-    statut: 'ACCEPTEE',
-    scoreGlobal: 90,
-    scoreExp: 85,
-    competencesDetectees: ['Management', 'Leadership'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur Commercial'
+    nom: 'Karray', prenom: 'Slim', email: 'slim.karray@consulting.tn',
+    telephone: '+216 98 500 555',
+    cvUrl: '/uploads/cv/karray_slim.pdf',
+    cvTexte: `Directeur general adjoint dans le secteur de la sante avec 12 ans d'experience. Expertise en transformation organisationnelle, developpement de partenariats strategiques et management d'equipes pluridisciplinaires (500+ collaborateurs). Diplome Polytechnique Tunis + Executive MBA INSEAD.`,
+    scoreGlobal: 89, scoreExp: 88,
+    competencesDetectees: ['Direction generale', 'Strategie groupe', 'Gouvernance', 'Management senior', 'Finance groupe'],
+    competencesManquantes: ['Relations institutionnelles', 'Expansion internationale'],
+    statut: 'FICHE_RECUE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur General Adjoint',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '15 000 DT', disponibilite: 'Preavis 3 mois',
+      mobilite: 'Grand Tunis', motivations: 'Rejoindre un groupe pharmaceutique en forte croissance.',
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -10, heure: '10:00', lieu: 'Siege Kilani — Salle RH', statut: 'REALISE', feedback: 'Tres bon profil. Legerement en retrait sur le volet international.', evaluation: 8 },
+    ],
   },
+
   {
-    nom: 'Accepte',
-    prenom: 'Candidat2',
-    email: 'candidat.accepte2@kilani.tn',
-    telephone: '+216 50 999 002',
-    cvTexte: `Candidat accepte pour test contrat.`,
-    statut: 'ACCEPTEE',
-    scoreGlobal: 88,
-    scoreExp: 82,
-    competencesDetectees: ['Finance', 'Comptabilite'],
-    competencesManquantes: [],
-    consentementRGPD: true,
-    consentementIA: true,
-    offreCible: 'Directeur General Adjoint'
-  }
+    nom: 'Laabidi', prenom: 'Hajer', email: 'hajer.laabidi@strategie.tn',
+    telephone: '+216 52 010 010',
+    cvUrl: '/uploads/cv/laabidi_hajer.pdf',
+    cvTexte: `Dirigeante avec 13 ans d'experience en direction generale et gouvernance d'entreprise. DGA d'un groupe de distribution tunisien (CA 150M DT, 700 collaborateurs). Expertise en strategie groupe, restructuration, finance et relations avec les actionnaires. Conseil d'administration de 2 societes. MBA Northwestern Kellogg.`,
+    scoreGlobal: 87, scoreExp: 86,
+    competencesDetectees: ['Direction generale', 'Strategie groupe', 'Gouvernance', 'Management senior', 'Finance groupe', 'Relations institutionnelles'],
+    competencesManquantes: ['Expansion internationale', 'M&A'],
+    statut: 'FICHE_ENVOYEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Directeur General Adjoint',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: false,
+  },
+
+  // ==========================================================
+  // BLOC 3 — RESPONSABLE PRODUCTION PHARMA (PHARMA — CAS 10)
+  // ==========================================================
+
+  {
+    nom: 'Trabelsi', prenom: 'Fathi', email: 'fathi.trabelsi@pharma-ind.tn',
+    telephone: '+216 50 600 666',
+    cvUrl: '/uploads/cv/trabelsi_fathi.pdf',
+    cvTexte: `Ingenieur chimiste avec 9 ans d'experience en production pharmaceutique (formes seches et liquides). Responsable de production dans une entreprise pharmaceutique tunisienne (500 employes). Maitrise des BPF, du Lean Manufacturing et des indicateurs industriels KPI. Habilitation ANSM (France). Certifie Six Sigma Green Belt.`,
+    scoreGlobal: 88, scoreExp: 87,
+    competencesDetectees: ['Management equipe', 'Planification production', 'BPF', 'Lean Manufacturing', 'KPI industriels', 'Six Sigma'],
+    competencesManquantes: ['ERP SAP', 'Validation procedes'],
+    statut: 'ENTRETIEN',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Responsable Production Pharma',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '7 000 DT', disponibilite: 'Preavis 1 mois',
+      mobilite: 'Tunis, Sousse', motivations: "Integrer le groupe leader en Tunisie pour un poste a plus grande responsabilite.",
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -5, heure: '09:30', lieu: 'Siege Kilani — Salle RH', statut: 'REALISE', feedback: 'Profil technique solide. BPF et Lean tres pertinents. Competences SAP a confirmer.', evaluation: 8 },
+      { type: 'TECHNIQUE', interviewerRole: 'MANAGER', offsetDays: 2, heure: '10:00', lieu: 'Site industriel Kilani — Salle technique', statut: 'PLANIFIE' },
+    ],
+  },
+
+  {
+    nom: 'Bouzid', prenom: 'Amira', email: 'amira.bouzid@gmail.com',
+    telephone: '+216 55 700 777',
+    cvUrl: '/uploads/cv/bouzid_amira.pdf',
+    cvTexte: `Pharmacienne industrielle, 7 ans en production et assurance qualite. Responsable de ligne dans un laboratoire generique tunisien. Expertise BPF, gestion des deviations, qualification des equipements et validation des procedes. Diplomee Faculte de Pharmacie de Monastir.`,
+    scoreGlobal: 80, scoreExp: 79,
+    competencesDetectees: ['Management equipe', 'BPF', 'Planification production', 'Validation procedes'],
+    competencesManquantes: ['Lean Manufacturing', 'KPI industriels', 'ERP SAP'],
+    statut: 'FICHE_RECUE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Responsable Production Pharma',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '6 000 DT', disponibilite: 'Preavis 1 mois',
+      mobilite: 'Tunis, Bizerte', motivations: 'Evolution vers un poste de responsabilite production.',
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -3, heure: '14:00', lieu: 'Siege Kilani — Salle RH', statut: 'PLANIFIE' },
+    ],
+  },
+
+  {
+    nom: 'Sfaxi', prenom: 'Nawel', email: 'nawel.sfaxi@outlook.com',
+    telephone: '+216 50 333 003',
+    cvUrl: '/uploads/cv/sfaxi_nawel.pdf',
+    cvTexte: `Ingenieure en genie industriel, 6 ans en production pharmaceutique. Responsable de ligne de conditionnement secondaire (formes seches). Pilote du deploiement Lean dans son unite : reduction des rebuts de 40%. Maitrise SAP PP/QM et indicateurs OEE/TRS. Diplomee ENIM Monastir.`,
+    scoreGlobal: 82, scoreExp: 80,
+    competencesDetectees: ['Planification production', 'BPF', 'Lean Manufacturing', 'KPI industriels', 'ERP SAP', 'Management equipe'],
+    competencesManquantes: ['Six Sigma', 'Validation procedes'],
+    statut: 'PRESELECTIONNEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Responsable Production Pharma',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
+
+  // ==========================================================
+  // BLOC 4 — DEVELOPPEUR FULL STACK (SI — CAS 16)
+  // ==========================================================
+
+  {
+    nom: 'Gharbi', prenom: 'Karim', email: 'karim.gharbi@dev.tn',
+    telephone: '+216 50 800 888',
+    cvUrl: '/uploads/cv/gharbi_karim.pdf',
+    cvTexte: `Developpeur Full Stack avec 6 ans d'experience. Stack principale : React, Node.js, TypeScript, PostgreSQL, Docker. Experience en architecture microservices, CI/CD GitLab, et deploiement cloud Azure. Developpeur senior dans une startup fintech tunisienne. Contribue a des projets open-source. Certifie AWS Solutions Architect. Diplome ENIT Tunis.`,
+    scoreGlobal: 93, scoreExp: 90,
+    competencesDetectees: ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'REST API', 'Docker', 'CI/CD'],
+    competencesManquantes: ['Python', 'FastAPI', 'GraphQL', 'Redis'],
+    statut: 'FICHE_RECUE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Developpeur Full Stack',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: true,
+    ficheRenseignementData: {
+      pretentionsSalariales: '4 500 DT', disponibilite: 'Preavis 1 mois',
+      mobilite: 'Tunis', motivations: 'Rejoindre un groupe structure pour un projet a fort impact technique.',
+    },
+    entretiens: [
+      { type: 'RH', interviewerRole: 'DRH', offsetDays: -3, heure: '10:00', lieu: 'Siege Kilani — Salle RH', statut: 'REALISE', feedback: 'Bon profil senior. Stack alignee. Entretien technique a planifier.', evaluation: 8 },
+    ],
+  },
+
+  {
+    nom: 'Boukadida', prenom: 'Sonia', email: 'sonia.boukadida@outlook.com',
+    telephone: '+216 55 900 999',
+    cvUrl: '/uploads/cv/boukadida_sonia.pdf',
+    cvTexte: `Developpeuse Full Stack avec 4 ans d'experience. Maitrise React, Node.js, PostgreSQL et REST API. Experience en developpement d'applications metier et de tableaux de bord analytiques. Diplomee ESPRIT Tunis. Interet pour le developpement IA et les microservices Python.`,
+    scoreGlobal: 75, scoreExp: 72,
+    competencesDetectees: ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'REST API'],
+    competencesManquantes: ['Python', 'FastAPI', 'Docker', 'CI/CD', 'GraphQL', 'Redis'],
+    statut: 'PRESELECTIONNEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Developpeur Full Stack',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
+
+  {
+    nom: 'Haddad', prenom: 'Mehdi', email: 'mehdi.haddad@dev-freelance.tn',
+    telephone: '+216 55 444 004',
+    cvUrl: '/uploads/cv/haddad_mehdi.pdf',
+    cvTexte: `Developpeur Full Stack freelance avec 5 ans d'experience sur des projets varies (e-commerce, ERP PME, applications SaaS). Stack : React, Vue.js, Node.js, Python, PostgreSQL, MongoDB. Maitrise Docker, Kubernetes, pipelines CI/CD GitLab/GitHub Actions. Certifie Google Cloud Professional. Interet pour le machine learning applique.`,
+    scoreGlobal: 85, scoreExp: 83,
+    competencesDetectees: ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'REST API', 'Python', 'Docker', 'CI/CD', 'MongoDB', 'GraphQL'],
+    competencesManquantes: ['FastAPI', 'Redis'],
+    statut: 'FICHE_ENVOYEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Developpeur Full Stack',
+    ficheRenseignementEnvoyee: true,
+    ficheRenseignementRecue: false,
+  },
+
+  // ==========================================================
+  // BLOC 5 — INGENIEUR IA / MACHINE LEARNING (SI — CAS 17)
+  // ==========================================================
+
+  {
+    nom: 'Romdhani', prenom: 'Aziz', email: 'aziz.romdhani@data-science.tn',
+    telephone: '+216 52 777 007',
+    cvUrl: '/uploads/cv/romdhani_aziz.pdf',
+    cvTexte: `Ingenieur en Data Science et Machine Learning avec 4 ans d'experience. Specialise NLP, classification de textes et systemes de recommandation. Stack : Python, TensorFlow, Scikit-Learn, spaCy, Pandas, FastAPI. Experience en deploiement de modeles via Docker et API REST. A travaille sur des projets de scoring credit et d'analyse semantique de documents. Diplome ENSI Tunis — Master Data Science.`,
+    scoreGlobal: 90, scoreExp: 88,
+    competencesDetectees: ['Python', 'TensorFlow', 'Scikit-Learn', 'spaCy', 'FastAPI', 'SHAP', 'Pandas', 'NLP', 'Docker', 'MongoDB'],
+    competencesManquantes: ['React', 'PostgreSQL', 'Agile SCRUM'],
+    statut: 'PRESELECTIONNEE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Ingenieur IA / Machine Learning',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
+
+  {
+    nom: 'Ben Salah', prenom: 'Ines', email: 'ines.bensalah@gmail.com',
+    telephone: '+216 52 111 001',
+    cvUrl: '/uploads/cv/bensalah_ines.pdf',
+    cvTexte: `Data Analyst avec 3 ans d'experience. Maitrise Python (Pandas, Scikit-Learn), SQL et Power BI. Experience en modelisation predictive et visualisation de donnees pour des clients du secteur bancaire. Diplomee en statistiques appliquees — FSS Tunis.`,
+    scoreGlobal: 72, scoreExp: 68,
+    competencesDetectees: ['Python', 'Pandas', 'Scikit-Learn', 'NLP'],
+    competencesManquantes: ['TensorFlow', 'spaCy', 'FastAPI', 'SHAP', 'Docker'],
+    statut: 'NOUVELLE',
+    consentementRGPD: true, consentementIA: true,
+    offreCible: 'Ingenieur IA / Machine Learning',
+    ficheRenseignementEnvoyee: false,
+    ficheRenseignementRecue: false,
+  },
 ];
 
-const getOffreByIntitule = async (intitule: string) => {
-  return prisma.offreEmploi.findFirst({
-    where: { intitule: { contains: intitule, mode: 'insensitive' }, statut: 'PUBLIEE' }
-  });
-};
+// ============================================================
+// CANDIDATURES MATCHING INVERSE (pre-seedees pour la demo)
+// ============================================================
+const MATCHING_INVERSE: MatchingInverseSeed[] = [
+  {
+    emailCandidat: 'karim.gharbi@dev.tn',
+    offreCible:    'Ingenieur IA / Machine Learning',
+    scoreGlobal:   79,
+    scoreExp:      77,
+  },
+  {
+    emailCandidat: 'mehdi.haddad@dev-freelance.tn',
+    offreCible:    'Ingenieur IA / Machine Learning',
+    scoreGlobal:   76,
+    scoreExp:      74,
+  },
+  {
+    emailCandidat: 'anis.khadhraoui@business-dev.tn',
+    offreCible:    'Directeur General Adjoint',
+    scoreGlobal:   71,
+    scoreExp:      73,
+  },
+];
 
+// ============================================================
+// HELPERS
+// ============================================================
+const getOffreByIntitule = async (intitule: string) =>
+  prisma.offreEmploi.findFirst({
+    where: { intitule: { contains: intitule, mode: 'insensitive' }, statut: 'PUBLIEE' },
+  });
+
+let refCounter = 0;
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
-  const count = await prisma.candidature.count({ where: { reference: { startsWith: `CAND-${year}` } } });
-  return `CAND-${year}-${String(count + 1).padStart(4, '0')}`;
+  if (refCounter === 0) {
+    refCounter = await prisma.candidature.count();
+  }
+  refCounter++;
+  return `CAND-${year}-${String(refCounter).padStart(4, '0')}`;
 };
 
+const d = (days: number) => { const r = new Date(); r.setDate(r.getDate() + days); return r; };
+
+// Verification des regles de flux
+const isValidStatutForEntretiens = (statut: string, hasEntretiens: boolean): boolean => {
+  if (!hasEntretiens) return true;
+  const allowedForEntretiens = ['FICHE_RECUE', 'ENTRETIEN'];
+  return allowedForEntretiens.includes(statut);
+};
+
+// ============================================================
+// MAIN
+// ============================================================
 async function main() {
-  console.log('Debut du seed des candidatures...');
+  console.log('--------------------------------------------------------------------');
+  console.log('  KILANI GROUPE — Seed Candidatures v4 (flux corrige)');
+  console.log('--------------------------------------------------------------------');
   await prisma.$connect();
-  console.log('Connecte a la base de donnees');
 
+  // Nettoyage
+  console.log('\n[1/4] Nettoyage...');
+  await prisma.entretien.deleteMany({});
+  await prisma.disponibiliteInterviewer.deleteMany({});
+  await prisma.candidature.deleteMany({});
+  refCounter = 0;
+  console.log('   Supprime : candidatures, entretiens et creneaux');
+
+  // Offres disponibles
+  console.log('\n[2/4] Offres publiees detectees :');
   const offresPubliees = await prisma.offreEmploi.findMany({ where: { statut: 'PUBLIEE' } });
-  console.log('\n=== OFFRES DISPONIBLES ===');
-  for (const offre of offresPubliees) {
-    console.log(`   - ${offre.reference} : ${offre.intitule}`);
-  }
+  for (const o of offresPubliees) console.log(`   * ${o.reference} : ${o.intitule}`);
 
-  const deleted = await prisma.candidature.deleteMany({});
-  console.log(`\nSuppression de ${deleted.count} anciennes candidatures`);
-  
-  console.log('\n=== CREATION DES CANDIDATURES ===');
+  const drh      = await prisma.user.findFirstOrThrow({ where: { role: 'DRH' } });
+  const dga      = await prisma.user.findFirstOrThrow({ where: { role: 'DGA' } });
+  const dg       = await prisma.user.findFirstOrThrow({ where: { role: 'DG'  } });
+  const managers = await prisma.user.findMany({ where: { role: 'MANAGER' } });
 
-  let createdCount = 0;
-  let candidatsActifs = 0;
-  let candidatsPassifs = 0;
-  let consentementIA = 0;
+  const getInterviewer = (role: string) => {
+    if (role === 'DRH')     return drh;
+    if (role === 'DGA')     return dga;
+    if (role === 'DG')      return dg;
+    if (role === 'MANAGER') return managers[0];
+    return drh;
+  };
 
-  for (const candidat of CANDIDATS) {
-    let offreId = undefined;
-    let offreTrouvee = null;
-    
-    if (candidat.offreCible) {
-      offreTrouvee = await getOffreByIntitule(candidat.offreCible);
-      if (offreTrouvee) {
-        offreId = offreTrouvee.id;
-        candidatsActifs++;
-        console.log(`   ACTIF: ${candidat.prenom} ${candidat.nom} -> ${offreTrouvee.intitule} (${candidat.statut})`);
-      } else {
-        console.log(`   ${candidat.prenom} ${candidat.nom} -> Offre non trouvee: ${candidat.offreCible} (devient passif)`);
-        candidatsPassifs++;
-      }
-    } else {
-      candidatsPassifs++;
-      console.log(`   PASSIF: ${candidat.prenom} ${candidat.nom} (sans offre - matching inverse)`);
+  // Candidatures classiques
+  console.log('\n[3/4] Creation des candidatures classiques...\n');
+  const now = new Date();
+
+  for (const c of CANDIDATS) {
+    const offre = await getOffreByIntitule(c.offreCible);
+
+    if (!offre) {
+      console.log(`   IGNORE  | ${c.prenom.padEnd(10)} ${c.nom.padEnd(15)} (offre "${c.offreCible}" non publiee)`);
+      continue;
     }
 
-    if (candidat.consentementIA) consentementIA++;
+    // Verifier la coherence du flux
+    const hasEntretiens = c.entretiens && c.entretiens.length > 0;
+    if (!isValidStatutForEntretiens(c.statut, hasEntretiens)) {
+      console.log(`   ERREUR DE FLUX | ${c.prenom} ${c.nom} : statut "${c.statut}" incompatible avec ${hasEntretiens ? 'entretiens presents' : 'absence d entretiens'}`);
+      continue;
+    }
+
+    if (c.statut === 'ENTRETIEN' && (!hasEntretiens || c.entretiens?.length === 0)) {
+      console.log(`   ERREUR DE FLUX | ${c.prenom} ${c.nom} : statut ENTRETIEN sans aucun entretien defini`);
+      continue;
+    }
+
+    if (c.statut === 'FICHE_RECUE' && !c.ficheRenseignementRecue) {
+      console.log(`   ERREUR DE FLUX | ${c.prenom} ${c.nom} : statut FICHE_RECUE mais ficheRenseignementRecue = false`);
+      continue;
+    }
+
+    if (c.statut === 'FICHE_ENVOYEE' && !c.ficheRenseignementEnvoyee) {
+      console.log(`   ERREUR DE FLUX | ${c.prenom} ${c.nom} : statut FICHE_ENVOYEE mais ficheRenseignementEnvoyee = false`);
+      continue;
+    }
+
+    console.log(`   ACTIF   | ${c.prenom.padEnd(10)} ${c.nom.padEnd(15)} -> ${offre.intitule.substring(0, 35).padEnd(35)} [score:${c.scoreGlobal}] [${c.statut}]`);
+
+    const ficheToken = c.ficheRenseignementEnvoyee
+      ? `FICHE-${Buffer.from(c.email).toString('base64').slice(0, 16).toUpperCase()}`
+      : null;
+
+    const candidature = await prisma.candidature.create({
+      data: {
+        reference:                   await generateReference(),
+        nom:                         c.nom,
+        prenom:                      c.prenom,
+        email:                       c.email,
+        telephone:                   c.telephone,
+        cvUrl:                       c.cvUrl,
+        cvTexte:                     c.cvTexte,
+        scoreGlobal:                 c.scoreGlobal,
+        scoreExp:                    c.scoreExp,
+        competencesDetectees:        c.competencesDetectees,
+        competencesManquantes:       c.competencesManquantes,
+        statut:                      c.statut,
+        consentementRGPD:            c.consentementRGPD,
+        consentementIA:              c.consentementIA,
+        dateSoumission:              now,
+        offreId:                     offre.id,
+        ficheRenseignementEnvoyee:   c.ficheRenseignementEnvoyee ?? false,
+        ficheRenseignementEnvoyeeAt: c.ficheRenseignementEnvoyee ? now : null,
+        ficheRenseignementRecue:     c.ficheRenseignementRecue ?? false,
+        ficheRenseignementRecueAt:   c.ficheRenseignementRecue ? now : null,
+        ficheRenseignementToken:     ficheToken,
+        ficheRenseignementData:      c.ficheRenseignementData ?? null,
+      },
+    });
+
+    // Entretiens (uniquement si statut = FICHE_RECUE ou ENTRETIEN)
+    if (hasEntretiens && (c.statut === 'FICHE_RECUE' || c.statut === 'ENTRETIEN')) {
+      const offreAvecDemande = await prisma.offreEmploi.findUnique({
+        where: { id: offre.id },
+        select: { demandeId: true },
+      });
+
+      for (const e of c.entretiens!) {
+        const interviewer = getInterviewer(e.interviewerRole);
+        const dateEntretien = d(e.offsetDays);
+
+        await prisma.entretien.create({
+          data: {
+            candidatureId: candidature.id,
+            interviewerId: interviewer.id,
+            type:          e.type as any,
+            date:          dateEntretien,
+            heure:         e.heure,
+            lieu:          e.lieu,
+            statut:        e.statut as any,
+            feedback:      e.feedback ?? null,
+            evaluation:    e.evaluation ?? null,
+          },
+        });
+
+        if (e.statut === 'PLANIFIE' && offreAvecDemande?.demandeId) {
+          const alreadyExists = await prisma.disponibiliteInterviewer.findFirst({
+            where: { userId: interviewer.id, demandeId: offreAvecDemande.demandeId, date: dateEntretien },
+          });
+          if (!alreadyExists) {
+            await prisma.disponibiliteInterviewer.create({
+              data: {
+                userId:    interviewer.id,
+                demandeId: offreAvecDemande.demandeId,
+                date:      dateEntretien,
+                heureDebut: e.heure,
+                heureFin:  `${String(parseInt(e.heure.split(':')[0]) + 1).padStart(2, '0')}:00`,
+                reservee:  true,
+              },
+            });
+          }
+        }
+      }
+      console.log(`      -> ${c.entretiens!.length} entretien(s) cree(s)`);
+    } else if (hasEntretiens && c.statut !== 'FICHE_RECUE' && c.statut !== 'ENTRETIEN') {
+      console.log(`      -> ATTENTION : ${c.entretiens!.length} entretien(s) non crees car statut = ${c.statut} (doit etre FICHE_RECUE ou ENTRETIEN)`);
+    }
+  }
+
+  // Candidatures matching inverse
+  console.log('\n[4/4] Creation des candidatures via matching inverse...\n');
+
+  for (const m of MATCHING_INVERSE) {
+    const source = await prisma.candidature.findFirst({
+      where: { email: m.emailCandidat },
+      orderBy: { dateSoumission: 'desc' },
+    });
+
+    if (!source) {
+      console.log(`   IGNORE | ${m.emailCandidat} — candidature source introuvable`);
+      continue;
+    }
+
+    const offre = await getOffreByIntitule(m.offreCible);
+    if (!offre) {
+      console.log(`   IGNORE | ${m.emailCandidat} -> "${m.offreCible}" non publiee`);
+      continue;
+    }
+
+    const existante = await prisma.candidature.findFirst({
+      where: { email: m.emailCandidat, offreId: offre.id },
+    });
+    if (existante) {
+      console.log(`   SKIP   | ${source.prenom} ${source.nom} -> "${offre.intitule}" (deja candidat)`);
+      continue;
+    }
 
     await prisma.candidature.create({
       data: {
-        reference: await generateReference(),
-        nom: candidat.nom,
-        prenom: candidat.prenom,
-        email: candidat.email,
-        telephone: candidat.telephone,
-        cvUrl: `/uploads/cv/${candidat.nom.toLowerCase()}_${candidat.prenom.toLowerCase()}.pdf`,
-        cvTexte: candidat.cvTexte,
-        scoreGlobal: candidat.scoreGlobal,
-        scoreExp: candidat.scoreExp,
-        competencesDetectees: candidat.competencesDetectees,
-        competencesManquantes: candidat.competencesManquantes,
-        statut: candidat.statut,
-        consentementRGPD: candidat.consentementRGPD,
-        consentementIA: candidat.consentementIA,
-        dateSoumission: new Date(),
-        offreId: offreId
-      }
+        reference:             await generateReference(),
+        nom:                   source.nom,
+        prenom:                source.prenom,
+        email:                 source.email,
+        telephone:             source.telephone,
+        cvUrl:                 source.cvUrl,
+        cvTexte:               source.cvTexte,
+        scoreGlobal:           m.scoreGlobal,
+        scoreExp:              m.scoreExp,
+        competencesDetectees:  source.competencesDetectees,
+        competencesManquantes: source.competencesManquantes,
+        consentementRGPD:      source.consentementRGPD,
+        consentementIA:        source.consentementIA,
+        statut:                'MATCHING_INVERSE',
+        dateSoumission:        now,
+        offreId:               offre.id,
+      },
     });
-    createdCount++;
+
+    console.log(`   MATCH  | ${source.prenom.padEnd(10)} ${source.nom.padEnd(15)} -> ${offre.intitule.substring(0, 35).padEnd(35)} [score:${m.scoreGlobal}]`);
   }
 
-  console.log(`\n=== STATISTIQUES ===`);
-  console.log(`Total candidatures: ${createdCount}`);
-  console.log(`   Actifs: ${candidatsActifs}`);
-  console.log(`   Passifs: ${candidatsPassifs}`);
-  console.log(`   Consentement IA: ${consentementIA}/${createdCount}`);
-  
-  console.log('\nSeed des candidatures termine !');
+  // Statistiques
+  console.log('\n--------------------------------------------------------------------');
+  console.log('  RESUME DU SEED');
+  console.log('--------------------------------------------------------------------');
+
+  const total          = await prisma.candidature.count();
+  const classiques     = await prisma.candidature.count({ where: { statut: { not: 'MATCHING_INVERSE' } } });
+  const viaMatching    = await prisma.candidature.count({ where: { statut: 'MATCHING_INVERSE' } });
+  const avecIA         = await prisma.candidature.count({ where: { consentementIA: true } });
+  const avecFiche      = await prisma.candidature.count({ where: { ficheRenseignementEnvoyee: true } });
+  const nbEntretiens   = await prisma.entretien.count();
+  const parStatut      = await prisma.candidature.groupBy({ by: ['statut'], _count: true });
+
+  console.log(`  Total candidatures : ${total}`);
+  console.log(`  Classiques         : ${classiques}`);
+  console.log(`  Via matching inv.  : ${viaMatching}`);
+  console.log(`  Consentement IA    : ${avecIA}/${total}`);
+  console.log(`  Fiche envoyee      : ${avecFiche}`);
+  console.log(`  Entretiens         : ${nbEntretiens}`);
+  console.log('\n  Par statut :');
+  for (const s of parStatut.sort((a, b) => b._count - a._count)) {
+    console.log(`    ${s.statut.padEnd(22)} ${s._count}`);
+  }
+  console.log('\n  Seed termine avec succes');
 }
 
 main()
-  .catch(e => {
-    console.error('Erreur:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch(e => { console.error('Erreur seed-candidatures:', e); process.exit(1); })
+  .finally(async () => { await prisma.$disconnect(); });

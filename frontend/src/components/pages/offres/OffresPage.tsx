@@ -1,7 +1,7 @@
 // frontend/src/components/pages/offres/OffresPage.tsx
 
 import { useState, useEffect } from 'react';
-import { Eye, Send, Trash2, Edit, Sparkles, RefreshCw, Brain } from 'lucide-react';
+import { Eye, Send, Trash2, Edit, Sparkles, RefreshCw, Brain, Users } from 'lucide-react';
 import { offreService, Offre } from '../../../services/offre.service';
 import { Card, CardBody } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
@@ -9,7 +9,7 @@ import { Button } from '../../ui/Button';
 import { OffreFormModal } from './OffreFormModal';
 import { OffreDetailModal } from './OffreDetailModal';
 import { MatchingInverseModal } from './MatchingInverseModal';
-
+import { useNavigate } from 'react-router-dom';
 type BadgeVariant = 'green' | 'amber' | 'red' | 'gold' | 'olive';
 
 export function OffresPage() {
@@ -101,7 +101,7 @@ export function OffresPage() {
 
   const nbBrouillon = offres.filter(o => o.statut === 'BROUILLON').length;
   const nbPubliee = offres.filter(o => o.statut === 'PUBLIEE').length;
-
+const navigate = useNavigate();
   return (
     <div>
       {/* En-tête */}
@@ -209,7 +209,16 @@ export function OffresPage() {
                             <Button variant="ghost" size="xs" onClick={() => handleVoirDetails(offre)} title="Voir les détails">
                               <Eye size={14} />
                             </Button>
-                            
+                            <Button
+  variant="ghost"
+  size="xs"
+  onClick={() => navigate(`/offres/${offre.id}/candidats`)}
+  title="Voir les candidats"
+>
+  <Users size={14} />
+  <span style={{ marginLeft: 4, fontSize: 11 }}>{offre._count?.candidatures || 0}</span>
+</Button>
+
                             {isPubliee && (
                               <Button 
                                 variant="secondary" 

@@ -1,7 +1,7 @@
 // frontend/src/App.tsx
 
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CandidatFormPage } from './components/pages/candidat/CandidatFormPage';
 import { FicheRenseignement } from './components/pages/candidat/FicheRenseignement';
@@ -20,23 +20,13 @@ import { ContratsPage } from './components/pages/contrats/ContratsPage';
 import { SuperAdminPage } from './components/pages/superadmin/SuperAdminPage';
 import { ProfilePage } from './components/pages/profile/ProfilePage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
+import { ScoringConfigPage } from './components/pages/superadmin/ScoringConfigPage';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import type { Role } from './types';
+import { OffreCandidatsPage } from './components/pages/offres/OffreCandidatsPage';
 
-const PAGES_PER_ROLE: Record<Role, string> = {
-  superadmin: 'dashboard',
-  manager: 'dashboard',
-  directeur: 'dashboard',
-  rh: 'dashboard',
-  daf: 'dashboard',
-  dga: 'dashboard',
-  dg: 'dashboard',
-  paie: 'contrats',
-  candidat: 'candidature',
-};
-
-const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config'];
+const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config', 'scoring_config'];
 
 function AuthenticatedApp() {
   const { user, loading } = useAuth();
@@ -45,9 +35,11 @@ function AuthenticatedApp() {
   const pathname = location.pathname;
 
   const getPageFromPath = (path: string): string => {
+    if (path.startsWith('/validation/')) return 'validation';
     if (path.startsWith('/demandes/')) return 'demande-details';
     if (path.startsWith('/candidats/')) return 'candidat-details';
     if (path.startsWith('/entretiens/')) return 'entretien-details';
+    if (path.startsWith('/offres/') && path.includes('/candidats')) return 'offre-candidats';
     if (path === '/profile') return 'profile';
     if (path === '/settings') return 'settings';
     if (path === '/offres') return 'offres';
@@ -56,47 +48,113 @@ function AuthenticatedApp() {
     if (path === '/evaluation') return 'evaluation';
     if (path === '/contrats') return 'contrats';
     if (path.startsWith('/superadmin/')) return path.split('/')[2] || 'utilisateurs';
+
     return path.slice(1) || 'dashboard';
   };
 
+  const offreCandidatsId = pathname.startsWith('/offres/') && pathname.includes('/candidats')
+    ? pathname.split('/')[2]
+    : null;
   const currentPage = getPageFromPath(pathname);
   const demandeId = pathname.startsWith('/demandes/') ? pathname.split('/')[2] : null;
+  const validationId = pathname.startsWith('/validation/') ? pathname.split('/')[2] : null;
   const candidatId = pathname.startsWith('/candidats/') ? pathname.split('/')[2] : null;
   const entretienId = pathname.startsWith('/entretiens/') ? pathname.split('/')[2] : null;
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/login');
+      if (!pathname.startsWith('/validation/')) {
+        navigate('/login');
+      }
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, pathname]);
 
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Chargement...</div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        Chargement...
+      </div>
+    );
   }
 
-  if (!user) return null;
+  if (!user) {
+    if (pathname.startsWith('/validation/')) {
+      return <DemandeDetailsPage />;
+    }
+    return null;
+  }
 
   if (user.mustChangePassword) {
     navigate('/change-password');
     return null;
   }
 
+  // Route /validation/:id - sans sidebar
+  if (validationId) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          overflow: 'hidden'
+        }}>
+          <main style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: 24,
+            backgroundColor: '#f8f9fa'
+          }}>
+            <DemandeDetailsPage id={validationId} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  // Route /demandes/:id - avec sidebar
+  if (demandeId) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar
+          role={user.role as Role}
+          currentPage={currentPage}
+          onNavigate={(page: string) => navigate(`/${page}`)}
+        />
+        <div style={{
+          marginLeft: 248,
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          overflow: 'hidden'
+        }}>
+          <Header page={currentPage} />
+          <main style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: 24,
+            backgroundColor: '#f8f9fa'
+          }}>
+            <DemandeDetailsPage id={demandeId} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   const renderContent = () => {
-    if (entretienId) {
-      return <EntretienDetailPage id={entretienId} />;
-    }
-    if (candidatId) {
-      return <CandidatDetailPage id={candidatId} />;
-    }
-    if (demandeId) {
-      return <DemandeDetailsPage id={demandeId} />;
-    }
+    if (offreCandidatsId) return <OffreCandidatsPage offreId={offreCandidatsId} />;
+    if (entretienId) return <EntretienDetailPage id={entretienId} />;
+    if (candidatId) return <CandidatDetailPage id={candidatId} />;
+
     if (currentPage === 'profile') return <ProfilePage />;
     if (currentPage === 'settings') return <SettingsPage />;
 
-    const role = user.role as Role;
-
-    if (role === 'superadmin' && SUPERADMIN_PAGES.includes(currentPage)) {
+    const isSuperAdmin = ['SUPER_ADMIN', 'super_admin', 'superadmin'].includes(user.role as string);
+    if (isSuperAdmin && SUPERADMIN_PAGES.includes(currentPage)) {
+      if (currentPage === 'scoring_config') return <ScoringConfigPage />;
       return <SuperAdminPage page={currentPage} />;
     }
 
@@ -114,12 +172,26 @@ function AuthenticatedApp() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar role={user.role as Role} currentPage={currentPage} onNavigate={(page: string) => {
-        navigate(`/${page}`);
-      }} />
-      <div style={{ marginLeft: 248, flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
+      <Sidebar
+        role={user.role as Role}
+        currentPage={currentPage}
+        onNavigate={(page: string) => navigate(`/${page}`)}
+      />
+      <div style={{
+        marginLeft: 248,
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        overflow: 'hidden'
+      }}>
         <Header page={currentPage} />
-        <main style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#f8f9fa' }}>
+        <main style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: 24,
+          backgroundColor: '#f8f9fa'
+        }}>
           {renderContent()}
         </main>
       </div>
@@ -136,6 +208,9 @@ function App() {
           <Route path="/fiche-renseignement/:token" element={<FicheRenseignement />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
+          
+          <Route path="/validation/:id" element={<DemandeDetailsPage />} />
+          
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>
       </AuthProvider>

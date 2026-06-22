@@ -33,7 +33,8 @@ export interface Direction {
   id: string;
   code: string;
   nom: string;
-  actif: boolean;
+  
+  actif?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

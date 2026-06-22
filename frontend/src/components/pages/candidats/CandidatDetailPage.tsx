@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Mail, Phone, Calendar, Briefcase, Check, X, FileText, Send, Eye } from 'lucide-react';
+import { ArrowLeft, Download, Mail, Phone, Calendar, Briefcase, Check, X, FileText, Send, Eye, RefreshCw } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle, CardSubtitle } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
 import { Alert } from '../../ui/Alert';
 import { Avatar } from '../../ui/Avatar';
-import { ScoreBar } from '../../ui/ScoreBar';
 import { Modal } from '../../ui/Modal';
+import { ShapCard, ShapDetail } from '../../ui/ShapCard';  // ← nouveau
 import api from '../../../services/api';
 import { PlanifierEntretienModal } from '../entretiens/PlanifierEntretienModal';
 
@@ -34,6 +34,11 @@ interface CandidatureDetail {
   scoreExp: number;
   competencesDetectees: string[];
   competencesManquantes: string[];
+  // ── Nouveaux champs IA ──────────────────────────────────────
+  recommandation?: string;
+  shapDetails?: ShapDetail[];
+  versionModele?: string;
+  // ────────────────────────────────────────────────────────────
   statut: string;
   dateSoumission: string;
   offre: {
@@ -76,6 +81,7 @@ export function CandidatDetailPage({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [rescoring, setRescoring] = useState(false);
   const [showPlanifierModal, setShowPlanifierModal] = useState(false);
   const [planifierType, setPlanifierType] = useState<TypeEntretien>('RH');
   const [showFicheModal, setShowFicheModal] = useState(false);
@@ -116,6 +122,31 @@ export function CandidatDetailPage({ id }: Props) {
     }
   };
 
+  // ── Relancer le scoring IA ──────────────────────────────────
+  const rescorerCandidature = async () => {
+    if (!candidature) return;
+    setRescoring(true);
+    try {
+      const response = await api.post(`/candidatures/${candidature.id}/rescorer`);
+      const data = response.data.data;
+      setCandidature(prev => prev ? {
+        ...prev,
+        scoreGlobal:           data.scoreGlobal,
+        scoreExp:              data.scoreExp,
+        recommandation:        data.recommandation,
+        competencesDetectees:  data.competencesDetectees,
+        competencesManquantes: data.competencesManquantes,
+        shapDetails:           data.shapDetails,
+        versionModele:         data.versionModele,
+      } : null);
+    } catch (err: any) {
+      console.error('Erreur rescoring:', err);
+      alert(err.response?.data?.message || 'Erreur lors du rescoring IA');
+    } finally {
+      setRescoring(false);
+    }
+  };
+
   const envoyerFicheRenseignement = async () => {
     if (!candidature) return;
     setUpdating(true);
@@ -136,28 +167,21 @@ export function CandidatDetailPage({ id }: Props) {
       alert('Aucun CV disponible');
       return;
     }
-    
-    // Construire l'URL complète si elle est relative
     let cvUrl = candidature.cvUrl;
     if (cvUrl.startsWith('/uploads/')) {
       cvUrl = `http://localhost:5000${cvUrl}`;
     }
-    
     window.open(cvUrl, '_blank');
   };
 
-  const openPlanifierModal = (type: TypeEntretien) => {
-    if (candidature?.statut !== 'FICHE_RECUE' && candidature?.statut !== 'PRESELECTIONNEE') {
-      alert('Veuillez attendre la reception de la fiche de renseignement avant de planifier l\'entretien');
-      return;
-    }
-    setPlanifierType(type);
-    setShowPlanifierModal(true);
-  };
-
-  const openFicheModal = () => {
-    setShowFicheModal(true);
-  };
+const openPlanifierModal = (type: TypeEntretien) => {
+  if (candidature?.statut !== 'FICHE_RECUE') {
+    alert('Veuillez attendre la réception de la fiche de renseignement avant de planifier un entretien.');
+    return;
+  }
+  setPlanifierType(type);
+  setShowPlanifierModal(true);
+};
 
   const getStatutVariant = (statut: string): 'gold' | 'green' | 'red' | 'amber' | 'olive' => {
     const variants: Record<string, any> = {
@@ -187,16 +211,12 @@ export function CandidatDetailPage({ id }: Props) {
 
   const formatDate = (date: string) =>
     new Date(date).toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     });
 
-  const hasEntretien = (type: string): boolean => {
-    return candidature?.entretiens?.some(e => e.type === type) || false;
-  };
+  const hasEntretien = (type: string): boolean =>
+    candidature?.entretiens?.some(e => e.type === type) || false;
 
   const niveauPoste = candidature?.offre?.demande?.niveau || '';
 
@@ -215,13 +235,14 @@ export function CandidatDetailPage({ id }: Props) {
     );
   }
 
-  const isFicheRecue = candidature.statut === 'FICHE_RECUE';
-  const isFicheEnvoyee = candidature.statut === 'FICHE_ENVOYEE';
+  const isFicheRecue     = candidature.statut === 'FICHE_RECUE';
+  const isFicheEnvoyee   = candidature.statut === 'FICHE_ENVOYEE';
   const isPreselectionnee = candidature.statut === 'PRESELECTIONNEE';
 
   return (
     <div className="page-fade">
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Button variant="ghost" size="xs" onClick={() => navigate('/candidats')} style={{ padding: '8px' }}>
@@ -255,7 +276,19 @@ export function CandidatDetailPage({ id }: Props) {
         </div>
       </div>
 
-      {/* Actions rapides */}
+      {/* ── Actions statut ENTRETIEN ────────────────────────────── */}
+      {candidature.statut === 'ENTRETIEN' && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+          <Button variant="success" onClick={() => updateStatut('ACCEPTEE')} disabled={updating}>
+            <Check size={14} /> Accepter la candidature
+          </Button>
+          <Button variant="danger" onClick={() => updateStatut('REFUSEE')} disabled={updating}>
+            <X size={14} /> Refuser la candidature
+          </Button>
+        </div>
+      )}
+
+      {/* ── Actions statut NOUVELLE ─────────────────────────────── */}
       {candidature.statut === 'NOUVELLE' && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
           <Button variant="success" onClick={() => updateStatut('PRESELECTIONNEE')} disabled={updating}>
@@ -267,6 +300,7 @@ export function CandidatDetailPage({ id }: Props) {
         </div>
       )}
 
+      {/* ── Actions statut PRESELECTIONNEE ──────────────────────── */}
       {isPreselectionnee && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
           <Button variant="primary" onClick={() => envoyerFicheRenseignement()} disabled={updating}>
@@ -278,6 +312,7 @@ export function CandidatDetailPage({ id }: Props) {
         </div>
       )}
 
+      {/* ── Alerte fiche envoyée ─────────────────────────────────── */}
       {isFicheEnvoyee && !candidature.ficheRenseignementRecue && (
         <div style={{ marginBottom: 24 }}>
           <Alert variant="gold">
@@ -286,24 +321,26 @@ export function CandidatDetailPage({ id }: Props) {
         </div>
       )}
 
+      {/* ── Fiche reçue ──────────────────────────────────────────── */}
       {isFicheRecue && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
               <Alert variant="green">
-                Fiche de renseignement recue le {candidature.ficheRenseignementRecueAt 
-                  ? new Date(candidature.ficheRenseignementRecueAt).toLocaleDateString('fr-FR') 
+                Fiche de renseignement recue le {candidature.ficheRenseignementRecueAt
+                  ? new Date(candidature.ficheRenseignementRecueAt).toLocaleDateString('fr-FR')
                   : '-'}
               </Alert>
             </div>
-            <Button variant="secondary" size="sm" onClick={openFicheModal}>
+            <Button variant="secondary" size="sm" onClick={() => setShowFicheModal(true)}>
               <Eye size={14} /> Voir la fiche
             </Button>
           </div>
         </div>
       )}
 
-      {(isFicheRecue || isPreselectionnee) && (
+      {/* ── Planifier entretiens ─────────────────────────────────── */}
+      {isFicheRecue && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           {!hasEntretien('RH') && (
             <Button variant="primary" onClick={() => openPlanifierModal('RH')}>
@@ -333,7 +370,7 @@ export function CandidatDetailPage({ id }: Props) {
         </div>
       )}
 
-      {/* Grille infos */}
+      {/* ── Grille infos candidat + offre ───────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 24 }}>
         <Card>
           <CardBody>
@@ -393,49 +430,32 @@ export function CandidatDetailPage({ id }: Props) {
         </Card>
       </div>
 
-      {/* Scores IA */}
-      <Card style={{ marginBottom: 24 }}>
-        <CardHeader>
-          <CardTitle>Analyse IA - Matching candidature</CardTitle>
-          <CardSubtitle>Score calcule automatiquement a partir du CV</CardSubtitle>
-        </CardHeader>
-        <CardBody>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Score global</div>
-              <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--gold)' }}>{candidature.scoreGlobal}%</div>
-              <ScoreBar label="" value={candidature.scoreGlobal} />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Score experience</div>
-              <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--olive)' }}>{candidature.scoreExp}%</div>
-              <ScoreBar label="" value={candidature.scoreExp} />
-            </div>
-          </div>
-          <div style={{ marginTop: 24 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Competences detectees</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {candidature.competencesDetectees.map((c) => (
-                <span key={c} style={{ background: 'var(--olive-bg)', color: 'var(--olive)', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>
-                  {c}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Competences manquantes</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {candidature.competencesManquantes.map((c) => (
-                <span key={c} style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706', padding: '4px 12px', borderRadius: 20, fontSize: 12 }}>
-                  {c}
-                </span>
-              ))}
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      {/* ── Analyse IA — ShapCard ────────────────────────────────── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={rescorerCandidature}
+            disabled={rescoring}
+            title="Recalculer le score IA"
+          >
+            <RefreshCw size={13} style={{ marginRight: 4 }} />
+            {rescoring ? 'Calcul en cours...' : 'Recalculer le score'}
+          </Button>
+        </div>
+        <ShapCard
+          scoreGlobal={candidature.scoreGlobal ?? 0}
+          scoreExperience={candidature.scoreExp ?? 0}
+          recommandation={candidature.recommandation || 'FAIBLE'}
+          competencesDetectees={candidature.competencesDetectees ?? []}
+          competencesManquantes={candidature.competencesManquantes ?? []}
+          shapDetails={candidature.shapDetails ?? []}
+          versionModele={candidature.versionModele}
+        />
+      </div>
 
-      {/* Description offre */}
+      {/* ── Description offre ───────────────────────────────────── */}
       <Card style={{ marginBottom: 24 }}>
         <CardHeader>
           <CardTitle>Description de l'offre</CardTitle>
@@ -453,7 +473,7 @@ export function CandidatDetailPage({ id }: Props) {
         </CardBody>
       </Card>
 
-      {/* Entretiens existants */}
+      {/* ── Entretiens ──────────────────────────────────────────── */}
       {candidature.entretiens && candidature.entretiens.length > 0 && (
         <Card style={{ marginBottom: 24 }}>
           <CardHeader>
@@ -461,12 +481,21 @@ export function CandidatDetailPage({ id }: Props) {
           </CardHeader>
           <CardBody>
             {candidature.entretiens.map((e) => (
-              <div key={e.id} style={{ padding: 12, borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                key={e.id}
+                style={{
+                  padding: 12,
+                  borderBottom: '1px solid var(--border-light)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
                 <div>
                   <div style={{ fontWeight: 500 }}>
-                    <div style={{ marginRight: 8, display: 'inline-block' }}>
+                    <span style={{ marginRight: 8 }}>
                       <Badge variant="gold">{e.type}</Badge>
-                    </div>
+                    </span>
                     {new Date(e.date).toLocaleDateString('fr-FR')} a {e.heure}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -485,7 +514,7 @@ export function CandidatDetailPage({ id }: Props) {
         </Card>
       )}
 
-      {/* Contrat */}
+      {/* ── Contrat ─────────────────────────────────────────────── */}
       {candidature.contrat && (
         <Card>
           <CardHeader>
@@ -503,15 +532,12 @@ export function CandidatDetailPage({ id }: Props) {
         </Card>
       )}
 
-      {/* Modal de planification */}
+      {/* ── Modal planification entretien ───────────────────────── */}
       {showPlanifierModal && (
         <PlanifierEntretienModal
           open={showPlanifierModal}
           onClose={() => setShowPlanifierModal(false)}
-          onSuccess={() => {
-            setShowPlanifierModal(false);
-            fetchCandidature();
-          }}
+          onSuccess={() => { setShowPlanifierModal(false); fetchCandidature(); }}
           defaultType={planifierType}
           candidature={{
             id: candidature.id,
@@ -528,13 +554,10 @@ export function CandidatDetailPage({ id }: Props) {
         />
       )}
 
-      {/* Modal pour afficher la fiche de renseignement */}
+      {/* ── Modal fiche de renseignement ────────────────────────── */}
       <Modal
         open={showFicheModal}
-        onClose={() => {
-          setShowFicheModal(false);
-          setFicheData(null);
-        }}
+        onClose={() => { setShowFicheModal(false); setFicheData(null); }}
         title={`Fiche de renseignement - ${candidature.prenom} ${candidature.nom}`}
         maxWidth={800}
         footer={
@@ -545,7 +568,6 @@ export function CandidatDetailPage({ id }: Props) {
       >
         {ficheData ? (
           <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '16px' }}>
-            {/* Informations personnelles */}
             <div style={{ marginBottom: 24 }}>
               <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
                 Informations personnelles
@@ -564,7 +586,6 @@ export function CandidatDetailPage({ id }: Props) {
               </div>
             </div>
 
-            {/* Situation professionnelle */}
             <div style={{ marginBottom: 24 }}>
               <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
                 Situation professionnelle
@@ -580,7 +601,6 @@ export function CandidatDetailPage({ id }: Props) {
               </div>
             </div>
 
-            {/* Formation & Competences */}
             <div style={{ marginBottom: 24 }}>
               <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
                 Formation & Competences
@@ -592,7 +612,7 @@ export function CandidatDetailPage({ id }: Props) {
                 <div><strong>Langues:</strong> {
                   ficheData.langues && typeof ficheData.langues === 'object'
                     ? Object.entries(ficheData.langues)
-                        .filter(([key, value]) => value && key !== 'autres')
+                        .filter(([, value]) => value)
                         .map(([key, value]) => `${key}: ${value}`)
                         .join(', ')
                     : ficheData.langues || '-'
@@ -603,8 +623,7 @@ export function CandidatDetailPage({ id }: Props) {
               </div>
             </div>
 
-            {/* Experiences professionnelles */}
-            {ficheData.experiences && ficheData.experiences.length > 0 && (
+            {ficheData.experiences?.length > 0 && (
               <div style={{ marginBottom: 24 }}>
                 <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
                   Experiences professionnelles
@@ -622,28 +641,22 @@ export function CandidatDetailPage({ id }: Props) {
               </div>
             )}
 
-            {/* Fonction souhaitee */}
             {ficheData.fonctionSouhaitee && (
               <div style={{ marginBottom: 16 }}>
                 <strong>Fonction souhaitee:</strong> {ficheData.fonctionSouhaitee}
               </div>
             )}
-
-            {/* Meilleure fonction/projet */}
             {ficheData.meilleureFonctionProjet && (
               <div style={{ marginBottom: 16 }}>
                 <strong>Meilleure realisation:</strong> {ficheData.meilleureFonctionProjet}
               </div>
             )}
-
-            {/* Pieces fournies */}
             {ficheData.piecesFournies && (
               <div style={{ marginBottom: 16 }}>
                 <strong>Pieces fournies:</strong> {ficheData.piecesFournies}
               </div>
             )}
 
-            {/* Declaration */}
             <div style={{ marginTop: 16, padding: 12, background: 'var(--surface)', borderRadius: 8 }}>
               <p style={{ fontSize: 12, fontStyle: 'italic', margin: 0 }}>
                 Le candidat certifie la sincerite des renseignements fournis.

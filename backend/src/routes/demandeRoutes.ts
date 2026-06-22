@@ -1,7 +1,5 @@
-// backend/src/routes/demandeRoutes.ts
-
 import { Router } from 'express';
-import { protect, authorize } from '../middlewares/auth';
+import { protect, authorize, verifierTokenValidation, protectOrToken } from '../middlewares/auth';
 import {
   getDemandes,
   getDemandeById,
@@ -9,28 +7,41 @@ import {
   updateDemande,
   deleteDemande,
   submitDemande,
-  validerDemande
+  validerDemande,
+  getDemandeForN8n,
+  updateDemandeStatutN8n,
+  checkRelance,
+  relancerManuellement
 } from '../controllers/demandeController';
 
 const router = Router();
 
-// Toutes les routes nécessitent une authentification
+// ── Routes internes n8n (AVANT protect — pas de JWT) ──────────────────
+router.get('/internal/:id', getDemandeForN8n);
+router.patch('/internal/:id/statut', updateDemandeStatutN8n);
+router.post('/internal/:id/check-relance', checkRelance);
+
+// ── Route publique avec token de validation ─────────────────────────────
+router.get('/validation/:id', verifierTokenValidation, getDemandeById);
+
+// ── Route avec authentification OU token ───────────────────────────────
+router.get('/secure/:id', protectOrToken, getDemandeById);
+
+// ── Toutes les routes suivantes nécessitent un JWT valide ─────────────
 router.use(protect);
 
-// Routes CRUD
-router.route('/')
-  .get(getDemandes)
-  .post(createDemande);
+// CRUD standard
+router.get('/', getDemandes);
+router.post('/', createDemande);
 
-router.route('/:id')
-  .get(getDemandeById)
-  .put(updateDemande)
-  .delete(deleteDemande);
+router.get('/:id', getDemandeById);
+router.put('/:id', updateDemande); 
+router.delete('/:id', deleteDemande);
 
-// Route pour soumettre une demande (brouillon → circuit)
+// Circuit de validation
 router.post('/:id/submit', submitDemande);
+router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); // ← deplace ici
 
-// ✅ Route pour valider/refuser une demande (ajouter PATCH ou POST)
-router.patch('/:id/valider', validerDemande);  // ou .post selon votre convention
+router.patch('/:id/valider', verifierTokenValidation, validerDemande);
 
 export default router;

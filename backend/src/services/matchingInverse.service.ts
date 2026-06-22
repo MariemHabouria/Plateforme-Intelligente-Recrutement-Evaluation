@@ -1,270 +1,56 @@
-// backend/src/services/matchingInverse.service.ts
-
 import prisma from '../config/prisma';
+import { iaService, MatchCandidat } from './ia.service';
 
-interface OffreInput {
-  id: string;
-  intitule: string;
-  description: string;
-  profilRecherche: string;
-  competences: string[];
-  typeContrat: string;
-  demande?: {
-    niveau: string;
-    direction?: { nom: string };
-  };
-}
+export const matchingInverseService = {
 
-interface CandidatureInput {
-  id: string;
-  nom: string;
-  prenom: string;
-  email: string;
-  cvTexte: string;
-  competencesDetectees: string[];
-  scoreExp: number;
-  statut: string;
-  consentementRGPD: boolean;
-  telephone?: string;
-  offre?: {
-    demande?: {
-      direction?: { nom: string };
-    };
-  };
-}
+  async executerMatching(offreId: string): Promise<MatchCandidat[]> {
+    const result = await iaService.matchingInverse(offreId, 20);
+    return result.shortlist;
+  },
 
-interface MatchingResult {
-  candidatureId: string;
-  candidatNom: string;
-  candidatPrenom: string;
-  email: string;
-  telephone?: string;
-  score: number;
-  competencesMatch: string[];
-  competencesManquantes: string[];
-  raison: string;
-}
-
-class MatchingInverseService {
-  
-  /**
-   * Extrait les mots-clés d'une offre
-   */
-  private extraireMotsClesOffre(offre: OffreInput): string[] {
-    const texte = `${offre.intitule} ${offre.description} ${offre.profilRecherche} ${offre.competences.join(' ')}`;
-    
-    const mots = texte
-      .toLowerCase()
-      .replace(/[éèêë]/g, 'e')
-      .replace(/[àâä]/g, 'a')
-      .replace(/[ùûü]/g, 'u')
-      .replace(/[ôö]/g, 'o')
-      .replace(/[ïî]/g, 'i')
-      .replace(/[ç]/g, 'c')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/);
-    
-    const stopWords = ['le', 'la', 'les', 'de', 'des', 'du', 'et', 'ou', 'pour', 'avec', 'sans', 'dans', 'par', 'sur', 'un', 'une', 'est', 'sont'];
-    
-    return [...new Set(mots)]
-      .filter(m => m.length > 2)
-      .filter(m => !stopWords.includes(m));
-  }
-  
-  /**
-   * Calcule le score de matching entre une candidature et une offre
-   */
-  private calculerScore(
-    offre: OffreInput,
-    candidature: CandidatureInput
-  ): { score: number; competencesMatch: string[]; competencesManquantes: string[] } {
-    
-    // 1. Score compétences (70%)
-    const competencesOffre = offre.competences.map(c => c.toLowerCase());
-    const competencesCandidat = candidature.competencesDetectees.map(c => c.toLowerCase());
-    
-    const competencesMatch = competencesOffre.filter(c => 
-      competencesCandidat.some(cc => cc.includes(c) || c.includes(cc))
-    );
-    
-    const scoreCompetences = competencesOffre.length > 0 
-      ? (competencesMatch.length / competencesOffre.length) * 70 
-      : 50;
-    
-    const competencesManquantes = competencesOffre.filter(c => 
-      !competencesMatch.includes(c)
-    );
-    
-    // 2. Score expérience (20%)
-    let scoreExperience = (candidature.scoreExp || 50) * 0.2;
-    
-    // 3. Score secteur (10%)
-    let scoreSecteur = 0;
-    const directionOffre = offre.demande?.direction?.nom?.toLowerCase() || '';
-    const directionCandidat = candidature.offre?.demande?.direction?.nom?.toLowerCase() || '';
-    
-    if (directionOffre && directionCandidat && directionOffre === directionCandidat) {
-      scoreSecteur = 10;
-    } else if (directionOffre && directionCandidat) {
-      scoreSecteur = 5;
-    } else {
-      scoreSecteur = 3;
-    }
-    
-    const scoreTotal = Math.min(Math.round(scoreCompetences + scoreExperience + scoreSecteur), 100);
-    
-    return {
-      score: scoreTotal,
-      competencesMatch,
-      competencesManquantes
-    };
-  }
-  
-  /**
-   * Génère une raison explicative du matching
-   */
-  private genererRaison(
-    offre: OffreInput,
-    candidature: CandidatureInput,
-    competencesMatch: string[],
-    competencesManquantes: string[]
-  ): string {
-    const raisons = [];
-    
-    if (competencesMatch.length > 0) {
-      raisons.push(`Compétences correspondantes : ${competencesMatch.slice(0, 3).join(', ')}`);
-    }
-    
-    if (competencesManquantes.length > 0) {
-      raisons.push(`Compétences à renforcer : ${competencesManquantes.slice(0, 3).join(', ')}`);
-    }
-    
-    if (candidature.scoreExp && candidature.scoreExp > 60) {
-      raisons.push(`Expérience pertinente (${candidature.scoreExp}%)`);
-    }
-    
-    raisons.push(`Poste ciblé : ${offre.intitule}`);
-    
-    return raisons.join(' · ');
-  }
-  
-  /**
-   * Récupère une offre par son ID
-   */
-  async getOffreById(offreId: string): Promise<OffreInput | null> {
-    const offre = await prisma.offreEmploi.findUnique({
-      where: { id: offreId },
-      include: {
-        demande: {
-          include: {
-            direction: true
-          }
-        }
-      }
+  async creerCandidaturesMatching(offreId: string, candidatureIds: string[]): Promise<number> {
+    // Récupérer les candidatures sources (offreId peut être ≠ offreId cible)
+    const sources = await prisma.candidature.findMany({
+      where: { id: { in: candidatureIds } },
     });
-    
-    if (!offre) return null;
-    
-    return {
-      id: offre.id,
-      intitule: offre.intitule,
-      description: offre.description || '',
-      profilRecherche: offre.profilRecherche || '',
-      competences: offre.competences,
-      typeContrat: offre.typeContrat,
-      demande: offre.demande ? {
-        niveau: offre.demande.niveau,
-        direction: offre.demande.direction ? { nom: offre.demande.direction.nom } : undefined
-      } : undefined
-    };
-  }
 
-  /**
-   * Récupère toutes les candidatures passives
-   */
-  async getCandidaturesPassives(): Promise<CandidatureInput[]> {
-    const candidatures = await prisma.candidature.findMany({
-      where: {
-        offreId: null,
-        consentementRGPD: true,
-        statut: { notIn: ['ACCEPTEE', 'REFUSEE'] }
-      },
-      include: {
-        offre: {
-          include: {
-            demande: {
-              include: {
-                direction: true
-              }
-            }
-          }
-        }
-      }
+    if (sources.length === 0) return 0;
+
+    // Exclure les emails déjà candidats sur l'offre cible
+    const emailsDejaPresents = await prisma.candidature.findMany({
+      where: { offreId, email: { in: sources.map(s => s.email) } },
+      select: { email: true },
     });
-    
-    return candidatures.map(c => ({
-      id: c.id,
-      nom: c.nom,
-      prenom: c.prenom,
-      email: c.email,
-      cvTexte: c.cvTexte || '',
-      competencesDetectees: c.competencesDetectees,
-      scoreExp: c.scoreExp || 0,
-      statut: c.statut,
-      consentementRGPD: c.consentementRGPD,
-      telephone: c.telephone || undefined,
-      offre: c.offre ? {
-        demande: c.offre.demande ? {
-          direction: c.offre.demande.direction ? { nom: c.offre.demande.direction.nom } : undefined
-        } : undefined
-      } : undefined
+    const emailsExclus = new Set(emailsDejaPresents.map(c => c.email));
+
+    const aCreer = sources.filter(s => !emailsExclus.has(s.email));
+    if (aCreer.length === 0) return 0;
+
+    // Générer les références
+    const year = new Date().getFullYear();
+    const baseCount = await prisma.candidature.count({
+      where: { reference: { startsWith: `CAND-${year}` } },
+    });
+
+    const nouvelles = aCreer.map((src, i) => ({
+      reference:               `CAND-${year}-${String(baseCount + i + 1).padStart(4, '0')}`,
+      nom:                     src.nom,
+      prenom:                  src.prenom,
+      email:                   src.email,
+      telephone:               src.telephone,
+      cvUrl:                   src.cvUrl,
+      cvTexte:                 src.cvTexte,
+      scoreGlobal:             src.scoreGlobal,
+      scoreExp:                src.scoreExp,
+      competencesDetectees:    src.competencesDetectees,
+      competencesManquantes:   src.competencesManquantes,
+      consentementRGPD:        src.consentementRGPD,
+      consentementIA:          src.consentementIA,
+      statut:                  'MATCHING_INVERSE',
+      offreId,
     }));
-  }
 
-  /**
-   * ✅ AJOUTER CETTE MÉTHODE - Exécute le matching pour une offre spécifique
-   */
-  async executerMatching(offreId: string): Promise<MatchingResult[]> {
-    const offre = await this.getOffreById(offreId);
-    if (!offre) throw new Error('Offre non trouvée');
-    
-    const candidatures = await this.getCandidaturesPassives();
-    return this.executerMatchingInverse(offre, candidatures);
-  }
-
-  /**
-   * Exécute le matching inverse pour une nouvelle offre
-   */
-  async executerMatchingInverse(
-    offre: OffreInput,
-    candidaturesExistantes: CandidatureInput[]
-  ): Promise<MatchingResult[]> {
-    
-    const results: MatchingResult[] = [];
-    
-    for (const candidature of candidaturesExistantes) {
-      if (!candidature.consentementRGPD) continue;
-      if (candidature.statut === 'ACCEPTEE') continue;
-      
-      const { score, competencesMatch, competencesManquantes } = this.calculerScore(offre, candidature);
-      
-      if (score >= 60) {
-        results.push({
-          candidatureId: candidature.id,
-          candidatNom: candidature.nom,
-          candidatPrenom: candidature.prenom,
-          email: candidature.email,
-          telephone: candidature.telephone,
-          score,
-          competencesMatch,
-          competencesManquantes,
-          raison: this.genererRaison(offre, candidature, competencesMatch, competencesManquantes)
-        });
-      }
-    }
-    
-    return results.sort((a, b) => b.score - a.score);
-  }
-}
-
-export const matchingInverseService = new MatchingInverseService();
+    await prisma.candidature.createMany({ data: nouvelles });
+    return nouvelles.length;
+  },
+};

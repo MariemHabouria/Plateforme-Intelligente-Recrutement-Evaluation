@@ -1,4 +1,5 @@
 import prisma from '../config/prisma';
+import { triggerCircuitRecrutement } from './n8nService';
 
 export const relanceService = {
   /**
@@ -6,7 +7,7 @@ export const relanceService = {
    */
   async verifierEtCreerRelances() {
     const maintenant = new Date();
-    
+
     // 1. Créer les jobs de relance pour les validations en attente
     const validationsEnAttente = await prisma.validationEtape.findMany({
       where: {
@@ -21,12 +22,12 @@ export const relanceService = {
         acteur: true
       }
     });
-    
+
     for (const validation of validationsEnAttente) {
       const heuresRetard = Math.floor(
         (maintenant.getTime() - validation.dateLimite.getTime()) / (1000 * 60 * 60)
       );
-      
+
       let typeRelance = 'premier_rappel';
       if (heuresRetard >= 24) {
         typeRelance = 'second_rappel';
@@ -34,27 +35,41 @@ export const relanceService = {
       if (heuresRetard >= 48) {
         typeRelance = 'escalade';
       }
-      
-      // SIMULATION EMAIL (à remplacer par n8n plus tard)
-      console.log(`
-📧 [RAPPEL] ${typeRelance.toUpperCase()} - ${validation.acteur.email}
-   Demande: ${validation.demande.reference}
-   Poste: ${validation.demande.intitulePoste}
-   Créé par: ${validation.demande.manager.prenom} ${validation.demande.manager.nom}
-   Retard: ${heuresRetard}h
-   Lien: ${process.env.FRONTEND_URL}/validations/${validation.id}
-      `);
-      
+
+      // ── Envoi réel du rappel via n8n (étape en cours = niveauEtape) ──
+      try {
+        await triggerCircuitRecrutement(
+          validation.demande.id,
+          validation.demande.niveau,
+          validation.niveauEtape,
+          true // isRelance
+        );
+        console.log(
+          `📧 [RAPPEL] ${typeRelance.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
+          `(demande ${validation.demande.reference}, retard ${heuresRetard}h)`
+        );
+      } catch (error) {
+        console.error(
+          `❌ [RAPPEL] Échec envoi n8n pour validation ${validation.id} (demande ${validation.demande.reference}):`,
+          error
+        );
+        // On continue malgré l'échec réseau : on marque relanceEnvoyee=true
+        // quand même pour ne pas spammer à chaque passage du cron. Si tu
+        // préfères réessayer automatiquement au prochain cycle, retire le
+        // bloc try/catch et laisse l'erreur remonter (le job ne sera pas
+        // marqué et sera retenté à la prochaine exécution).
+      }
+
       // Marquer comme relancée
       await prisma.validationEtape.update({
         where: { id: validation.id },
         data: { relanceEnvoyee: true }
       });
-      
+
       // Créer un job pour la prochaine relance (24h)
       const prochaineRelance = new Date();
       prochaineRelance.setHours(prochaineRelance.getHours() + 24);
-      
+
       await prisma.relanceJob.create({
         data: {
           validationEtapeId: validation.id,
@@ -63,16 +78,16 @@ export const relanceService = {
         }
       });
     }
-    
+
     return validationsEnAttente.length;
   },
-  
+
   /**
    * Exécuter les jobs de relance planifiés
    */
   async executerRelancesPlanifiees() {
     const maintenant = new Date();
-    
+
     const jobs = await prisma.relanceJob.findMany({
       where: {
         executee: false,
@@ -87,10 +102,10 @@ export const relanceService = {
         }
       }
     });
-    
+
     for (const job of jobs) {
       const validation = job.validationEtape;
-      
+
       if (!validation || validation.decision !== 'EN_ATTENTE') {
         await prisma.relanceJob.update({
           where: { id: job.id },
@@ -98,21 +113,32 @@ export const relanceService = {
         });
         continue;
       }
-      
-      // SIMULATION EMAIL
-      console.log(`
-📧 [RAPPEL PLANIFIÉ] ${job.type.toUpperCase()} - ${validation.acteur.email}
-   Demande: ${validation.demande.reference}
-   Poste: ${validation.demande.intitulePoste}
-   Lien: ${process.env.FRONTEND_URL}/validations/${validation.id}
-      `);
-      
+
+      // ── Envoi réel du rappel planifié (escalade / relance_24h) via n8n ──
+      try {
+        await triggerCircuitRecrutement(
+          validation.demande.id,
+          validation.demande.niveau,
+          validation.niveauEtape,
+          true // isRelance
+        );
+        console.log(
+          `📧 [RAPPEL PLANIFIÉ] ${job.type.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
+          `(demande ${validation.demande.reference})`
+        );
+      } catch (error) {
+        console.error(
+          `❌ [RAPPEL PLANIFIÉ] Échec envoi n8n pour job ${job.id} (demande ${validation.demande.reference}):`,
+          error
+        );
+      }
+
       await prisma.relanceJob.update({
         where: { id: job.id },
         data: { executee: true, executeeAt: maintenant }
       });
     }
-    
+
     return jobs.length;
   }
 };

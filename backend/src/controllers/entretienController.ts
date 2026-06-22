@@ -152,6 +152,7 @@ export const createEntretien = async (req: Request, res: Response) => {
       });
     }
 
+    // Créer l'entretien
     const entretien = await prisma.entretien.create({
       data: {
         type: type as any,
@@ -168,6 +169,12 @@ export const createEntretien = async (req: Request, res: Response) => {
         interviewer: { select: { id: true, nom: true, prenom: true, email: true, role: true } },
         disponibilite: true
       }
+    });
+
+    // ✅ Mettre à jour le statut de la candidature
+    await prisma.candidature.update({
+      where: { id: candidatureId },
+      data: { statut: 'ENTRETIEN' }
     });
 
     await emailService.sendEntretienNotification({
