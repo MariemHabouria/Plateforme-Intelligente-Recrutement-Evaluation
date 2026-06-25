@@ -1,0 +1,47 @@
+name: Retrain IA Model
+
+on:
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install deps
+        run: |
+          pip install papermill scikit-learn lightgbm joblib \
+                      pandas numpy psycopg2-binary
+
+      - name: Export data depuis PostgreSQL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python ia_service/scripts/export_training_data.py
+
+      - name: Lancer le notebook
+        run: |
+          papermill ia_service/notebooks/retrain_pipeline.ipynb \
+                    ia_service/notebooks/retrain_output.ipynb \
+                    -p data_path ia_service/training_data/feedbacks.json \
+                    -p model_output_path ia_service/models/structure_model.pkl
+
+      - name: Push modèle si mis à jour
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add ia_service/models/structure_model.pkl retrain_result.json
+          git diff --staged --quiet || git commit -m "retrain: $(date +%Y-%m-%d)"
+          git push
+
+      - name: Notifier FastAPI
+        run: |
+          RESULT=$(cat retrain_result.json)
+          curl -X POST "${{ secrets.FASTAPI_WEBHOOK_URL }}/ai/retrain/done" \
+               -H "Content-Type: application/json" \
+               -d "$RESULT"

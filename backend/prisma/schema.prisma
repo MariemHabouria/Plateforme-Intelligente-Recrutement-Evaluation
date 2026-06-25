@@ -581,3 +581,18 @@ model ScoringConfig {
 
   @@map("scoring_configs")
 }
+// ============================================
+// MODELE TRAINING FEEDBACK (MLOps)
+// ============================================
+
+model TrainingFeedback {
+  id              String   @id @default(uuid())
+  cvParsed        Json
+  scoreIa         Float?
+  decisionFinale  String?  // 'RETENU' ou 'REJETE'
+  offreId         String?
+  usedForTraining Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@map("training_feedback")
+}

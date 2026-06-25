@@ -1,247 +1,78 @@
-// backend/prisma/seed-evaluations-pe.ts
+// backend/prisma/seed-employes.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import bcrypt from 'bcrypt';
 import 'dotenv/config';
 
-// ✅ Utilisation standard de PrismaClient (sans adapter)
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('Seed des evaluations PE - Workflow: Resp Paie → Manager → Directeur');
+  console.log('Debut du seed des employes...');
   await prisma.$connect();
 
-  // Nettoyer avant seed
-  await prisma.evaluationValidation.deleteMany({});
-  await prisma.evaluationPE.deleteMany({});
-  console.log('Anciennes evaluations supprimees');
+  // Recuperer les directions
+  const directionPharma = await prisma.direction.findFirstOrThrow({ where: { code: 'DIR_PHARMA' } });
+  const directionSI     = await prisma.direction.findFirstOrThrow({ where: { code: 'DIR_SI' } });
+  const directionMKT    = await prisma.direction.findFirstOrThrow({ where: { code: 'DIR_MKT' } });
 
-  // Récupérer les directions
-  const directionPharma = await prisma.direction.findFirst({ where: { code: 'DIR_PHARMA' } });
-  const directionSI = await prisma.direction.findFirst({ where: { code: 'DIR_SI' } });
-  const directionMKT = await prisma.direction.findFirst({ where: { code: 'DIR_MKT' } });
+  // Recuperer les managers (pour lier managerId)
+  const managerPharma = await prisma.user.findFirstOrThrow({ where: { email: 'manager.pharma@kilani.tn' } });
+  const managerSI     = await prisma.user.findFirstOrThrow({ where: { email: 'manager.si@kilani.tn' } });
+  const managerMKT    = await prisma.user.findFirstOrThrow({ where: { email: 'manager.mkt@kilani.tn' } });
 
-  // Récupérer les managers par direction
-  const managerPharma = await prisma.user.findFirst({ 
-    where: { role: 'MANAGER', directionId: directionPharma?.id, actif: true }
-  });
-  const managerSI = await prisma.user.findFirst({ 
-    where: { role: 'MANAGER', directionId: directionSI?.id, actif: true }
-  });
-  const managerMKT = await prisma.user.findFirst({ 
-    where: { role: 'MANAGER', directionId: directionMKT?.id, actif: true }
-  });
+  const employes = [
+    // PHARMA
+    { email: 'employe1.pharma@kilani.tn', password: 'employe123', nom: 'Trabelsi', prenom: 'Fathi', poste: 'Technicien de laboratoire', directionId: directionPharma.id, managerId: managerPharma.id },
+    { email: 'employe2.pharma@kilani.tn', password: 'employe123', nom: 'Bouzid', prenom: 'Amira', poste: 'Pharmacien AQ', directionId: directionPharma.id, managerId: managerPharma.id },
 
-  // Récupérer les directeurs par direction
-  const directeurPharma = await prisma.user.findFirst({ 
-    where: { role: 'DIRECTEUR', directionId: directionPharma?.id, actif: true }
-  });
-  const directeurSI = await prisma.user.findFirst({ 
-    where: { role: 'DIRECTEUR', directionId: directionSI?.id, actif: true }
-  });
-  const directeurMKT = await prisma.user.findFirst({ 
-    where: { role: 'DIRECTEUR', directionId: directionMKT?.id, actif: true }
-  });
+    // SI
+    { email: 'employe1.si@kilani.tn', password: 'employe123', nom: 'Gharbi', prenom: 'Karim', poste: 'Developpeur Full Stack', directionId: directionSI.id, managerId: managerSI.id },
+    { email: 'employe2.si@kilani.tn', password: 'employe123', nom: 'Boukadida', prenom: 'Sonia', poste: 'Developpeuse Full Stack', directionId: directionSI.id, managerId: managerSI.id },
 
-  // Récupérer les employés par direction
-  const employesPharma = await prisma.user.findMany({
-    where: { role: 'EMPLOYE', directionId: directionPharma?.id, actif: true }
-  });
-  const employesSI = await prisma.user.findMany({
-    where: { role: 'EMPLOYE', directionId: directionSI?.id, actif: true }
-  });
-  const employesMKT = await prisma.user.findMany({
-    where: { role: 'EMPLOYE', directionId: directionMKT?.id, actif: true }
-  });
+    // MKT
+    { email: 'employe1.mkt@kilani.tn', password: 'employe123', nom: 'Hamdi', prenom: 'Ines', poste: 'Community Manager', directionId: directionMKT.id, managerId: managerMKT.id },
+    { email: 'employe2.mkt@kilani.tn', password: 'employe123', nom: 'Mansour', prenom: 'Youssef', poste: 'Chef de Produit Marketing', directionId: directionMKT.id, managerId: managerMKT.id },
+  ];
 
-  // Récupérer les contrats
-  const contrats = await prisma.contrat.findMany();
+  console.log('\nCreation des employes...');
+  for (const e of employes) {
+    const hashedPassword = await bcrypt.hash(e.password, 10);
 
-  if (contrats.length === 0) {
-    console.log('⚠️ Aucun contrat trouve');
-    return;
-  }
-
-  if (!managerPharma || !managerSI || !managerMKT) {
-    console.log('⚠️ Managers non trouves');
-    return;
-  }
-  if (!directeurPharma || !directeurSI || !directeurMKT) {
-    console.log('⚠️ Directeurs non trouves');
-    return;
-  }
-
-  const now = new Date();
-  const deuxMoisAvant = new Date(now);
-  deuxMoisAvant.setMonth(deuxMoisAvant.getMonth() - 2);
-
-  let contractIndex = 0;
-  let evalCount = 0;
-
-  console.log('\n=== CREATION DES EVALUATIONS ===\n');
-
-  // CAS 1: BROUILLON (En attente saisie Paie)
-  if (employesPharma[0] && contrats[contractIndex]) {
-    const dateFin = new Date(now);
-    dateFin.setDate(now.getDate() + 45);
-    
-    await prisma.evaluationPE.create({
-      data: {
-        reference: `EVAL-${now.getFullYear()}-0001`,
-        employeId: employesPharma[0].id,
-        managerId: managerPharma.id,
-        contratId: contrats[contractIndex].id,
-        dateDebut: deuxMoisAvant,
-        dateFin: dateFin,
-        joursRestants: 45,
-        statut: 'BROUILLON',
-        etapeActuelle: 0,
-        totalEtapes: 3
-      }
+    await prisma.user.upsert({
+      where: { email: e.email },
+      update: {},
+      create: {
+        email: e.email,
+        password: hashedPassword,
+        nom: e.nom,
+        prenom: e.prenom,
+        role: Role.EMPLOYE,
+        poste: e.poste,
+        directionId: e.directionId,
+        managerId: e.managerId,
+        actif: true,
+        mustChangePassword: true,
+      },
     });
-    console.log(`✅ BROUILLON - ${employesPharma[0].prenom} ${employesPharma[0].nom} (Attente saisie Paie)`);
-    contractIndex++;
-    evalCount++;
+    console.log(`   ${e.email} (EMPLOYE - ${e.poste})`);
   }
 
-  // CAS 2: EN_VALIDATION_DIR (Manager a soumis, attente Directeur)
-  if (employesPharma[1] && contrats[contractIndex]) {
-    const dateFin = new Date(now);
-    dateFin.setDate(now.getDate() + 30);
-    
-    await prisma.evaluationPE.create({
-      data: {
-        reference: `EVAL-${now.getFullYear()}-0002`,
-        employeId: employesPharma[1].id,
-        managerId: managerPharma.id,
-        contratId: contrats[contractIndex].id,
-        dateDebut: deuxMoisAvant,
-        dateFin: dateFin,
-        joursRestants: 30,
-        evaluationN1: "Employe performant, respecte les objectifs.",
-        commentaireN1: "Je recommande la confirmation.",
-        decision: 'CONFIRMATION',
-        dateSoumissionN1: new Date(),
-        statut: 'EN_VALIDATION_DIR',
-        etapeActuelle: 1,
-        totalEtapes: 3
-      }
-    });
-    console.log(`✅ EN_VALIDATION_DIR - ${employesPharma[1].prenom} ${employesPharma[1].nom} (Manager a evalue, attente Directeur)`);
-    contractIndex++;
-    evalCount++;
+  console.log('\nSeed employes termine avec succes !');
+  console.log(`\nRESUME:`);
+  console.log(`   - ${employes.length} employes crees`);
+  console.log('\nCOMPTES DE TEST:');
+  for (const e of employes) {
+    console.log(`   EMPLOYE: ${e.email} / ${e.password}`);
   }
-
-  // CAS 3: EN_VALIDATION_DIR avec evaluation
-  if (employesSI[0] && contrats[contractIndex]) {
-    const dateFin = new Date(now);
-    dateFin.setDate(now.getDate() + 25);
-    
-    await prisma.evaluationPE.create({
-      data: {
-        reference: `EVAL-${now.getFullYear()}-0003`,
-        employeId: employesSI[0].id,
-        managerId: managerSI.id,
-        contratId: contrats[contractIndex].id,
-        dateDebut: deuxMoisAvant,
-        dateFin: dateFin,
-        joursRestants: 25,
-        evaluationN1: "Employe tres performant, depasse les objectifs.",
-        commentaireN1: "Je recommande vivement la confirmation.",
-        decision: 'CONFIRMATION',
-        dateSoumissionN1: new Date(),
-        statut: 'EN_VALIDATION_DIR',
-        etapeActuelle: 1,
-        totalEtapes: 3
-      }
-    });
-    console.log(`✅ EN_VALIDATION_DIR - ${employesSI[0].prenom} ${employesSI[0].nom} (Manager a evalue)`);
-    contractIndex++;
-    evalCount++;
-  }
-
-  // CAS 4: VALIDEE (Finalisee par Directeur)
-  if (employesSI[1] && contrats[contractIndex]) {
-    const dateFin = new Date(now);
-    dateFin.setDate(now.getDate() - 5);
-    
-    await prisma.evaluationPE.create({
-      data: {
-        reference: `EVAL-${now.getFullYear()}-0004`,
-        employeId: employesSI[1].id,
-        managerId: managerSI.id,
-        contratId: contrats[contractIndex].id,
-        dateDebut: deuxMoisAvant,
-        dateFin: dateFin,
-        joursRestants: -5,
-        evaluationN1: "Excellent employe, depasse tous les objectifs.",
-        commentaireN1: "Confirmation sans reserve.",
-        decision: 'CONFIRMATION',
-        dateSoumissionN1: new Date(),
-        evaluationN2: "Je confirme la decision du manager.",
-        commentaireN2: "Excellent profil",
-        dateDecisionN2: new Date(),
-        evaluationN1Masquee: true,
-        statut: 'VALIDEE',
-        etapeActuelle: 2,
-        totalEtapes: 3,
-        valideeAt: new Date()
-      }
-    });
-    console.log(`✅ VALIDEE - ${employesSI[1].prenom} ${employesSI[1].nom} (Evaluation finalisee)`);
-    contractIndex++;
-    evalCount++;
-  }
-
-  // CAS 5: REJETEE
-  if (employesMKT[1] && contrats[contractIndex]) {
-    const dateFin = new Date(now);
-    dateFin.setDate(now.getDate() + 10);
-    
-    await prisma.evaluationPE.create({
-      data: {
-        reference: `EVAL-${now.getFullYear()}-0005`,
-        employeId: employesMKT[1].id,
-        managerId: managerMKT.id,
-        contratId: contrats[contractIndex].id,
-        dateDebut: deuxMoisAvant,
-        dateFin: dateFin,
-        joursRestants: 10,
-        evaluationN1: "Performance insuffisante, retards repetes.",
-        commentaireN1: "Je recommande la rupture.",
-        decision: 'RUPTURE',
-        justificationRupture: "Non respect des delais",
-        dateSoumissionN1: new Date(),
-        statut: 'REJETEE',
-        etapeActuelle: 1,
-        totalEtapes: 3
-      }
-    });
-    console.log(`✅ REJETEE - ${employesMKT[1].prenom} ${employesMKT[1].nom} (Evaluation rejetee)`);
-    contractIndex++;
-    evalCount++;
-  }
-
-  const total = await prisma.evaluationPE.count();
-  const parStatut = await prisma.evaluationPE.groupBy({
-    by: ['statut'],
-    _count: true
-  });
-  
-  console.log(`\n=== RESUME ===`);
-  console.log(`Evaluations totales: ${total}`);
-  console.log(`Repartition par statut:`);
-  for (const s of parStatut) {
-    console.log(`   - ${s.statut}: ${s._count}`);
-  }
-  
-  console.log(`\n✅ Seed termine: ${evalCount} evaluations creees`);
-  console.log(`\n📋 WORKFLOW (3 etapes):`);
-  console.log(`   1. BROUILLON → Resp. Paie saisit les donnees`);
-  console.log(`   2. EN_VALIDATION_DIR → Manager evalue`);
-  console.log(`   3. EN_VALIDATION_DIR → Directeur valide`);
-  console.log(`   4. VALIDEE → Finalisee`);
 }
 
 main()
-  .catch(e => { console.error('Erreur:', e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+  .catch(e => {
+    console.error('Erreur seed-employes:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
