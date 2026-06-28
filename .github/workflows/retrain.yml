@@ -17,7 +17,7 @@ jobs:
       - name: Install deps
         run: |
           pip install papermill scikit-learn lightgbm joblib \
-                      pandas numpy psycopg2-binary
+                      pandas numpy asyncpg
 
       - name: Export data depuis PostgreSQL
         env:
