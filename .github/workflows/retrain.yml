@@ -44,7 +44,7 @@ jobs:
 
       - name: Notifier FastAPI
         run: |
-          RESULT=$(cat retrain_result.json)
+          RESULT=$(cat retrain_result.json 2>/dev/null || echo '{"promoted": false, "new_f1": 0, "old_f1": 0}')
           curl -X POST "${{ secrets.FASTAPI_WEBHOOK_URL }}/ai/retrain/done" \
                -H "Content-Type: application/json" \
-               -d "$RESULT"
+               -d "$RESULT" || echo "FastAPI non disponible — notification ignorée"
