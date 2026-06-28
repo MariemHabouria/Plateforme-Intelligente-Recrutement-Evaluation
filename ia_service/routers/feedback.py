@@ -64,7 +64,7 @@ async def save_feedback(payload: FeedbackPayload):
         return {
             "saved":             True,
             "pending_labels":    int(count),
-            "threshold_reached": int(count) >= 50,
+            "threshold_reached": int(count) >= 5,
         }
 
     except asyncpg.PostgresConnectionError as e:
