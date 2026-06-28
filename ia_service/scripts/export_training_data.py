@@ -5,6 +5,11 @@ import asyncpg
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
+# Chemin absolu basé sur l'emplacement du script
+SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
+IA_DIR       = os.path.dirname(SCRIPT_DIR)
+OUTPUT_PATH  = os.path.join(IA_DIR, "training_data", "feedbacks.json")
+
 
 async def main():
     conn = await asyncpg.connect(DATABASE_URL)
@@ -30,8 +35,8 @@ async def main():
             for r in rows
         ]
 
-        os.makedirs("ia_service/training_data", exist_ok=True)
-        with open("ia_service/training_data/feedbacks.json", "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
         await conn.execute("""
@@ -40,7 +45,7 @@ async def main():
             WHERE "usedForTraining" = FALSE
         """)
 
-        print(f"Exporté {len(data)} feedbacks.")
+        print(f"Exporté {len(data)} feedbacks → {OUTPUT_PATH}")
 
     finally:
         await conn.close()

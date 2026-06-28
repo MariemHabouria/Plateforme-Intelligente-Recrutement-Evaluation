@@ -17,7 +17,8 @@ jobs:
       - name: Install deps
         run: |
           pip install papermill scikit-learn lightgbm joblib \
-                      pandas numpy psycopg2-binary
+                      pandas numpy asyncpg ipykernel
+          python -m ipykernel install --user --name python3
 
       - name: Export data depuis PostgreSQL
         env:
@@ -28,8 +29,8 @@ jobs:
         run: |
           papermill ia_service/notebooks/retrain_pipeline.ipynb \
                     ia_service/notebooks/retrain_output.ipynb \
-                    -p data_path ia_service/training_data/feedbacks.json \
-                    -p model_output_path ia_service/models/structure_model.pkl
+                    -p data_path "ia_service/training_data/feedbacks.json" \
+                    -p model_output_path "ia_service/models/structure_model.pkl"
 
       - name: Push modèle si mis à jour
         run: |
