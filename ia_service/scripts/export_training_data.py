@@ -23,7 +23,11 @@ async def main():
 
         if not rows:
             print("Aucun nouveau feedback — arrêt.")
-            return
+            # Créer un fichier vide pour éviter l'erreur papermill
+            os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+            with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+                json.dump([], f)
+            exit(0)
 
         data = [
             {
