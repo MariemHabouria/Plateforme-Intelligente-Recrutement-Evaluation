@@ -495,9 +495,9 @@ def extract_experience_years(text: str) -> float:
     """
     # ── Niveau 1 : mention explicite ─────────────────────────────────────────
     explicit_patterns = [
-        r'(\d+)\s*\+?\s*(?:years?|ans?)\s*(?:of)?\s*(?:experience)?',
-        r'(\d+)\s*ans?\s*d\'?expérience',
-    ]
+    r'(\d+)\s*\+?\s*(?:years?)\s+(?:of\s+)?experience',
+    r"(\d+)\s*\+?\s*ans?\s+d['\u2019]?exp[eé]rience",
+]
     for p in explicit_patterns:
         m = re.search(p, text, re.I)
         if m:

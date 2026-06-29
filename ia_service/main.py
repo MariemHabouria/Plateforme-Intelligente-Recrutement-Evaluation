@@ -1,42 +1,30 @@
 # ia_service/main.py
-# Point d'entrée du microservice FastAPI IA
-# Démarrage : uvicorn ia_service.main:app --host 0.0.0.0 --port 8001 --reload
-#
-# NE PAS appeler logging.basicConfig() ici.
-# uvicorn configure le logging lui-même au démarrage du sous-process.
-# Un basicConfig() concurrent cause un KeyboardInterrupt/deadlock sur _acquireLock()
-# lors des rechargements --reload.
-
 import os
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# ── Chargement .env ───────────────────────────────────────────────────────────
-# Doit être fait AVANT tout import qui lit os.getenv()
-# Le .env se trouve dans le même dossier que ce fichier (ia_service/.env)
 try:
     from dotenv import load_dotenv
     _env_path = Path(__file__).parent / ".env"
     load_dotenv(_env_path)
-    # Pas de log ici — le système de logging n'est pas encore initialisé
 except ImportError:
-    pass  # python-dotenv absent : les variables doivent être définies manuellement
+    pass
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers.scoring import router as scoring_router
-from .config.scoring_config import refresh_config
+# Import routers explicitly
+from ia_service.routers.scoring import router as scoring_router
+from ia_service.routers.feedback import router as feedback_router
+from ia_service.config.scoring_config import refresh_config
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger("ia_service")
 
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 logging.getLogger("asyncpg").setLevel(logging.WARNING)
 logging.getLogger("pdfplumber").setLevel(logging.WARNING)
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5000,http://localhost:3000"
@@ -75,8 +63,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
 app.include_router(scoring_router, prefix="", tags=["Scoring IA"])
+app.include_router(feedback_router, prefix="/ai", tags=["Feedback IA"])
 
+# Log all registered routes on startup
+@app.on_event("startup")
+async def log_routes():
+    log.info("=== ROUTES ENREGISTRÉES ===")
+    for route in app.routes:
+        log.info(f"{route.methods} {route.path}")
+    log.info("===========================")
 
 @app.get("/health")
 async def health():

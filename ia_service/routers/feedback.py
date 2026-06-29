@@ -5,6 +5,7 @@ import logging
 import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+import uuid
 
 log = logging.getLogger("ia_service.routers")
 router = APIRouter()
@@ -35,20 +36,16 @@ class RetranResult(BaseModel):
 
 @router.post("/feedback")
 async def save_feedback(payload: FeedbackPayload):
-    """
-    Appelé par le backend Node à chaque décision RH (Retenu / Rejeté).
-    Sauvegarde le feedback dans training_feedback et vérifie si le seuil
-    de 50 nouveaux labels est atteint pour déclencher le ré-entraînement.
-    """
     try:
         conn = await asyncpg.connect(DATABASE_URL, timeout=5)
         try:
             await conn.execute(
                 """
                 INSERT INTO training_feedback
-                    (cv_parsed, score_ia, decision_finale, offre_id)
-                VALUES ($1, $2, $3, $4)
+                    (id, "cvParsed", "scoreIa", "decisionFinale", "offreId")
+                VALUES ($1, $2, $3, $4, $5)
                 """,
+                str(uuid.uuid4()),
                 json.dumps(payload.cv_parsed),
                 payload.score_ia,
                 payload.decision_finale,
@@ -56,7 +53,7 @@ async def save_feedback(payload: FeedbackPayload):
             )
 
             count = await conn.fetchval(
-                "SELECT COUNT(*) FROM training_feedback WHERE used_for_training = FALSE"
+                'SELECT COUNT(*) FROM training_feedback WHERE "usedForTraining" = FALSE'
             )
         finally:
             await conn.close()
@@ -76,6 +73,7 @@ async def save_feedback(payload: FeedbackPayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 @router.get("/metrics/drift")
 async def check_drift():
     """
@@ -88,10 +86,10 @@ async def check_drift():
         try:
             recent_avg = await conn.fetchval(
                 """
-                SELECT AVG(score_ia)
+                SELECT AVG("scoreIa")
                 FROM training_feedback
-                WHERE created_at >= NOW() - INTERVAL '30 days'
-                  AND decision_finale IS NOT NULL
+                WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+                  AND "decisionFinale" IS NOT NULL
                 """
             )
         finally:
@@ -130,9 +128,6 @@ async def retrain_done(payload: RetranResult):
         log.info(
             f"Nouveau modèle promu — F1: {payload.old_f1:.4f} → {payload.new_f1:.4f}"
         )
-        # Le .pkl est mis à jour sur le repo par GitHub Actions.
-        # Si ton service tourne avec --reload, uvicorn le rechargera automatiquement.
-        # Sinon ajoute ici un os.execv() ou un signal de redémarrage.
     else:
         log.info(
             f"Ré-entraînement terminé sans promotion — "

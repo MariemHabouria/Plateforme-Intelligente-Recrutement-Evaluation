@@ -428,18 +428,23 @@ class CVScorer:
         s_sem_final = m1_details['sem_domaine_tf']
         s_comp_final = m1_details['scores_detail']['competences_techniques']
 
-        if s_sem_final < DOMAIN_MISMATCH_HARD and s_comp_final < 0.20:
+        # Fix 5 : le plafond ne se déclenche que si l'embedding sémantique (score_m2)
+        # confirme aussi le désalignement. Sans cette condition, un profil dont
+        # l'expérience IA est formulée avec un vocabulaire différent de l'offre
+        # (ex: "Azure Document Intelligence" / "Groq LLama" vs "TensorFlow" / "spaCy")
+        # était plafonné même quand l'embedding détectait une vraie pertinence domaine.
+        if s_sem_final < DOMAIN_MISMATCH_HARD and s_comp_final < 0.20 and score_m2 < 55:
             score_final = min(score_final, 30)
             log.info(
                 f"[scorer] Plafond final FORT appliqué "
-                f"(s_sem={s_sem_final:.3f}, s_comp={s_comp_final:.3f}) "
+                f"(s_sem={s_sem_final:.3f}, s_comp={s_comp_final:.3f}, score_m2={score_m2}) "
                 f"→ score_final plafonné à 30"
             )
-        elif s_sem_final < DOMAIN_MISMATCH_SOFT and s_comp_final < DOMAIN_COMP_THRESHOLD:
+        elif s_sem_final < DOMAIN_MISMATCH_SOFT and s_comp_final < DOMAIN_COMP_THRESHOLD and score_m2 < 65:
             score_final = min(score_final, 45)
             log.info(
                 f"[scorer] Plafond final MODÉRÉ appliqué "
-                f"(s_sem={s_sem_final:.3f}, s_comp={s_comp_final:.3f}) "
+                f"(s_sem={s_sem_final:.3f}, s_comp={s_comp_final:.3f}, score_m2={score_m2}) "
                 f"→ score_final plafonné à 45"
             )
 

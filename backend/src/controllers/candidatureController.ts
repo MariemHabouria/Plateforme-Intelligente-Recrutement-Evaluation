@@ -5,6 +5,7 @@ import path from 'path';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound } from '../utils/helpers';
 import { iaService } from '../services/ia.service';
+import fetch from 'node-fetch';
 
 // ============================================
 // GENERER UNE REFERENCE UNIQUE
@@ -446,8 +447,67 @@ export const updateCandidatureStatut = async (req: Request, res: Response) => {
 
     const candidature = await prisma.candidature.update({
       where: { id },
-      data: { statut }
+      data: { statut },
+      include: { offre: true }
     });
+
+    // ── MLOps : envoyer le feedback à l'IA si décision finale ──
+    if (statut === 'ACCEPTEE' || statut === 'REFUSEE') {
+      try {
+        const cvParsed = {
+          raw_text:               candidature.cvTexte || '',
+          competences_detectees:  candidature.competencesDetectees,
+          competences_manquantes: candidature.competencesManquantes,
+          score_experience:       candidature.scoreExp,
+        };
+
+        const feedbackRes = await fetch(`${process.env.IA_SERVICE_URL}/ai/feedback`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cv_parsed:       cvParsed,
+            score_ia:        (candidature.scoreGlobal || 0) / 100,
+            decision_finale: statut === 'ACCEPTEE' ? 'RETENU' : 'REJETE',
+            offre_id:        candidature.offreId || '',
+          }),
+        });
+
+        const feedbackData = await feedbackRes.json() as any;
+        console.log(' Feedback raw response:', JSON.stringify(feedbackData));
+        // Si seuil atteint → déclencher GitHub Actions via n8n webhook
+        if (feedbackData.threshold_reached) {
+  console.log('Seuil atteint — declenchement du re-entrainement IA');
+
+  const githubRes = await fetch(
+    `https://api.github.com/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/actions/workflows/retrain.yml/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+    }
+  );
+
+  if (githubRes.ok) {
+    console.log('GitHub Actions declenche — re-entrainement lance');
+  } else {
+    const err = await githubRes.text();
+    console.error('Erreur declenchement GitHub Actions:', err);
+  }
+} {
+          console.log(' Seuil atteint — déclenchement du ré-entraînement IA');
+          // n8n s'occupera de déclencher GitHub Actions
+          // (le webhook n8n est configuré séparément)
+        }
+
+      } catch (err) {
+        // Ne pas bloquer la réponse si le feedback échoue
+        console.error(' Feedback MLOps échoué (non bloquant):', err);
+      }
+    }
 
     sendSuccess(res, candidature, `Statut mis a jour : ${statut}`);
 
