@@ -2,9 +2,9 @@
 
 import type { RoleConfig, NavItem, Demande, OffreEmploi, Candidature, Entretien, EvaluationPE, Contrat, ValidationEtape, StatCard } from '@/types';
 
-// ============================================
+
 // ROLES CONFIG — clés minuscules (normalisées par Sidebar)
-// ============================================
+
 export const ROLES: Record<string, RoleConfig> = {
   superadmin: { label: 'Super Admin',       color: '#9A8A50', initials: 'SA', name: 'Super Admin',      sub: 'Administration systeme' },
   SUPER_ADMIN:{ label: 'Super Admin',       color: '#9A8A50', initials: 'SA', name: 'Super Admin',      sub: 'Administration systeme' },
@@ -25,9 +25,9 @@ export const ROLES: Record<string, RoleConfig> = {
   candidat:   { label: 'Candidat (public)',color: '#A04030', initials: 'CA', name: 'Candidat Externe', sub: 'Formulaire public' },
 };
 
-// ============================================
+
 // NAV CONFIG
-// ============================================
+
 export const NAV_CONFIG: Record<string, NavItem[]> = {
   superadmin: [
     { section: 'administration' },
@@ -99,10 +99,10 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
   ],
 };
 
-// ============================================
+
 // DONNEES MOCK — typées as any[] pour éviter
 // les conflits avec les types stricts du backend
-// ============================================
+
 export const DEMANDES: any[] = [
   { ref: 'DEM-2026-018', poste: 'Ingenieur Qualite',      motif: 'CREATION',     contrat: 'CDI',   priorite: 'HAUTE',   statut: 'En validation DIR', budget: '42000 DT', date: '15/01/2026', etape: 1, totalEtapes: 4 },
   { ref: 'DEM-2026-015', poste: 'Chef Comptable',         motif: 'REMPLACEMENT', contrat: 'CDI',   priorite: 'HAUTE',   statut: 'En validation DAF', budget: '58000 DT', date: '12/01/2026', etape: 3, totalEtapes: 5 },
@@ -152,9 +152,9 @@ export const VALIDATIONS: any[] = [
   { id: '3', demandeId: '3', niveauEtape: 1, acteurId: '1', decision: 'VALIDEE',    dateLimite: '2026-02-01', dateDecision: '2026-01-15', createdAt: '2026-01-01' },
 ];
 
-// ============================================
+
 // STATS PAR ROLE
-// ============================================
+
 export const STATS: Record<string, StatCard[]> = {
   superadmin: [
     { label: 'Utilisateurs actifs', value: '28',  delta: '+3 ce mois',        up: true,  icon: 'Users',     color: 'var(--gold-pale)' },

@@ -25,6 +25,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import type { Role } from './types';
 import { OffreCandidatsPage } from './components/pages/offres/OffreCandidatsPage';
+import { PlanifierEntretienCandidatPage } from './components/pages/public/PlanifierEntretienCandidatPage';
 
 const SUPERADMIN_PAGES = ['utilisateurs', 'audit', 'workflows', 'ia_config', 'scoring_config'];
 
@@ -198,7 +199,6 @@ function AuthenticatedApp() {
     </div>
   );
 }
-
 function App() {
   return (
     <BrowserRouter>
@@ -206,11 +206,12 @@ function App() {
         <Routes>
           <Route path="/candidature/:token" element={<CandidatFormPage />} />
           <Route path="/fiche-renseignement/:token" element={<FicheRenseignement />} />
+          <Route path="/planifier-entretien/:token" element={<PlanifierEntretienCandidatPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
-          
+
           <Route path="/validation/:id" element={<DemandeDetailsPage />} />
-          
+
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>
       </AuthProvider>

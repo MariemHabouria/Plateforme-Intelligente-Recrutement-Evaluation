@@ -4,9 +4,9 @@ import bcrypt from 'bcrypt';
 import { generateTemporaryPassword } from '../utils/password.util';
 import { emailService } from '../services/email.service';
 
-// ===========================================
+
 // GESTION DES UTILISATEURS (SUPER ADMIN)
-// ===========================================
+
 
 /**
  * Récupérer tous les utilisateurs
@@ -45,7 +45,7 @@ export const getUsers = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur getUsers:', error);
+    console.error(' Erreur getUsers:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -95,7 +95,7 @@ export const getUserById = async (req: Request, res: Response) => {
     res.json({ success: true, user });
 
   } catch (error) {
-    console.error('❌ Erreur getUserById:', error);
+    console.error(' Erreur getUserById:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -168,7 +168,7 @@ export const updateUser = async (req: Request, res: Response) => {
         newRole: role,
         changedBy: (req as any).user.nom + ' ' + (req as any).user.prenom
       });
-      console.log(`📧 Email de changement de rôle envoyé à ${updatedUser.email}`);
+      console.log(` Email de changement de rôle envoyé à ${updatedUser.email}`);
     }
 
     res.json({
@@ -178,7 +178,7 @@ export const updateUser = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur updateUser:', error);
+    console.error(' Erreur updateUser:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -220,7 +220,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
         reason: 'Désactivé par l\'administrateur',
         reactivationDate: undefined
       });
-      console.log(`📧 Email de désactivation envoyé à ${user.email}`);
+      console.log(` Email de désactivation envoyé à ${user.email}`);
     }
 
     res.json({
@@ -230,7 +230,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur toggleUserStatus:', error);
+    console.error(' Erreur toggleUserStatus:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -271,7 +271,7 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur deleteUser:', error);
+    console.error(' Erreur deleteUser:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -323,7 +323,7 @@ export const resendInvite = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur resendInvite:', error);
+    console.error(' Erreur resendInvite:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur lors du renvoi'
@@ -374,7 +374,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur resetPassword:', error);
+    console.error(' Erreur resetPassword:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la réinitialisation'
@@ -382,9 +382,9 @@ export const resetPassword = async (req: Request, res: Response) => {
   }
 };
 
-// ===========================================
+
 // GESTION DU PROFIL PERSONNEL (UTILISATEUR CONNECTÉ)
-// ===========================================
+
 
 /**
  * Mettre à jour son propre profil (utilisateur connecté)
@@ -392,7 +392,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 export const updateOwnProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { nom, prenom, telephone, poste } = req.body; // ✅ departement retiré
+    const { nom, prenom, telephone, poste } = req.body; 
 
     if (nom === '' || prenom === '') {
       return res.status(400).json({
@@ -404,7 +404,7 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
     const oldUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { nom: true, prenom: true, telephone: true, poste: true, email: true }
-      // ✅ departement retiré du select
+      //  departement retiré du select
     });
 
     const updateData: any = {};
@@ -426,7 +426,7 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
       updateData.poste = poste;
       changes.push(`Poste : "${oldUser?.poste || 'Non renseigné'}" → "${poste}"`);
     }
-    // ✅ bloc departement entièrement supprimé
+    //  bloc departement entièrement supprimé
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
@@ -474,7 +474,7 @@ export const updateOwnProfile = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur updateOwnProfile:', error);
+    console.error(' Erreur updateOwnProfile:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur lors de la mise à jour du profil'
@@ -512,7 +512,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 
     res.json({ success: true, user });
   } catch (error) {
-    console.error('❌ Erreur getCurrentUser:', error);
+    console.error(' Erreur getCurrentUser:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 };
@@ -550,7 +550,7 @@ export const getUserByRole = async (req: Request, res: Response) => {
     res.json({ success: true, data: user });
 
   } catch (error) {
-    console.error('❌ Erreur getUserByRole:', error);
+    console.error(' Erreur getUserByRole:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 };

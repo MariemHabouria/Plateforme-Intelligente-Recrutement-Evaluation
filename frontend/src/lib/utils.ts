@@ -4,7 +4,7 @@ export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
 }
 
-// No blue anywhere — use olive instead
+
 export function getStatusBadge(statut: string): string {
   if (statut.includes('En validation') || statut.includes('en attente') || statut.includes('attente')) return 'amber'
   if (statut === 'Validée' || statut === 'Confirmé' || statut === 'Signé' || statut === 'Confirmation') return 'green'

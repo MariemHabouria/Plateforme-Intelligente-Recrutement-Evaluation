@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { relanceService } from '../services/relance.service';
+import { relanceFiche48hService } from '../services/relanceFiche48h.service';
 
 /**
  * Job cron qui s'exécute toutes les heures pour vérifier les deadlines
@@ -18,6 +19,12 @@ export const startRelanceJobs = () => {
       const executedCount = await relanceService.executerRelancesPlanifiees();
       if (executedCount > 0) {
         console.log(` [CRON] ${executedCount} relance(s) exécutée(s)`);
+      }
+
+      // NOUVEAU : règle des 48h — fiche de renseignement non reçue
+      const ficheRefuseesCount = await relanceFiche48hService.verifierEtRefuserFichesNonRecues();
+      if (ficheRefuseesCount > 0) {
+        console.log(` [CRON] ${ficheRefuseesCount} candidature(s) refusee(s) automatiquement (fiche non recue sous 48h)`);
       }
     } catch (error) {
       console.error(' [CRON] Erreur lors des relances:', error);

@@ -5,9 +5,9 @@ import jwt from 'jsonwebtoken';
 import { generateTemporaryPassword, validatePasswordStrength } from '../utils/password.util';
 import { emailService } from '../services/email.service';
 
-// ===========================================
+
 // FONCTIONS UTILITAIRES
-// ===========================================
+
 
 const generateToken = (id: string, role: string): string => {
   const secret = process.env.JWT_SECRET as string;
@@ -20,9 +20,8 @@ const generateToken = (id: string, role: string): string => {
   );
 };
 
-// ===========================================
 // POUR SUPER ADMIN - CRÉATION D'UTILISATEUR
-// ===========================================
+
 
 /**
  * Créer un nouvel utilisateur (Super Admin uniquement)
@@ -93,7 +92,7 @@ export const register = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur register:', error);
+    console.error(' Erreur register:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur lors de la création'
@@ -101,9 +100,9 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
-// ===========================================
+
 // POUR TOUS LES UTILISATEURS - CONNEXION
-// ===========================================
+
 
 /**
  * Connexion à l'application
@@ -187,7 +186,7 @@ export const login = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur login:', error);
+    console.error(' Erreur login:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -195,9 +194,8 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-// ===========================================
 // CHANGEMENT DE MOT DE PASSE
-// ===========================================
+
 
 /**
  * Changer le mot de passe (première connexion ou volontaire)
@@ -257,7 +255,7 @@ export const changePassword = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur changePassword:', error);
+    console.error(' Erreur changePassword:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -265,9 +263,8 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
-// ===========================================
 // PROFIL
-// ===========================================
+
 
 /**
  * Récupérer le profil de l'utilisateur connecté
@@ -303,7 +300,7 @@ export const getMe = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur getMe:', error);
+    console.error(' Erreur getMe:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'

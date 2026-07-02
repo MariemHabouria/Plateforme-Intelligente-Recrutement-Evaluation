@@ -15,17 +15,17 @@ import {
 import { getDisponibilitesByOffre } from '../controllers/offreController';
 const router = Router();
 
-// ============================================
+
 // ROUTES PUBLIQUES
-// ============================================
+
 router.get('/public/:token', getOffreParToken);
 
-// ============================================
+
 // ROUTES PROTEGEES
-// ============================================
+
 router.use(protect);
 
-// ✅ Routes statiques EN PREMIER (avant /:id)
+//  Routes statiques 
 router.get('/demandes-sans-offre', authorize('DRH', 'SUPER_ADMIN'), getDemandesSansOffre);
 
 

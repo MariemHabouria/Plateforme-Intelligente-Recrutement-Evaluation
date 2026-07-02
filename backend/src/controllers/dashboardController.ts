@@ -2,9 +2,9 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendError } from '../utils/helpers';
 
-// ============================================
+
 // FONCTIONS UTILITAIRES CORRIGÉES
-// ============================================
+
 
 /**
  * Calculer le délai moyen de recrutement (avec filtre par rôle)
@@ -195,9 +195,9 @@ const getValidationsEnAttente = async (userRole: string, userId: string, userDir
   }
 };
 
-// ============================================
+
 // MAIN DASHBOARD STATS CORRIGÉ
-// ============================================
+
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
@@ -207,9 +207,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const userNom = (req as any).user.nom;
     const userPrenom = (req as any).user.prenom;
 
-    // ============================================
+    
     // CONSTRUCTION DES FILTRES PAR RÔLE
-    // ============================================
+    
     
     let demandeFilter: any = {};
     let offreFilter: any = {};
@@ -295,9 +295,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         evaluationFilter = {};
     }
 
-    // ============================================
+    
     // RÉCUPÉRATION DES DONNÉES PRINCIPALES
-    // ============================================
+    
 
     const [demandes, offres, candidatures, entretiens, contrats, evaluations] = await Promise.all([
       prisma.demandeRecrutement.findMany({
@@ -326,9 +326,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       })
     ]);
 
-    // ============================================
+    
     // STATISTIQUES DÉTAILLÉES
-    // ============================================
+    
 
     // Demandes
     const demandesParNiveau = demandes.reduce((acc, d) => {
@@ -376,9 +376,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       return acc;
     }, {} as Record<string, number>);
 
-    // ============================================
+    
     // KPIs PAR RÔLE
-    // ============================================
+    
 
     const delaiMoyen = await calculerDelaiMoyenRecrutement(demandeFilter);
     const tauxTransformation = await calculerTauxTransformation(candidatureFilter);
@@ -473,9 +473,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         break;
     }
 
-    // ============================================
+    
     // ACTIVITÉ RÉCENTE (HISTORIQUE)
-    // ============================================
+    
 
     const demandesRecentes = await prisma.demandeRecrutement.findMany({
       where: demandeFilter,
@@ -525,22 +525,22 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const contratsRecents = await prisma.contrat.findMany({
   where: contratFilter,
   take: 5,
-  orderBy: { dateDebut: 'desc' },  // ✅ corrigé: createdAt → dateDebut
-  include: {                        // ✅ corrigé: select → include
+  orderBy: { dateDebut: 'desc' },  
+  include: {                        
     candidature: {
       select: { nom: true, prenom: true }
     }
   }
 });
-    // ============================================
+    
     // LOGS D'AUDIT (selon permissions)
-    // ============================================
+    
 
     const auditLogs = await getAuditLogs(userId, userRole, userDirectionId, 10);
 
-    // ============================================
+    
     // TENDANCES SUR 6 MOIS
-    // ============================================
+    
 
     const mois = [];
     const tendancesDemandes = [];
@@ -568,9 +568,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       }));
     }
 
-    // ============================================
+    
     // STATISTIQUES GLOBALES PAR RÔLE
-    // ============================================
+    
 
     const stats = {
       // Informations utilisateur

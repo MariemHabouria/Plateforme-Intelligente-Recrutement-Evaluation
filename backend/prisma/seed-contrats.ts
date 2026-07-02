@@ -1,8 +1,5 @@
 // backend/prisma/seed-contrats.ts
-// ✅ Même pattern que seed-evaluations-pe.ts :
-//    - Contrats liés aux candidatures acceptées (hors sanscontrat)
-//    - EvaluationPE.employeId = User EMPLOYE de la même direction (pas candidature.id)
-//    - statut ACTIF + dateFin J-20 pour tester le workflow PE
+
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -23,12 +20,12 @@ async function main() {
   await prisma.contrat.deleteMany({});
   console.log('   Done');
 
-  // ✅ Récupérer les directions
+  // Récupérer les directions
   const directionPharma = await prisma.direction.findFirst({ where: { code: 'DIR_PHARMA' } });
   const directionSI     = await prisma.direction.findFirst({ where: { code: 'DIR_SI' } });
   const directionMKT    = await prisma.direction.findFirst({ where: { code: 'DIR_MKT' } });
 
-  // ✅ Récupérer managers et employés par direction (même pattern que seed-evaluations-pe)
+  //  Récupérer managers et employés par direction (même pattern que seed-evaluations-pe)
   const managerPharma = await prisma.user.findFirst({
     where: { role: 'MANAGER', directionId: directionPharma?.id, actif: true }
   });
@@ -51,15 +48,15 @@ async function main() {
   console.log(`Employés SI      : ${employesSI.length}`);
 
   if (!managerPharma || !managerSI) {
-    console.log('\n⚠️ Managers non trouvés — lance seed-users.ts d\'abord');
+    console.log('\n Managers non trouvés — lance seed-users.ts d\'abord');
     return;
   }
   if (employesPharma.length === 0 || employesSI.length === 0) {
-    console.log('\n⚠️ Employés non trouvés — lance seed-users.ts d\'abord');
+    console.log('\n Employés non trouvés — lance seed-users.ts d\'abord');
     return;
   }
 
-  // ✅ Candidatures acceptées (hors sanscontrat)
+  //  Candidatures acceptées (hors sanscontrat)
   const candidaturesAcceptees = await prisma.candidature.findMany({
     where: {
       statut: 'ACCEPTEE',
@@ -74,13 +71,13 @@ async function main() {
 
   console.log(`\nCandidatures acceptées (hors ignorées) : ${candidaturesAcceptees.length}`);
   if (candidaturesAcceptees.length === 0) {
-    console.log('⚠️ Aucune candidature acceptée');
+    console.log(' Aucune candidature acceptée');
     return;
   }
 
   const now = new Date();
 
-  // ✅ Dates pour simuler une PE en cours à J-20
+  //  Dates pour simuler une PE en cours à J-20
   const dateDebut = new Date(now);
   dateDebut.setDate(dateDebut.getDate() - 70); // commencé il y a 70 jours
 
@@ -101,7 +98,7 @@ async function main() {
       where: { candidatureId: candidature.id }
     });
     if (existingContrat) {
-      console.log(`   ⚠️  Contrat déjà existant pour ${candidature.email}`);
+      console.log(`     Contrat déjà existant pour ${candidature.email}`);
       continue;
     }
 
@@ -154,7 +151,7 @@ async function main() {
       }
     };
 
-    // ✅ Créer le contrat ACTIF
+    //  Créer le contrat ACTIF
     const contrat = await prisma.contrat.create({
       data: {
         reference: `CTR-${now.getFullYear()}-${String(contratCount + 1).padStart(4, '0')}`,
@@ -170,7 +167,7 @@ async function main() {
 
     contratCount++;
 
-    // ✅ Associer un User EMPLOYE réel (même pattern que seed-evaluations-pe)
+    //  Associer un User EMPLOYE réel (même pattern que seed-evaluations-pe)
     // candidat.accepte1 → employesPharma[0], candidat.accepte2 → employesSI[0]
     const employe = i === 0
       ? employesPharma[0]
@@ -180,11 +177,11 @@ async function main() {
 
     const evalReference = `EVAL-${now.getFullYear()}-${String(evalCount + 1).padStart(4, '0')}`;
 
-    // ✅ Créer l'évaluation PE avec un User EMPLOYE valide
+    //  Créer l'évaluation PE avec un User EMPLOYE valide
     const evaluation = await prisma.evaluationPE.create({
       data: {
         reference: evalReference,
-        employeId: employe.id,   // ✅ vrai User.id → FK respectée
+        employeId: employe.id,   //  vrai User.id → FK respectée
         managerId: manager.id,
         contratId: contrat.id,
         dateDebut,
@@ -198,7 +195,7 @@ async function main() {
 
     evalCount++;
 
-    console.log(`   ✅ Contrat  : ${contrat.reference} — ${candidature.prenom} ${candidature.nom} (ACTIF)`);
+    console.log(`    Contrat  : ${contrat.reference} — ${candidature.prenom} ${candidature.nom} (ACTIF)`);
     console.log(`      Employé  : ${employe.prenom} ${employe.nom} (User réel)`);
     console.log(`      Manager  : ${manager.prenom} ${manager.nom}`);
     console.log(`      Eval     : ${evaluation.reference} — BROUILLON — J-${joursRestants}`);
@@ -209,7 +206,7 @@ async function main() {
   console.log(`Contrats créés    : ${contratCount}`);
   console.log(`Évaluations créées: ${evalCount}`);
   console.log(`dateFin PE        : ${dateFin.toLocaleDateString('fr-FR')} (J-${joursRestants})`);
-  console.log(`\n✅ Les évaluations sont visibles dans "Données PE"`);
+  console.log(`\n Les évaluations sont visibles dans "Données PE"`);
 }
 
 main()

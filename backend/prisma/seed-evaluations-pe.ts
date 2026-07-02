@@ -59,13 +59,13 @@ async function main() {
   const contrats = await prisma.contrat.findMany();
 
   if (contrats.length === 0) {
-    console.log('⚠️ Aucun contrat trouve');
+    console.log(' Aucun contrat trouve');
     return;
   }
 
   // Vérifier que les managers existent
   if (!managerPharma || !managerSI || !managerMKT) {
-    console.log('⚠️ Managers non trouves');
+    console.log(' Managers non trouves');
     return;
   }
 
@@ -78,9 +78,9 @@ async function main() {
 
   console.log('\n=== CREATION DES EVALUATIONS ===\n');
 
-  // ============================================================
+
   // CAS 1: BROUILLON (En attente saisie Paie)
-  // ============================================================
+
   if (employesPharma[0] && contrats[contractIndex]) {
     const dateFin = new Date(now);
     dateFin.setDate(now.getDate() + 45);
@@ -99,14 +99,14 @@ async function main() {
         totalEtapes: 3
       }
     });
-    console.log(`   ✅ BROUILLON - ${employesPharma[0].prenom} ${employesPharma[0].nom} (Attente saisie Paie)`);
+    console.log(`    BROUILLON - ${employesPharma[0].prenom} ${employesPharma[0].nom} (Attente saisie Paie)`);
     contractIndex++;
     evalCount++;
   }
 
-  // ============================================================
+
   // CAS 2: EN_VALIDATION_DIR (Manager a soumis, attente Directeur)
-  // ============================================================
+
   if (employesPharma[1] && contrats[contractIndex]) {
     const dateFin = new Date(now);
     dateFin.setDate(now.getDate() + 30);
@@ -129,14 +129,13 @@ async function main() {
         totalEtapes: 3
       }
     });
-    console.log(`   ✅ EN_VALIDATION_DIR - ${employesPharma[1].prenom} ${employesPharma[1].nom} (Manager a evalue, attente Directeur)`);
+    console.log(`    EN_VALIDATION_DIR - ${employesPharma[1].prenom} ${employesPharma[1].nom} (Manager a evalue, attente Directeur)`);
     contractIndex++;
     evalCount++;
   }
 
-  // ============================================================
   // CAS 3: EN_VALIDATION_DIR avec evaluation (Manager a evalue)
-  // ============================================================
+
   if (employesSI[0] && contrats[contractIndex]) {
     const dateFin = new Date(now);
     dateFin.setDate(now.getDate() + 25);
@@ -159,14 +158,13 @@ async function main() {
         totalEtapes: 3
       }
     });
-    console.log(`   ✅ EN_VALIDATION_DIR - ${employesSI[0].prenom} ${employesSI[0].nom} (Manager a evalue)`);
+    console.log(`    EN_VALIDATION_DIR - ${employesSI[0].prenom} ${employesSI[0].nom} (Manager a evalue)`);
     contractIndex++;
     evalCount++;
   }
 
-  // ============================================================
   // CAS 4: VALIDEE (Finalisee par Directeur)
-  // ============================================================
+
   if (employesSI[1] && contrats[contractIndex]) {
     const dateFin = new Date(now);
     dateFin.setDate(now.getDate() - 5);
@@ -194,14 +192,13 @@ async function main() {
         valideeAt: new Date()
       }
     });
-    console.log(`   ✅ VALIDEE - ${employesSI[1].prenom} ${employesSI[1].nom} (Evaluation finalisee)`);
+    console.log(`    VALIDEE - ${employesSI[1].prenom} ${employesSI[1].nom} (Evaluation finalisee)`);
     contractIndex++;
     evalCount++;
   }
 
-  // ============================================================
   // CAS 5: REJETEE (Rejetee par Directeur)
-  // ============================================================
+
   if (employesMKT[1] && contrats[contractIndex]) {
     const dateFin = new Date(now);
     dateFin.setDate(now.getDate() + 10);
@@ -225,14 +222,13 @@ async function main() {
         totalEtapes: 3
       }
     });
-    console.log(`   ✅ REJETEE - ${employesMKT[1].prenom} ${employesMKT[1].nom} (Evaluation rejetee)`);
+    console.log(`    REJETEE - ${employesMKT[1].prenom} ${employesMKT[1].nom} (Evaluation rejetee)`);
     contractIndex++;
     evalCount++;
   }
 
-  // ============================================================
   // STATISTIQUES FINALES
-  // ============================================================
+
   const total = await prisma.evaluationPE.count();
   const parStatut = await prisma.evaluationPE.groupBy({
     by: ['statut'],
@@ -251,8 +247,8 @@ async function main() {
     console.log(`   - ${label}: ${s._count}`);
   }
   
-  console.log(`\n✅ Seed termine: ${evalCount} evaluations creees`);
-  console.log(`\n📋 WORKFLOW (3 etapes):`);
+  console.log(`\n Seed termine: ${evalCount} evaluations creees`);
+  console.log(`\n WORKFLOW (3 etapes):`);
   console.log(`   1. BROUILLON → Resp. Paie saisit les donnees contractuelles`);
   console.log(`   2. EN_VALIDATION_DIR → Manager N+1 evalue l'employe`);
   console.log(`   3. EN_VALIDATION_DIR → Directeur N+2 valide`);

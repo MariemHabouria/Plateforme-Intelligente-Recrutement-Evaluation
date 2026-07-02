@@ -6,9 +6,9 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from
 import { TypeContrat } from '@prisma/client';
 import crypto from 'crypto';
 
-// ============================================
+
 // FONCTIONS UTILITAIRES
-// ============================================
+
 
 const generateLienCandidature = (offreId: string, reference: string): string => {
   const token = crypto
@@ -21,9 +21,9 @@ const generateLienCandidature = (offreId: string, reference: string): string => 
   return `${frontendUrl}/candidature/${token}?ref=${encodeURIComponent(reference)}`;
 };
 
-// ============================================
+
 // CRUD OFFRES
-// ============================================
+
 
 export const getOffres = async (req: Request, res: Response) => {
   try {
@@ -36,7 +36,7 @@ export const getOffres = async (req: Request, res: Response) => {
     where.demandeId = { not: null };
 
     if (userRole === 'DRH' || userRole === 'SUPER_ADMIN') {
-      console.log('✅ DRH/SuperAdmin - affichage de toutes les offres (avec demande)');
+      console.log(' DRH/SuperAdmin - affichage de toutes les offres (avec demande)');
     } else if (userRole === 'MANAGER') {
       where.demande = { managerId: userId };
     } else {
@@ -69,7 +69,7 @@ export const getOffres = async (req: Request, res: Response) => {
       prisma.offreEmploi.count({ where })
     ]);
 
-    console.log(`📊 ${offres.length} offre(s) trouvée(s)`);
+    console.log(` ${offres.length} offre(s) trouvée(s)`);
 
     sendSuccess(res, {
       offres,
@@ -148,9 +148,9 @@ export const getOffreParToken = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // DEMANDES SANS OFFRE
-// ============================================
+
 
 export const getDemandesSansOffre = async (req: Request, res: Response) => {
   try {
@@ -171,7 +171,7 @@ export const getDemandesSansOffre = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`📋 ${demandes.length} demande(s) validée(s) sans offre`);
+    console.log(` ${demandes.length} demande(s) validée(s) sans offre`);
 
     sendSuccess(res, { demandes });
 
@@ -181,9 +181,9 @@ export const getDemandesSansOffre = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CREATION OFFRE (sans IA)
-// ============================================
+
 
 export const createOffre = async (req: Request, res: Response) => {
   try {
@@ -259,7 +259,7 @@ export const createOffre = async (req: Request, res: Response) => {
       }
     });
 
-    console.log(`✅ Offre créée: ${offre.reference}`);
+    console.log(` Offre créée: ${offre.reference}`);
 
     return res.status(201).json({
       success: true,
@@ -276,9 +276,9 @@ export const createOffre = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // PUBLICATION OFFRE (simplifiée)
-// ============================================
+
 
 export const publierOffre = async (req: Request, res: Response) => {
   try {
@@ -331,9 +331,9 @@ export const publierOffre = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // MODIFICATION OFFRE
-// ============================================
+
 
 export const updateOffre = async (req: Request, res: Response) => {
   try {
@@ -373,9 +373,9 @@ export const updateOffre = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // SUPPRESSION OFFRE
-// ============================================
+
 
 export const deleteOffre = async (req: Request, res: Response) => {
   try {
@@ -407,9 +407,9 @@ export const deleteOffre = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // DISPONIBILITES PAR OFFRE
-// ============================================
+
 
 export const getDisponibilitesByOffre = async (req: Request, res: Response) => {
   try {

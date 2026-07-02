@@ -7,9 +7,9 @@ import { sendSuccess, sendCreated, sendError, sendNotFound } from '../utils/help
 import { iaService } from '../services/ia.service';
 import fetch from 'node-fetch';
 
-// ============================================
+
 // GENERER UNE REFERENCE UNIQUE
-// ============================================
+
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const count = await prisma.candidature.count({
@@ -18,18 +18,18 @@ const generateReference = async (): Promise<string> => {
   return `CAND-${year}-${String(count + 1).padStart(4, '0')}`;
 };
 
-// ============================================
+
 // CONSTRUIRE LE CHEMIN ABSOLU DU CV
-// ============================================
+
 const getCvAbsPath = (cvUrl: string): string => {
   // cvUrl ressemble à "/uploads/cv/cv_1234567890.pdf"
   const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
   return path.join(uploadsDir, cvUrl.replace(/^\/uploads\//, ''));
 };
 
-// ============================================
+
 // SOUMETTRE UNE CANDIDATURE (public)
-// ============================================
+
 
 export const soumettreCandidature = async (req: Request, res: Response) => {
   try {
@@ -74,7 +74,7 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
 
     const reference = await generateReference();
 
-    // 🔥 Parser le CV via l'API IA pour obtenir cvTexte
+    //  Parser le CV via l'API IA pour obtenir cvTexte
     let cvTexte = '';
     let competencesDetectees: string[] = [];
     
@@ -86,10 +86,10 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
         if (parseResult.success) {
           cvTexte = parseResult.texte_brut || '';
           competencesDetectees = parseResult.competences || [];
-          console.log(`✅ CV parsé: ${cvTexte.length} caractères, ${competencesDetectees.length} compétences`);
+          console.log(` CV parsé: ${cvTexte.length} caractères, ${competencesDetectees.length} compétences`);
         }
       } catch (err) {
-        console.error(`❌ Parsing CV échoué:`, err);
+        console.error(` Parsing CV échoué:`, err);
       }
     }
 
@@ -121,9 +121,9 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
       try {
         const cvAbsPath = getCvAbsPath(cvUrl);
         scoringResult = await iaService.scorerCV(cvAbsPath, offre.id, candidature.id);
-        console.log(`✅ Scoring IA terminé pour ${candidature.reference}: ${scoringResult.score_global}/100`);
+        console.log(` Scoring IA terminé pour ${candidature.reference}: ${scoringResult.score_global}/100`);
       } catch (err) {
-        console.error(`❌ Scoring IA échoué pour ${candidature.reference}:`, err);
+        console.error(` Scoring IA échoué pour ${candidature.reference}:`, err);
       }
     }
 
@@ -160,9 +160,9 @@ export const soumettreCandidature = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RELANCER LE SCORING IA D'UNE CANDIDATURE
-// ============================================
+
 export const rescorerCandidature = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -204,9 +204,9 @@ export const rescorerCandidature = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RECUPERER TOUTES LES CANDIDATURES
-// ============================================
+
 export const getCandidatures = async (req: Request, res: Response) => {
   try {
     const userRole = (req as any).user.role;
@@ -281,9 +281,9 @@ export const getCandidatures = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RECUPERER LES CANDIDATURES ACCEPTEES (toutes)
-// ============================================
+
 export const getCandidaturesAcceptees = async (req: Request, res: Response) => {
   try {
     const userRole = (req as any).user.role;
@@ -310,9 +310,9 @@ export const getCandidaturesAcceptees = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RECUPERER LES CANDIDATURES ACCEPTEES SANS CONTRAT
-// ============================================
+
 export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Response) => {
   try {
     const userRole = (req as any).user.role;
@@ -334,7 +334,7 @@ export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Res
       orderBy: { dateSoumission: 'desc' }
     });
 
-    console.log(`📋 Candidatures ACCEPTEE sans contrat: ${candidatures.length}`);
+    console.log(` Candidatures ACCEPTEE sans contrat: ${candidatures.length}`);
     sendSuccess(res, { candidatures });
 
   } catch (error) {
@@ -343,9 +343,9 @@ export const getCandidaturesAccepteesSansContrat = async (req: Request, res: Res
   }
 };
 
-// ============================================
+
 // RECUPERER UNE CANDIDATURE PAR ID
-// ============================================
+
 export const getCandidatureById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -380,7 +380,7 @@ export const getCandidatureById = async (req: Request, res: Response) => {
       return sendNotFound(res, 'Candidature non trouvee');
     }
 
-    // 🔥 Récupérer les détails IA depuis le microservice
+    //  Récupérer les détails IA depuis le microservice
     let iaDetails = null;
     if (candidature.offreId && candidature.cvUrl) {
       try {
@@ -429,9 +429,9 @@ export const getCandidatureById = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CHANGER LE STATUT D'UNE CANDIDATURE
-// ============================================
+
 export const updateCandidatureStatut = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -517,9 +517,9 @@ export const updateCandidatureStatut = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // SUPPRIMER UNE CANDIDATURE
-// ============================================
+
 export const deleteCandidature = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -534,9 +534,9 @@ export const deleteCandidature = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RECUPERER L'OFFRE PAR TOKEN (public)
-// ============================================
+
 export const getOffreByToken = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
@@ -569,9 +569,9 @@ export const getOffreByToken = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // UPLOAD DE CV (public)
-// ============================================
+
 export const uploadCV = async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -601,9 +601,9 @@ export const uploadCV = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ENVOYER LA FICHE DE RENSEIGNEMENT
-// ============================================
+
 export const envoyerFicheRenseignement = async (req: Request, res: Response) => {
   try {
     const { candidatureId } = req.params;
@@ -640,7 +640,7 @@ export const envoyerFicheRenseignement = async (req: Request, res: Response) => 
       }
     });
 
-    console.log(`📧 Email à envoyer à ${candidature.email}: ${ficheUrl}`);
+    console.log(` Email à envoyer à ${candidature.email}: ${ficheUrl}`);
 
     sendSuccess(res, { token, ficheUrl }, 'Fiche de renseignement envoyée avec succès');
   } catch (error) {
@@ -649,9 +649,9 @@ export const envoyerFicheRenseignement = async (req: Request, res: Response) => 
   }
 };
 
-// ============================================
+
 // RECUPERER LA FICHE DE RENSEIGNEMENT (public)
-// ============================================
+
 export const getFicheRenseignement = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
@@ -686,9 +686,9 @@ export const getFicheRenseignement = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // SOUMETTRE LA FICHE DE RENSEIGNEMENT (public)
-// ============================================
+
 export const soumettreFicheRenseignement = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
@@ -723,9 +723,9 @@ export const soumettreFicheRenseignement = async (req: Request, res: Response) =
   }
 };
 
-// ============================================
+
 // RECUPERER LA FICHE PAR ID CANDIDATURE
-// ============================================
+
 export const getFicheByCandidatureId = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

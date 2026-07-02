@@ -14,9 +14,9 @@ const generateContratReference = async (): Promise<string> => {
   return `CTR-${year}-${String(count + 1).padStart(4, '0')}`;
 };
 
-// ============================================
+
 // RÉCUPÉRER LES DONNÉES POUR PRÉ-REMPLIR LE FORMULAIRE
-// ============================================
+
 export const getDonneesPrecontrat = async (req: Request, res: Response) => {
   try {
     const { candidatureId } = req.params;
@@ -76,9 +76,9 @@ export const getDonneesPrecontrat = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CRÉER UN CONTRAT
-// ============================================
+
 export const createContrat = async (req: Request, res: Response) => {
   try {
     const {
@@ -224,9 +224,9 @@ export const createContrat = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RÉCUPÉRER TOUS LES CONTRATS
-// ============================================
+
 export const getContrats = async (req: Request, res: Response) => {
   try {
     const userRole = (req as any).user.role;
@@ -272,9 +272,9 @@ export const getContrats = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RÉCUPÉRER UN CONTRAT PAR ID
-// ============================================
+
 export const getContratById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -301,9 +301,9 @@ export const getContratById = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ENVOYER LE CONTRAT À L'EMPLOYÉ
-// ============================================
+
 export const envoyerContrat = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -345,9 +345,9 @@ export const envoyerContrat = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CONSULTATION DU CONTRAT PAR L'EMPLOYÉ
-// ============================================
+
 export const consulterContrat = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -375,9 +375,9 @@ export const consulterContrat = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // MARQUER COMME SIGNÉ (après signature physique)
-// ============================================
+
 export const signerContrat = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -415,14 +415,14 @@ export const signerContrat = async (req: Request, res: Response) => {
       data: { statut: 'ACTIF' }
     });
 
-    // ✅ CRÉER L'ÉVALUATION PE APRÈS LA SIGNATURE
+    //  CRÉER L'ÉVALUATION PE APRÈS LA SIGNATURE
     try {
       const evaluation = await creerEvaluationPEDepuisContrat(contrat);
       if (evaluation) {
         console.log(`✅ Évaluation PE créée avec succès: ${evaluation.reference}`);
       }
     } catch (evalError) {
-      console.error('❌ Erreur lors de la création de l\'évaluation PE:', evalError);
+      console.error(' Erreur lors de la création de l\'évaluation PE:', evalError);
       // Ne pas bloquer la signature si l'évaluation échoue
     }
 
@@ -442,11 +442,11 @@ export const signerContrat = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
-// ✅ NOUVELLE FONCTION : Créer l'évaluation PE depuis un contrat
-// ============================================
+
+//  NOUVELLE FONCTION : Créer l'évaluation PE depuis un contrat
+
 async function creerEvaluationPEDepuisContrat(contrat: any) {
-  console.log(`🔍 Création évaluation PE pour contrat ${contrat.reference}...`);
+  console.log(` Création évaluation PE pour contrat ${contrat.reference}...`);
 
   // Vérifier si une évaluation existe déjà
   const existingEval = await prisma.evaluationPE.findFirst({
@@ -454,7 +454,7 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
   });
 
   if (existingEval) {
-    console.log(`⚠️ Une évaluation existe déjà pour ce contrat (${existingEval.reference})`);
+    console.log(` Une évaluation existe déjà pour ce contrat (${existingEval.reference})`);
     return null;
   }
 
@@ -465,7 +465,7 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
   });
 
   if (!candidature) {
-    console.log(`⚠️ Candidature non trouvée pour contrat ${contrat.reference}`);
+    console.log(` Candidature non trouvée pour contrat ${contrat.reference}`);
     return null;
   }
 
@@ -493,7 +493,7 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
         mustChangePassword: true
       }
     });
-    console.log(`✅ Employé créé: ${employe.prenom} ${employe.nom} (${employe.email})`);
+    console.log(` Employé créé: ${employe.prenom} ${employe.nom} (${employe.email})`);
   }
 
   // Trouver le manager de la même direction
@@ -506,7 +506,7 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
   });
 
   if (!manager) {
-    console.log(`⚠️ Aucun manager trouvé pour la direction ${candidature.offre?.demande?.directionId}`);
+    console.log(` Aucun manager trouvé pour la direction ${candidature.offre?.demande?.directionId}`);
     return null;
   }
 
@@ -536,7 +536,7 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
     }
   });
 
-  console.log(`✅ Évaluation PE créée: ${evaluation.reference} (J-${joursRestants})`);
+  console.log(` Évaluation PE créée: ${evaluation.reference} (J-${joursRestants})`);
   
   // Notifier le responsable paie
   const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
@@ -553,9 +553,9 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
   return evaluation;
 }
 
-// ============================================
+
 // GÉNÉRER ET TÉLÉCHARGER LE PDF
-// ============================================
+
 export const telechargerPDF = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -773,7 +773,7 @@ ${observationsFinal ? `
 ` : ''}
 
 <div class="notice">
-  <strong>⚠️ Document à titre de consultation</strong><br>
+  <strong> Document à titre de consultation</strong><br>
   La signature définitive sera effectuée physiquement au siège social de l'entreprise.
 </div>
 
@@ -821,9 +821,9 @@ ${observationsFinal ? `
   }
 };
 
-// ============================================
+
 // METTRE À JOUR LE STATUT
-// ============================================
+
 export const updateContratStatut = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -847,9 +847,9 @@ export const updateContratStatut = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CRÉER UN AVENANT
-// ============================================
+
 export const createAvenant = async (req: Request, res: Response) => {
   try {
     const { contratId, typeAvenant, description, dateEffet, nouveauSalaire, nouvelleDateFin } = req.body;
@@ -880,9 +880,9 @@ export const createAvenant = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RÉCUPÉRER LES AVENANTS
-// ============================================
+
 export const getAvenants = async (req: Request, res: Response) => {
   try {
     const { contratId } = req.params;

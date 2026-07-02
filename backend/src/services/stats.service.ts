@@ -548,15 +548,19 @@ class StatsService {
     };
   }
 
-  async getStatsForDGA(): Promise<DashboardStats> {
+ async getStatsForDGA(): Promise<DashboardStats> {
     const stats = await this.getStatsForDAF();
-    stats.demandes.enCours = stats.demandes.demandes?.filter(d => d.statut === 'EN_VALIDATION_DGA' || d.statut === 'EN_VALIDATION_DG')?.length || 0;
+    stats.demandes.enCours = await prisma.demandeRecrutement.count({
+      where: { statut: { in: ['EN_VALIDATION_DGA', 'EN_VALIDATION_DG'] } }
+    });
     return stats;
   }
 
   async getStatsForDG(): Promise<DashboardStats> {
     const stats = await this.getStatsForDAF();
-    stats.demandes.enCours = stats.demandes.demandes?.filter(d => d.statut === 'EN_VALIDATION_DG')?.length || 0;
+    stats.demandes.enCours = await prisma.demandeRecrutement.count({
+      where: { statut: 'EN_VALIDATION_DG' }
+    });
     return stats;
   }
 

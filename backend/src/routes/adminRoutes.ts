@@ -14,7 +14,7 @@ import {
 import {
   getScoringConfig,
   updateScoringConfig
-} from '../controllers/scoringConfigController'; // ✅ Ajouter
+} from '../controllers/scoringConfigController'; 
 
 const router = Router();
 
@@ -30,7 +30,7 @@ router.patch('/circuits/:id/toggle', toggleCircuit);
 router.post('/circuits/reset', resetCircuits);
 router.delete('/circuits/:id', deleteCircuit);
 
-// ✅ Scoring config
+//  Scoring config
 router.get('/scoring-config', getScoringConfig);
 router.put('/scoring-config', updateScoringConfig);
 

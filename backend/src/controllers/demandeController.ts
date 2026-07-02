@@ -33,9 +33,9 @@ const determinerInterviewers = (niveau: string) => {
   };
 };
 
-// ============================================
+
 // CALCULER LA DATE LIMITE (48h en prod, configurable en test)
-// ============================================
+
 const calculerDateLimite = (): Date => {
   const delaiMinutesTest = parseInt(process.env.DELAI_RELANCE_MINUTES || '0');
   const dateLimite = new Date();
@@ -47,9 +47,9 @@ const calculerDateLimite = (): Date => {
   return dateLimite;
 };
 
-// ============================================
+
 // DETERMINER LE CIRCUIT
-// ============================================
+
 const determinerCircuit = async (
   niveau: string,
   createurRole: string
@@ -97,9 +97,9 @@ const getRoleLabel = (role: string): string => {
   return labels[role] || role;
 };
 
-// ============================================
+
 // TROUVER LE VALIDATEUR
-// ============================================
+
 const trouverValidateur = async (role: string, directionId: string | null) => {
   console.log(`Recherche validateur pour role: ${role}, directionId: ${directionId}`);
 
@@ -133,9 +133,9 @@ const trouverValidateur = async (role: string, directionId: string | null) => {
   return null;
 };
 
-// ============================================
+
 // AUDIT LOG
-// ============================================
+
 const createAuditLog = async (
   userId: string,
   action: string,
@@ -165,9 +165,9 @@ const notifierManager = async (managerId: string, createurNom: string, demandeRe
   }
 };
 
-// ============================================
+
 // VERIFIER LES DROITS DU CREATEUR
-// ============================================
+
 const verifierDroitsCreateur = (
   createurRole: string,
   niveau: string
@@ -184,9 +184,9 @@ const verifierDroitsCreateur = (
   return { valid: true };
 };
 
-// ============================================
+
 // REFERENCE UNIQUE
-// ============================================
+
 const generateReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const count = await prisma.demandeRecrutement.count({
@@ -195,9 +195,9 @@ const generateReference = async (): Promise<string> => {
   return `DEM-${year}-${String(count + 1).padStart(3, '0')}`;
 };
 
-// ============================================
+
 // GET DEMANDES
-// ============================================
+
 export const getDemandes = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
@@ -275,9 +275,9 @@ export const getDemandes = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // GET DEMANDE BY ID
-// ============================================
+
 export const getDemandeById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -323,9 +323,9 @@ export const getDemandeById = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CREATE DEMANDE
-// ============================================
+
 export const createDemande = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
@@ -431,9 +431,9 @@ export const createDemande = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // UPDATE DEMANDE
-// ============================================
+
 export const updateDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -490,9 +490,9 @@ export const updateDemande = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // DELETE DEMANDE
-// ============================================
+
 export const deleteDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -534,9 +534,9 @@ export const deleteDemande = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // SUBMIT DEMANDE
-// ============================================
+
 export const submitDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -639,9 +639,9 @@ export const submitDemande = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // VALIDER DEMANDE
-// ============================================
+
 export const validerDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -799,9 +799,9 @@ export const validerDemande = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ENDPOINTS N8N INTERNES
-// ============================================
+
 export const getDemandeForN8n = async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
@@ -852,9 +852,9 @@ export const updateDemandeStatutN8n = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // CHECK RELANCE (appele par n8n)
-// ============================================
+
 export const checkRelance = async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
@@ -991,9 +991,9 @@ export const checkRelance = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // RELANCER MANUELLEMENT (DRH)
-// ============================================
+
 export const relancerManuellement = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

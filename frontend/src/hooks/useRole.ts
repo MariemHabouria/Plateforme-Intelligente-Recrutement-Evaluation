@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Role } from '@/types'
 
-export function useRole(initial: Role = 'manager') {
+export function useRole(initial: Role = 'MANAGER') {
   const [role, setRole] = useState<Role>(initial)
   return { role, setRole }
 }

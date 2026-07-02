@@ -175,7 +175,7 @@ export function CandidatDetailPage({ id }: Props) {
   };
 
 const openPlanifierModal = (type: TypeEntretien) => {
-  if (candidature?.statut !== 'FICHE_RECUE') {
+  if (candidature?.statut !== 'FICHE_RECUE' && candidature?.statut !== 'ENTRETIEN') {
     alert('Veuillez attendre la réception de la fiche de renseignement avant de planifier un entretien.');
     return;
   }
@@ -234,10 +234,10 @@ const openPlanifierModal = (type: TypeEntretien) => {
       </div>
     );
   }
-
-  const isFicheRecue     = candidature.statut === 'FICHE_RECUE';
-  const isFicheEnvoyee   = candidature.statut === 'FICHE_ENVOYEE';
-  const isPreselectionnee = candidature.statut === 'PRESELECTIONNEE';
+const isFicheRecue      = candidature.statut === 'FICHE_RECUE';
+const isEnEntretien     = candidature.statut === 'ENTRETIEN';
+const isFicheEnvoyee    = candidature.statut === 'FICHE_ENVOYEE';
+const isPreselectionnee = candidature.statut === 'PRESELECTIONNEE';
 
   return (
     <div className="page-fade">
@@ -276,17 +276,7 @@ const openPlanifierModal = (type: TypeEntretien) => {
         </div>
       </div>
 
-      {/* ── Actions statut ENTRETIEN ────────────────────────────── */}
-      {candidature.statut === 'ENTRETIEN' && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-          <Button variant="success" onClick={() => updateStatut('ACCEPTEE')} disabled={updating}>
-            <Check size={14} /> Accepter la candidature
-          </Button>
-          <Button variant="danger" onClick={() => updateStatut('REFUSEE')} disabled={updating}>
-            <X size={14} /> Refuser la candidature
-          </Button>
-        </div>
-      )}
+
 
       {/* ── Actions statut NOUVELLE ─────────────────────────────── */}
       {candidature.statut === 'NOUVELLE' && (
@@ -339,9 +329,9 @@ const openPlanifierModal = (type: TypeEntretien) => {
         </div>
       )}
 
-      {/* ── Planifier entretiens ─────────────────────────────────── */}
-      {isFicheRecue && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+{/* ── Planifier entretiens ─────────────────────────────────── */}
+{(isFicheRecue || isEnEntretien) && (
+  <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           {!hasEntretien('RH') && (
             <Button variant="primary" onClick={() => openPlanifierModal('RH')}>
               <Calendar size={14} /> Planifier entretien RH

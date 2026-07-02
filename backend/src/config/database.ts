@@ -18,15 +18,15 @@ const sequelize = new Sequelize(
 export const testConnection = async () => {
     try {
         await sequelize.authenticate();
-        console.log('✅ Connexion PostgreSQL réussie');
+        console.log(' Connexion PostgreSQL réussie');
         
         // FORCER la synchronisation des modèles
         // { alter: true } va créer/modifier les tables existantes
         await sequelize.sync({ alter: true }); 
-        console.log('✅ Tables synchronisées avec la base de données');
+        console.log(' Tables synchronisées avec la base de données');
         
     } catch (error) {
-        console.error('❌ Erreur de connexion:', error);
+        console.error(' Erreur de connexion:', error);
         throw error;
     }
 };

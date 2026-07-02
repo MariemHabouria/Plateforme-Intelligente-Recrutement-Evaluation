@@ -97,7 +97,7 @@ export const demandeService = {
     return response.data;
   },
 
-  // ✅ Nouvelle methode pour la validation avec token
+  //  Nouvelle methode pour la validation avec token
   async getDemandeWithToken(id: string, token: string) {
     const response = await api.get(`/demandes/validation/${id}?token=${token}`);
     return response.data;

@@ -40,7 +40,7 @@ router.delete('/:id', deleteDemande);
 
 // Circuit de validation
 router.post('/:id/submit', submitDemande);
-router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); // ← deplace ici
+router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); 
 
 router.patch('/:id/valider', verifierTokenValidation, validerDemande);
 

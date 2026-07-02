@@ -76,7 +76,7 @@ export const ficheRenseignementService = {
         ficheRenseignementRecue: true,
         ficheRenseignementRecueAt: new Date(),
         ficheRenseignementData: data,
-        statut: 'FICHE_RECUE'  // ✅ Prêt pour entretien
+        statut: 'FICHE_RECUE'  
       }
     });
 

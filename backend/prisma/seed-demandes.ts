@@ -1,5 +1,5 @@
 // backend/prisma/seed-demandes.ts
-// Kilani Groupe — Seed complet des demandes de recrutement
+
 
 import {
   PrismaClient,
@@ -18,9 +18,8 @@ const prisma = new PrismaClient({ adapter } as any);
 
 const n8nTriggers: Promise<any>[] = [];
 
-// ============================================================
 // CONFIGURATION DES NIVEAUX
-// ============================================================
+
 const NIVEAU_CONFIG: Record<string, {
   circuitType: CircuitType;
   budgetMin: number;
@@ -46,6 +45,10 @@ const VALIDATEURS_PAR_NIVEAU: Record<string, string[]> = {
 
 const NIVEAUX_AVEC_DIRECTION = ['CADRE_SUPERIEUR', 'STRATEGIQUE'];
 const NIVEAUX_AVEC_TECHNIQUE  = ['TECHNICIEN', 'EMPLOYE', 'CADRE_DEBUTANT', 'CADRE_CONFIRME'];
+
+// Fenêtre de créneaux couvrant passé (entretiens REALISE) et futur (PLANIFIE)
+// -> doit couvrir les offsetDays utilisés dans seed-candidatures.ts
+const FENETRE_CRENEAUX = [-25, -21, -18, -14, -10, -7, -5, -3, 2, 3, 5, 7, 9, 12];
 
 const getRoleLabel = (role: string): string => ({
   MANAGER: 'Manager', DIRECTEUR: 'Directeur', DRH: 'DRH',
@@ -87,9 +90,8 @@ const getEtapeEnCours = (validationsData?: Array<{ decision: string }>): number 
   return validees + 1;
 };
 
-// ============================================================
-// OFFRES KILANI
-// ============================================================
+// OFFRES 
+
 const OFFRES_DATA: Record<string, {
   competences: string[];
   competencesSouhaitees: string[];
@@ -176,9 +178,6 @@ const OFFRES_DATA: Record<string, {
   },
 };
 
-// ============================================================
-// MAIN
-// ============================================================
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('  KILANI GROUPE — Seed Demandes + Offres');
@@ -235,29 +234,51 @@ async function main() {
   let offreCounter = 100;
   const offreRef = (secteur: string) => `OFF-${now.getFullYear()}-${secteur}-${String(++offreCounter).padStart(3, '0')}`;
 
-  // Helpers
-  const addCreneaux = async (managerId: string, directeurId: string | null, demandeId: string, niveau: string, offsets: number[]) => {
-    if (NIVEAUX_AVEC_TECHNIQUE.includes(niveau)) {
+  // ============================================================
+  // CRENEAUX — alignes sur determinerInterviewers() du demandeController
+  //   rh          -> DRH toujours
+  //   technique    -> MANAGER toujours
+  //   direction    -> DIRECTEUR si NIVEAUX_AVEC_DIRECTION
+  //   comite de direction -> DGA / DG pour les postes seniors
+  //     (utilise par les entretiens "DIRECTION" des candidatures pour
+  //      CADRE_SUPERIEUR / STRATEGIQUE, cf seed-candidatures.ts)
+  // ============================================================
+  const addCreneaux = async (
+    demandeId: string,
+    niveau: string,
+    managerId: string,
+    directeurId: string | null
+  ) => {
+    const slotsFor = async (userId: string) => {
       await prisma.disponibiliteInterviewer.createMany({
-        data: offsets.map((dOffset, i) => ({
-          userId: managerId, demandeId,
+        data: FENETRE_CRENEAUX.map((dOffset, i) => ({
+          userId,
+          demandeId,
           date: new Date(now.getFullYear(), now.getMonth(), now.getDate() + dOffset),
           heureDebut: i % 2 === 0 ? '09:00' : '14:00',
           heureFin:   i % 2 === 0 ? '10:00' : '15:00',
           reservee: false,
         })),
       });
-    }
+    };
+
+    // RH : entretien systematique
+    await slotsFor(drh.id);
+
+    // Technique : toujours porte par le Manager
+    await slotsFor(managerId);
+
+    // Direction : seulement si le niveau l'exige
     if (NIVEAUX_AVEC_DIRECTION.includes(niveau) && directeurId) {
-      await prisma.disponibiliteInterviewer.createMany({
-        data: offsets.map((dOffset, i) => ({
-          userId: directeurId, demandeId,
-          date: new Date(now.getFullYear(), now.getMonth(), now.getDate() + dOffset + 2),
-          heureDebut: i % 2 === 0 ? '10:00' : '15:00',
-          heureFin:   i % 2 === 0 ? '11:00' : '16:00',
-          reservee: false,
-        })),
-      });
+      await slotsFor(directeurId);
+    }
+
+    // Comite de direction pour les postes a plus forte responsabilite
+    if (['CADRE_SUPERIEUR', 'STRATEGIQUE'].includes(niveau)) {
+      await slotsFor(dga.id);
+    }
+    if (niveau === 'STRATEGIQUE') {
+      await slotsFor(dg.id);
     }
   };
 
@@ -361,7 +382,7 @@ async function main() {
     }
 
     if (p.avecCreneaux) {
-      await addCreneaux(p.managerId, p.directeurId, demande.id, p.niveau, [5, 7, 9]);
+      await addCreneaux(demande.id, p.niveau, p.managerId, p.directeurId);
     }
 
     if (p.avecDisponibilites) {
@@ -392,9 +413,9 @@ async function main() {
     return demande;
   };
 
-  // ============================================================
+
   // CREATION DES DEMANDES
-  // ============================================================
+
   console.log('\n[3/3] Création des demandes...\n');
 
   // CAS 01 — BROUILLON | Technicien laboratoire | PHARMA
@@ -446,7 +467,7 @@ async function main() {
     typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(21),
     statut: 'EN_VALIDATION_DIR', createurId: managerPharma.id, createurRole: 'MANAGER',
     managerId: managerPharma.id, directeurId: directeurPharma.id, directionId: directionPharma.id,
-    secteur: 'PHARMA', fourchetteSalariale: '2 500 – 3 800 DT', avecOffre: false, avecCreneaux: false,
+    secteur: 'PHARMA', fourchetteSalariale: '2 500 – 3 800 DT', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: directeurPharma.id, decision: 'EN_ATTENTE' },
     ],
@@ -462,7 +483,7 @@ async function main() {
     typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(30),
     statut: 'EN_VALIDATION_DRH', createurId: managerSI.id, createurRole: 'MANAGER',
     managerId: managerSI.id, directeurId: directeurSI.id, directionId: directionSI.id,
-    secteur: 'SI', fourchetteSalariale: '2 800 – 4 000 DT', avecOffre: false, avecCreneaux: false,
+    secteur: 'SI', fourchetteSalariale: '2 800 – 4 000 DT', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: directeurSI.id, decision: 'VALIDEE', dateDecision: past(2) },
       { niveauEtape: 2, acteurId: drh.id,         decision: 'EN_ATTENTE' },
@@ -479,7 +500,7 @@ async function main() {
     typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(45),
     statut: 'EN_VALIDATION_DAF', createurId: managerMKT.id, createurRole: 'MANAGER',
     managerId: managerMKT.id, directeurId: directeurMKT.id, directionId: directionMKT.id,
-    secteur: 'MKT', fourchetteSalariale: '4 000 – 5 500 DT', avecOffre: false, avecCreneaux: false,
+    secteur: 'MKT', fourchetteSalariale: '4 000 – 5 500 DT', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: directeurMKT.id, decision: 'VALIDEE', dateDecision: past(5) },
       { niveauEtape: 2, acteurId: drh.id,          decision: 'VALIDEE', dateDecision: past(3) },
@@ -496,7 +517,7 @@ async function main() {
     motif: 'CREATION', typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(60),
     statut: 'EN_VALIDATION_DGA', createurId: directeurSI.id, createurRole: 'DIRECTEUR',
     managerId: managerSI.id, directeurId: directeurSI.id, directionId: directionSI.id,
-    secteur: 'SI', fourchetteSalariale: '4 500 – 6 000 DT', avecOffre: false, avecCreneaux: false,
+    secteur: 'SI', fourchetteSalariale: '4 500 – 6 000 DT', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: managerSI.id, decision: 'VALIDEE', dateDecision: past(10) },
       { niveauEtape: 2, acteurId: drh.id,       decision: 'VALIDEE', dateDecision: past(7)  },
@@ -651,7 +672,7 @@ async function main() {
     typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(45),
     statut: 'EN_VALIDATION_DIR', createurId: directeurPharma.id, createurRole: 'DIRECTEUR',
     managerId: managerPharma.id, directeurId: directeurPharma.id, directionId: directionPharma.id,
-    secteur: 'PHARMA', fourchetteSalariale: '2 500 – 3 800 DT', avecOffre: false, avecCreneaux: false,
+    secteur: 'PHARMA', fourchetteSalariale: '2 500 – 3 800 DT', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: managerPharma.id, decision: 'EN_ATTENTE' },
     ],
@@ -707,7 +728,7 @@ async function main() {
     typeContrat: 'CDI', priorite: 'HAUTE', dateSouhaitee: d(30),
     statut: 'EN_VALIDATION_DIR', createurId: managerPharma.id, createurRole: 'MANAGER',
     managerId: managerPharma.id, directeurId: directeurPharma.id, directionId: directionPharma.id,
-    secteur: 'PHARMA', avecOffre: false, avecCreneaux: false,
+    secteur: 'PHARMA', avecOffre: false, avecCreneaux: true,
     validationsData: [
       { niveauEtape: 1, acteurId: directeurPharma.id, decision: 'EN_ATTENTE' },
     ],
@@ -723,13 +744,13 @@ async function main() {
   console.log('  RÉSUMÉ DU SEED');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-  const total         = await prisma.demandeRecrutement.count();
-  const parStatut     = await prisma.demandeRecrutement.groupBy({ by: ['statut'], _count: true });
-  const offresCount   = await prisma.offreEmploi.count();
+  const total          = await prisma.demandeRecrutement.count();
+  const parStatut      = await prisma.demandeRecrutement.groupBy({ by: ['statut'], _count: true });
+  const offresCount    = await prisma.offreEmploi.count();
   const offresPubliees = await prisma.offreEmploi.count({ where: { statut: 'PUBLIEE' } });
-  const creneaux      = await prisma.disponibiliteInterviewer.count();
-  const dispos        = await prisma.disponibilite.count();
-  const validations   = await prisma.validationEtape.count();
+  const creneaux       = await prisma.disponibiliteInterviewer.count();
+  const dispos         = await prisma.disponibilite.count();
+  const validations    = await prisma.validationEtape.count();
 
   console.log(`  Demandes     : ${total}`);
   console.log(`  Validations  : ${validations}`);

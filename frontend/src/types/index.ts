@@ -26,9 +26,9 @@ export const normalizeRole = (role: string | undefined): string => {
 // Enum TypeEntretien aligne avec le backend
 export type TypeEntretien = 'RH' | 'TECHNIQUE' | 'DIRECTION';
 
-// ============================================
+
 // MODELE DIRECTION
-// ============================================
+
 export interface Direction {
   id: string;
   code: string;
@@ -39,9 +39,9 @@ export interface Direction {
   updatedAt?: string;
 }
 
-// ============================================
+
 // MODELE USER
-// ============================================
+
 export interface User {
   id: string;
   email: string;
@@ -61,9 +61,9 @@ export interface User {
   updatedAt?: string;
 }
 
-// ============================================
+
 // CONFIGURATION
-// ============================================
+
 export interface RoleConfig {
   label: string;
   color: string;
@@ -81,9 +81,9 @@ export interface NavItem {
   section?: string;
 }
 
-// ============================================
+
 // VALIDATION ETAPE (pour demandes)
-// ============================================
+
 export interface ValidationEtape {
   id: string;
   demandeId: string;
@@ -97,9 +97,9 @@ export interface ValidationEtape {
   createdAt?: string;
 }
 
-// ============================================
+
 // DISPONIBILITES
-// ============================================
+
 export interface Disponibilite {
   id: string;
   demandeId: string;
@@ -120,9 +120,9 @@ export interface DisponibiliteInterviewer {
   createdAt: string;
 }
 
-// ============================================
+
 // DEMANDE RECRUTEMENT
-// ============================================
+
 export interface Demande {
   id: string;
   reference: string;
@@ -158,9 +158,9 @@ export interface Demande {
   offre?: OffreEmploi;
 }
 
-// ============================================
+
 // OFFRE EMPLOI
-// ============================================
+
 export interface OffreEmploi {
   id: string;
   reference: string;
@@ -181,9 +181,9 @@ export interface OffreEmploi {
   updatedAt: string;
 }
 
-// ============================================
+
 // CANDIDATURE
-// ============================================
+
 export interface Candidature {
   id: string;
   reference: string;
@@ -207,9 +207,9 @@ export interface Candidature {
   contrat?: Contrat;
 }
 
-// ============================================
+
 // ENTRETIEN
-// ============================================
+
 export interface Entretien {
   id: string;
   type: TypeEntretien;
@@ -227,9 +227,9 @@ export interface Entretien {
   disponibilite?: DisponibiliteInterviewer;
 }
 
-// ============================================
+
 // CONTRAT
-// ============================================
+
 export interface Contrat {
   id: string;
   reference: string;
@@ -253,9 +253,9 @@ export interface Avenant {
   contratId: string;
 }
 
-// ============================================
+
 // EVALUATION PE (PROCESSUS 2)
-// ============================================
+
 export type DecisionEvaluationPE = 'CONFIRMATION' | 'PROLONGATION' | 'RUPTURE' | 'CHANGEMENT';
 
 export type StatutEvaluationPE = 
@@ -315,9 +315,9 @@ export interface EvaluationValidation {
   createdAt: string;
 }
 
-// ============================================
+
 // WORKFLOW STEPS
-// ============================================
+
 export interface PEStep {
   role: string;
   label: string;
@@ -335,9 +335,9 @@ export const PE_WORKFLOW: PEStep[] = [
   { role: 'cloturee', label: 'Cloturee', description: 'Evaluation finalisee', order: 6 }
 ];
 
-// ============================================
+
 // FORMULAIRES EVALUATION PE
-// ============================================
+
 export interface EvaluationN1FormData {
   evaluationN1: string;
   commentaireN1: string;
@@ -357,9 +357,9 @@ export interface EvaluationValidationFormData {
   commentaire?: string;
 }
 
-// ============================================
+
 // STATISTIQUES
-// ============================================
+
 export interface StatCard {
   label: string;
   value: string;
@@ -369,9 +369,9 @@ export interface StatCard {
   color: string;
 }
 
-// ============================================
+
 // DONNEES MOCK (pour developpement)
-// ============================================
+
 export interface EvaluationPEMock extends EvaluationPEDetail {
   decisionManager?: string;
   salaire?: string;

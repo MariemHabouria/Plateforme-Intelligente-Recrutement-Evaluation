@@ -206,7 +206,7 @@ export function CandidatFormPage() {
               >
                 {fileUploaded ? (
                   <>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                   
                     <div style={{ fontWeight: 600 }}>{fileName}</div>
                   </>
                 ) : (

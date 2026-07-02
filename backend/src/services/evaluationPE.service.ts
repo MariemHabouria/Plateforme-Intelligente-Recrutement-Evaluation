@@ -1,5 +1,5 @@
 // backend/src/services/evaluationPE.service.ts
-// ✅ CORRECTIONS :
+//  CORRECTIONS :
 //   1. verifierContratsEcheance : filtre J-30 correct (dateFin entre aujourd'hui et J+30)
 //   2. employeId : cherche le vrai User via email de la candidature
 //   3. joursRestants : calculé depuis dateFin (fin PE), pas dateDebut
@@ -21,7 +21,7 @@ export const evaluationPEService = {
     console.log(`   Aujourd'hui : ${today.toLocaleDateString('fr-FR')}`);
     console.log(`   Seuil J+30  : ${j30.toLocaleDateString('fr-FR')}`);
 
-    // ✅ Contrats ACTIF dont dateFin (fin PE) est entre aujourd'hui et J+30
+    //  Contrats ACTIF dont dateFin (fin PE) est entre aujourd'hui et J+30
     const contratsEcheance = await prisma.contrat.findMany({
       where: {
         statut: 'ACTIF',
@@ -44,12 +44,12 @@ export const evaluationPEService = {
       }
     });
 
-    console.log(`📋 Contrats en approche J-30 : ${contratsEcheance.length}`);
+    console.log(` Contrats en approche J-30 : ${contratsEcheance.length}`);
 
     let count = 0;
 
     for (const contrat of contratsEcheance) {
-      // ✅ Évaluation déjà existante → juste mettre à jour joursRestants
+      //  Évaluation déjà existante → juste mettre à jour joursRestants
       if (contrat.evaluationPE) {
         if (!['VALIDEE', 'REJETEE'].includes(contrat.evaluationPE.statut)) {
           const jours = Math.ceil(
@@ -59,12 +59,12 @@ export const evaluationPEService = {
             where: { id: contrat.evaluationPE.id },
             data: { joursRestants: jours > 0 ? jours : 0 }
           });
-          console.log(`   🔄 ${contrat.evaluationPE.reference} → joursRestants = ${jours}j`);
+          console.log(`    ${contrat.evaluationPE.reference} → joursRestants = ${jours}j`);
         }
         continue;
       }
 
-      // ✅ Créer l'évaluation manquante
+      //  Créer l'évaluation manquante
       try {
         // Chercher le User via email de la candidature
         const candidatureEmail = contrat.candidature?.email;
@@ -121,30 +121,30 @@ export const evaluationPEService = {
           }
         });
 
-        console.log(`\n   ✅ Évaluation créée : ${evaluation.reference}`);
+        console.log(`\n    Évaluation créée : ${evaluation.reference}`);
         console.log(`      Employé  : ${contrat.candidature?.prenom} ${contrat.candidature?.nom}`);
         console.log(`      Fin PE   : ${dateFinPE.toLocaleDateString('fr-FR')} (J-${joursRestants})`);
         console.log(`      Manager  : ${manager ? `${manager.prenom} ${manager.nom}` : 'Non trouvé'}`);
 
-        // ✅ Email simulé en console — n8n webhook prendra le relais
+        //  Email simulé en console — n8n webhook prendra le relais
         const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
         if (respPaie) {
-          console.log(`\n   📧 [EMAIL → RESP_PAIE] ${respPaie.email}`);
-          console.log(`      Sujet : ⚠️ J-${joursRestants} — Évaluation PE à traiter`);
+          console.log(`\n    [EMAIL → RESP_PAIE] ${respPaie.email}`);
+          console.log(`      Sujet :  J-${joursRestants} — Évaluation PE à traiter`);
           console.log(`      Corps : ${contrat.candidature?.prenom} ${contrat.candidature?.nom} — fin PE le ${dateFinPE.toLocaleDateString('fr-FR')}`);
           console.log(`      URL   : ${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`);
         }
 
         count++;
       } catch (err) {
-        console.error(`   ❌ Erreur pour contrat ${contrat.reference}:`, err);
+        console.error(`    Erreur pour contrat ${contrat.reference}:`, err);
       }
     }
 
     // Recalcule joursRestants pour toutes les évaluations encore actives
     await evaluationPEService.mettreAJourJoursRestants();
 
-    console.log(`\n✅ Vérification terminée — ${count} évaluation(s) créée(s)\n`);
+    console.log(`\n Vérification terminée — ${count} évaluation(s) créée(s)\n`);
     return count;
   },
 
@@ -169,7 +169,7 @@ export const evaluationPEService = {
     }
 
     if (evaluationsActives.length > 0) {
-      console.log(`🔄 joursRestants recalculés pour ${evaluationsActives.length} évaluation(s)`);
+      console.log(` joursRestants recalculés pour ${evaluationsActives.length} évaluation(s)`);
     }
   }
 };

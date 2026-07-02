@@ -11,7 +11,7 @@ interface JwtPayload {
   directionId?: string;
 }
 
-// ✅ CORRECTION : Utiliser la variable d'environnement
+//  CORRECTION : Utiliser la variable d'environnement
 const VALIDATION_SECRET = process.env.VALIDATION_SECRET || 'kilani-validation-secret-2026-securise';
 
 declare global {
@@ -42,9 +42,9 @@ declare global {
   }
 }
 
-// ============================================
+
 // SERVICE DE GENERATION DE TOKEN DE VALIDATION
-// ============================================
+
 export class ValidationTokenService {
   
   static genererToken(demandeId: string, role: string, etape: number): string {
@@ -72,9 +72,9 @@ export class ValidationTokenService {
   }
 }
 
-// ============================================
+
 // MIDDLEWARE D'AUTHENTIFICATION STANDARD
-// ============================================
+
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token;
@@ -126,9 +126,9 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-// ============================================
+
 // MIDDLEWARE DE VERIFICATION DE TOKEN DE VALIDATION
-// ============================================
+
 export const verifierTokenValidation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
@@ -218,9 +218,9 @@ export const verifierTokenValidation = async (req: Request, res: Response, next:
   }
 };
 
-// ============================================
+
 // MIDDLEWARE D'AUTORISATION (RBAC)
-// ============================================
+
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -241,9 +241,9 @@ export const authorize = (...roles: string[]) => {
   };
 };
 
-// ============================================
+
 // MIDDLEWARE D'OPTION (AUTH OU TOKEN)
-// ============================================
+
 export const protectOrToken = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;

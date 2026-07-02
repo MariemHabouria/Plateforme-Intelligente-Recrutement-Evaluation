@@ -4,7 +4,7 @@ const IA_URL = process.env.IA_SERVICE_URL || 'http://localhost:8001';
 const IA_TIMEOUT        = parseInt(process.env.IA_TIMEOUT_MS         || '30000');
 const IA_TIMEOUT_MATCHING = parseInt(process.env.IA_TIMEOUT_MATCHING_MS || '60000');
 
-// ── Types microservice Python (snake_case) ────────────────────────────────────
+// ── Types microservice Python (snake_case)
 
 export interface ScoringResult {
   success: boolean;
@@ -98,7 +98,7 @@ export interface ParsedCV {
   certifications: any[];
 }
 
-// ── Service ───────────────────────────────────────────────────────────────────
+// ── Service
 
 export const iaService = {
 
@@ -213,7 +213,7 @@ export const iaService = {
   },
 };
 
-// ── Helpers privés ────────────────────────────────────────────────────────────
+// ── Helpers privés────────────────────────
 
 function _extractError(err: unknown, fallback: string): string {
   if (err instanceof AxiosError) {

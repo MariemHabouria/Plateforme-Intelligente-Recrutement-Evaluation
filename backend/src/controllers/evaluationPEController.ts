@@ -87,9 +87,9 @@ export const getEvaluationById = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ÉTAPE 1 : RESPONSABLE PAIE
-// ============================================
+
 export const soumettreDonneesPaie = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -115,7 +115,7 @@ export const soumettreDonneesPaie = async (req: Request, res: Response) => {
       data: { poste }
     });
 
-    // ✅ Guard : éviter de matcher un manager sans direction si l'employé n'en a pas
+
     const manager = await prisma.user.findFirst({
       where: {
         role: 'MANAGER',
@@ -153,9 +153,9 @@ export const soumettreDonneesPaie = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ÉTAPE 2 : MANAGER (MÊME DIRECTION)
-// ============================================
+
 export const soumettreEvaluationN1 = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -176,7 +176,7 @@ export const soumettreEvaluationN1 = async (req: Request, res: Response) => {
       return sendForbidden(res, 'Vous n etes pas le manager de cette direction');
     }
 
-    // ✅ Vérification statut + étape combinés pour distinguer l'état manager de l'état directeur
+    //  Vérification statut + étape combinés pour distinguer l'état manager de l'état directeur
     if (evaluation.statut !== 'EN_VALIDATION_DIR' || evaluation.etapeActuelle !== 1) {
       return sendError(res, 'L evaluation n est pas a l etape Manager', 400);
     }
@@ -192,7 +192,7 @@ export const soumettreEvaluationN1 = async (req: Request, res: Response) => {
         justificationRupture: decision === 'RUPTURE' ? justificationRupture : null,
         dateSoumissionN1: new Date(),
         statut: 'EN_VALIDATION_DIR',
-        etapeActuelle: 2   // ✅ On passe à l'étape directeur
+        etapeActuelle: 2   //  On passe à l'étape directeur
       }
     });
 
@@ -227,9 +227,9 @@ export const soumettreEvaluationN1 = async (req: Request, res: Response) => {
   }
 };
 
-// ============================================
+
 // ÉTAPE 3 : DIRECTEUR (MÊME DIRECTION)
-// ============================================
+
 export const validerEvaluationN2 = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -250,13 +250,13 @@ export const validerEvaluationN2 = async (req: Request, res: Response) => {
       return sendForbidden(res, 'Vous n etes pas le directeur de cette direction');
     }
 
-    // ✅ Vérification statut + étape combinés pour n'accepter que l'état directeur
+    //  Vérification statut + étape combinés pour n'accepter que l'état directeur
     if (evaluation.statut !== 'EN_VALIDATION_DIR' || evaluation.etapeActuelle !== 2) {
       return sendError(res, 'L evaluation n est pas a l etape Directeur', 400);
     }
 
     if (decision === 'REJETEE') {
-      // ✅ etapeActuelle et valideeAt mis à jour même en cas de rejet
+      //  etapeActuelle et valideeAt mis à jour même en cas de rejet
       await prisma.evaluationPE.update({
         where: { id },
         data: { statut: 'REJETEE', etapeActuelle: 3, valideeAt: new Date() }
@@ -264,7 +264,7 @@ export const validerEvaluationN2 = async (req: Request, res: Response) => {
       return sendSuccess(res, null, 'Evaluation rejetee');
     }
 
-    // ✅ commentaireN2 correctement sauvegardé
+    //  commentaireN2 correctement sauvegardé
     await prisma.evaluationPE.update({
       where: { id },
       data: {

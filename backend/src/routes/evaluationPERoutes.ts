@@ -8,7 +8,7 @@ import {
   getEvaluationById,
   soumettreDonneesPaie,
   soumettreEvaluationN1,
-  validerEvaluationN2,  // ✅ Changé de validerEvaluation à validerEvaluationN2
+  validerEvaluationN2,  
   deleteEvaluation
 } from '../controllers/evaluationPEController';
 

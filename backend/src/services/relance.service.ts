@@ -17,7 +17,7 @@ export const relanceService = {
       },
       include: {
         demande: {
-          include: { manager: true }
+          include: { manager: true, circuitConfig: true }
         },
         acteur: true
       }
@@ -36,21 +36,28 @@ export const relanceService = {
         typeRelance = 'escalade';
       }
 
+      const totalEtapes =
+        validation.demande.totalEtapes ??
+        validation.demande.circuitConfig?.totalEtapes ??
+        5;
+
       // ── Envoi réel du rappel via n8n (étape en cours = niveauEtape) ──
       try {
         await triggerCircuitRecrutement(
           validation.demande.id,
           validation.demande.niveau,
           validation.niveauEtape,
-          true // isRelance
+          true, // isRelance
+          validation.acteur.role,
+          totalEtapes
         );
         console.log(
-          `📧 [RAPPEL] ${typeRelance.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
+          ` [RAPPEL] ${typeRelance.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
           `(demande ${validation.demande.reference}, retard ${heuresRetard}h)`
         );
       } catch (error) {
         console.error(
-          `❌ [RAPPEL] Échec envoi n8n pour validation ${validation.id} (demande ${validation.demande.reference}):`,
+          ` [RAPPEL] Échec envoi n8n pour validation ${validation.id} (demande ${validation.demande.reference}):`,
           error
         );
         // On continue malgré l'échec réseau : on marque relanceEnvoyee=true
@@ -96,7 +103,7 @@ export const relanceService = {
       include: {
         validationEtape: {
           include: {
-            demande: { include: { manager: true } },
+            demande: { include: { manager: true, circuitConfig: true } },
             acteur: true
           }
         }
@@ -114,21 +121,28 @@ export const relanceService = {
         continue;
       }
 
+      const totalEtapes =
+        validation.demande.totalEtapes ??
+        validation.demande.circuitConfig?.totalEtapes ??
+        5;
+
       // ── Envoi réel du rappel planifié (escalade / relance_24h) via n8n ──
       try {
         await triggerCircuitRecrutement(
           validation.demande.id,
           validation.demande.niveau,
           validation.niveauEtape,
-          true // isRelance
+          true, // isRelance
+          validation.acteur.role,
+          totalEtapes
         );
         console.log(
-          `📧 [RAPPEL PLANIFIÉ] ${job.type.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
+          ` [RAPPEL PLANIFIÉ] ${job.type.toUpperCase()} envoyé via n8n — ${validation.acteur.email} ` +
           `(demande ${validation.demande.reference})`
         );
       } catch (error) {
         console.error(
-          `❌ [RAPPEL PLANIFIÉ] Échec envoi n8n pour job ${job.id} (demande ${validation.demande.reference}):`,
+          ` [RAPPEL PLANIFIÉ] Échec envoi n8n pour job ${job.id} (demande ${validation.demande.reference}):`,
           error
         );
       }

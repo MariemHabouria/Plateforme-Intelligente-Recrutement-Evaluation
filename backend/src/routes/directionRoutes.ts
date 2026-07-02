@@ -19,7 +19,7 @@ router.get(
       });
       res.json({ success: true, data: directions });
     } catch (error) {
-      console.error('❌ getDirections error:', error);
+      console.error(' getDirections error:', error);
       res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
   }

@@ -111,7 +111,6 @@ const CIRCUITS = [
   }
 ];
 
-// ⚠️ TYPES_POSTE_PAR_DIRECTION est SUPPRIMÉ - plus nécessaire
 
 async function main() {
   console.log('Debut du seed...');

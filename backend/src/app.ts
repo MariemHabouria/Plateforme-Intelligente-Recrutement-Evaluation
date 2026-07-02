@@ -17,6 +17,7 @@ import directionRoutes from './routes/directionRoutes';
 import offreRoutes from './routes/offreRoutes';
 import candidatureRoutes from './routes/candidatureRoutes';
 import entretienRoutes from './routes/entretienRoutes';
+import publicEntretienRoutes from './routes/publicEntretien.routes';
 import matchingInverseRoutes from './routes/matchingInverseRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import evaluationRoutes from './routes/evaluationPERoutes';
@@ -66,6 +67,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Servir les fichiers statiques (CVs uploades)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Routes publiques (SANS auth JWT — accessibles via lien token, ex: self-scheduling candidat)
+app.use('/api/public/entretiens', publicEntretienRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);

@@ -1,9 +1,5 @@
 // backend/prisma/seed-candidatures.ts
-// Kilani Groupe — Seed candidatures v4 (flux corrige)
-//
-// Flux respecte : NOUVELLE → PRESELECTIONNEE → FICHE_ENVOYEE → FICHE_RECUE → ENTRETIEN → ACCEPTEE/REFUSEE
-// Regles : entretiens uniquement si statut === 'FICHE_RECUE' ou 'ENTRETIEN'
-//          statut 'ENTRETIEN' signifie qu'au moins un entretien a ete planifie
+
 
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
@@ -14,9 +10,8 @@ const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma  = new PrismaClient({ adapter });
 
-// ============================================================
+
 // TYPES
-// ============================================================
 interface EntretienSeed {
   type: 'RH' | 'TECHNIQUE' | 'DIRECTION';
   interviewerRole: string;
@@ -56,15 +51,9 @@ interface MatchingInverseSeed {
   scoreExp: number;
 }
 
-// ============================================================
 // CANDIDATS (candidatures classiques)
-// ============================================================
+
 const CANDIDATS: CandidatSeed[] = [
-
-  // ==========================================================
-  // BLOC 1 — DIRECTEUR COMMERCIAL (MKT — CAS 08)
-  // ==========================================================
-
   {
     nom: 'Cherif', prenom: 'Mehdi', email: 'mehdi.cherif@gmail.com',
     telephone: '+216 50 100 111',
@@ -133,10 +122,6 @@ const CANDIDATS: CandidatSeed[] = [
     ficheRenseignementRecue: false,
   },
 
-  // ==========================================================
-  // BLOC 2 — DIRECTEUR GENERAL ADJOINT (PHARMA — CAS 09)
-  // ==========================================================
-
   {
     nom: 'Marzouki', prenom: 'Leila', email: 'leila.marzouki@kilani-ext.tn',
     telephone: '+216 52 400 444',
@@ -198,10 +183,6 @@ const CANDIDATS: CandidatSeed[] = [
     ficheRenseignementRecue: false,
   },
 
-  // ==========================================================
-  // BLOC 3 — RESPONSABLE PRODUCTION PHARMA (PHARMA — CAS 10)
-  // ==========================================================
-
   {
     nom: 'Trabelsi', prenom: 'Fathi', email: 'fathi.trabelsi@pharma-ind.tn',
     telephone: '+216 50 600 666',
@@ -242,9 +223,7 @@ const CANDIDATS: CandidatSeed[] = [
       pretentionsSalariales: '6 000 DT', disponibilite: 'Preavis 1 mois',
       mobilite: 'Tunis, Bizerte', motivations: 'Evolution vers un poste de responsabilite production.',
     },
-    entretiens: [
-      { type: 'RH', interviewerRole: 'DRH', offsetDays: -3, heure: '14:00', lieu: 'Siege Kilani — Salle RH', statut: 'PLANIFIE' },
-    ],
+    
   },
 
   {
@@ -261,10 +240,6 @@ const CANDIDATS: CandidatSeed[] = [
     ficheRenseignementEnvoyee: false,
     ficheRenseignementRecue: false,
   },
-
-  // ==========================================================
-  // BLOC 4 — DEVELOPPEUR FULL STACK (SI — CAS 16)
-  // ==========================================================
 
   {
     nom: 'Gharbi', prenom: 'Karim', email: 'karim.gharbi@dev.tn',
@@ -318,10 +293,6 @@ const CANDIDATS: CandidatSeed[] = [
     ficheRenseignementRecue: false,
   },
 
-  // ==========================================================
-  // BLOC 5 — INGENIEUR IA / MACHINE LEARNING (SI — CAS 17)
-  // ==========================================================
-
   {
     nom: 'Romdhani', prenom: 'Aziz', email: 'aziz.romdhani@data-science.tn',
     telephone: '+216 52 777 007',
@@ -352,10 +323,8 @@ const CANDIDATS: CandidatSeed[] = [
     ficheRenseignementRecue: false,
   },
 ];
+// CANDIDATURES MATCHING INVERSE 
 
-// ============================================================
-// CANDIDATURES MATCHING INVERSE (pre-seedees pour la demo)
-// ============================================================
 const MATCHING_INVERSE: MatchingInverseSeed[] = [
   {
     emailCandidat: 'karim.gharbi@dev.tn',
@@ -376,10 +345,8 @@ const MATCHING_INVERSE: MatchingInverseSeed[] = [
     scoreExp:      73,
   },
 ];
-
-// ============================================================
 // HELPERS
-// ============================================================
+
 const getOffreByIntitule = async (intitule: string) =>
   prisma.offreEmploi.findFirst({
     where: { intitule: { contains: intitule, mode: 'insensitive' }, statut: 'PUBLIEE' },
@@ -404,22 +371,18 @@ const isValidStatutForEntretiens = (statut: string, hasEntretiens: boolean): boo
   return allowedForEntretiens.includes(statut);
 };
 
-// ============================================================
-// MAIN
-// ============================================================
 async function main() {
   console.log('--------------------------------------------------------------------');
-  console.log('  KILANI GROUPE — Seed Candidatures v4 (flux corrige)');
+  console.log('  KILANI GROUPE — Seed Candidatures v5 (flux corrige + creneaux)');
   console.log('--------------------------------------------------------------------');
   await prisma.$connect();
 
-  // Nettoyage
+  // Nettoyage (on NE touche PAS DisponibiliteInterviewer : gere par seed-demandes.ts)
   console.log('\n[1/4] Nettoyage...');
   await prisma.entretien.deleteMany({});
-  await prisma.disponibiliteInterviewer.deleteMany({});
   await prisma.candidature.deleteMany({});
   refCounter = 0;
-  console.log('   Supprime : candidatures, entretiens et creneaux');
+  console.log('   Supprime : candidatures et entretiens');
 
   // Offres disponibles
   console.log('\n[2/4] Offres publiees detectees :');
@@ -531,25 +494,37 @@ async function main() {
           },
         });
 
-        if (e.statut === 'PLANIFIE' && offreAvecDemande?.demandeId) {
-          const alreadyExists = await prisma.disponibiliteInterviewer.findFirst({
+        // Coherence avec DisponibiliteInterviewer : on reserve le creneau
+        // pose par seed-demandes.ts s'il existe deja, sinon on le cree.
+        // S'applique a REALISE et PLANIFIE (avant : PLANIFIE seulement,
+        // ce qui laissait les entretiens passes sans creneau associe).
+        if (offreAvecDemande?.demandeId && (e.statut === 'PLANIFIE' || e.statut === 'REALISE')) {
+          const heureFin = `${String(parseInt(e.heure.split(':')[0], 10) + 1).padStart(2, '0')}:00`;
+
+          const creneauExistant = await prisma.disponibiliteInterviewer.findFirst({
             where: { userId: interviewer.id, demandeId: offreAvecDemande.demandeId, date: dateEntretien },
           });
-          if (!alreadyExists) {
+
+          if (creneauExistant) {
+            await prisma.disponibiliteInterviewer.update({
+              where: { id: creneauExistant.id },
+              data: { reservee: true },
+            });
+          } else {
             await prisma.disponibiliteInterviewer.create({
               data: {
-                userId:    interviewer.id,
-                demandeId: offreAvecDemande.demandeId,
-                date:      dateEntretien,
+                userId:     interviewer.id,
+                demandeId:  offreAvecDemande.demandeId,
+                date:       dateEntretien,
                 heureDebut: e.heure,
-                heureFin:  `${String(parseInt(e.heure.split(':')[0]) + 1).padStart(2, '0')}:00`,
-                reservee:  true,
+                heureFin,
+                reservee:   true,
               },
             });
           }
         }
       }
-      console.log(`      -> ${c.entretiens!.length} entretien(s) cree(s)`);
+      console.log(`      -> ${c.entretiens!.length} entretien(s) cree(s) + creneau(x) reserve(s)`);
     } else if (hasEntretiens && c.statut !== 'FICHE_RECUE' && c.statut !== 'ENTRETIEN') {
       console.log(`      -> ATTENTION : ${c.entretiens!.length} entretien(s) non crees car statut = ${c.statut} (doit etre FICHE_RECUE ou ENTRETIEN)`);
     }
@@ -618,6 +593,7 @@ async function main() {
   const avecIA         = await prisma.candidature.count({ where: { consentementIA: true } });
   const avecFiche      = await prisma.candidature.count({ where: { ficheRenseignementEnvoyee: true } });
   const nbEntretiens   = await prisma.entretien.count();
+  const creneauxReserves = await prisma.disponibiliteInterviewer.count({ where: { reservee: true } });
   const parStatut      = await prisma.candidature.groupBy({ by: ['statut'], _count: true });
 
   console.log(`  Total candidatures : ${total}`);
@@ -626,6 +602,7 @@ async function main() {
   console.log(`  Consentement IA    : ${avecIA}/${total}`);
   console.log(`  Fiche envoyee      : ${avecFiche}`);
   console.log(`  Entretiens         : ${nbEntretiens}`);
+  console.log(`  Creneaux reserves  : ${creneauxReserves}`);
   console.log('\n  Par statut :');
   for (const s of parStatut.sort((a, b) => b._count - a._count)) {
     console.log(`    ${s.statut.padEnd(22)} ${s._count}`);

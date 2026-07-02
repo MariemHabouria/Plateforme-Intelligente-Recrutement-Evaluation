@@ -1,14 +1,12 @@
 // backend/src/controllers/scoringConfigController.ts
-// Gestion des poids de scoring par le SUPER_ADMIN
-// Routes : GET /api/admin/scoring-config
-//          PUT /api/admin/scoring-config
+
 
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { sendSuccess, sendError } from '../utils/helpers';
 import { iaService } from '../services/ia.service';
 
-// ── Valeurs par défaut ────────────────────────────────────────────────────────
+// ── Valeurs par défaut 
 
 const DEFAULT_CONFIG = {
   poidsCompetences: 0.35,
@@ -19,7 +17,7 @@ const DEFAULT_CONFIG = {
   seuilMatching:    70,
 };
 
-// ── Validation ────────────────────────────────────────────────────────────────
+// ── Validation 
 
 function validatePoids(body: any): { valid: boolean; message?: string } {
   const {
@@ -51,7 +49,7 @@ function validatePoids(body: any): { valid: boolean; message?: string } {
   return { valid: true };
 }
 
-// ── Controllers ───────────────────────────────────────────────────────────────
+// ── Controllers 
 
 /**
  * GET /api/admin/scoring-config
