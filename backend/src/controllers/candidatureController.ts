@@ -6,7 +6,7 @@ import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound } from '../utils/helpers';
 import { iaService } from '../services/ia.service';
 import fetch from 'node-fetch';
-
+import { emailService } from '../services/email.service';
 
 // GENERER UNE REFERENCE UNIQUE
 
@@ -640,7 +640,13 @@ export const envoyerFicheRenseignement = async (req: Request, res: Response) => 
       }
     });
 
-    console.log(` Email à envoyer à ${candidature.email}: ${ficheUrl}`);
+await emailService.sendFicheRenseignement({
+      nom: candidature.nom,
+      prenom: candidature.prenom,
+      email: candidature.email,
+      ficheUrl,
+      poste: candidature.offre?.intitule || ''
+    });
 
     sendSuccess(res, { token, ficheUrl }, 'Fiche de renseignement envoyée avec succès');
   } catch (error) {

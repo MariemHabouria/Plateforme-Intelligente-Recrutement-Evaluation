@@ -315,7 +315,11 @@ export const envoyerContrat = async (req: Request, res: Response) => {
 
     const contrat = await prisma.contrat.findUnique({
       where: { id },
-      include: { candidature: true }
+      include: {
+        candidature: {
+          include: { offre: true }
+        }
+      }
     });
 
     if (!contrat) return sendNotFound(res, 'Contrat non trouvé');
@@ -323,14 +327,17 @@ export const envoyerContrat = async (req: Request, res: Response) => {
       return sendError(res, 'Seuls les contrats en brouillon peuvent être envoyés', 400);
     }
 
-    const consultationUrl = `${process.env.FRONTEND_URL}/contrats/consultation/${contrat.id}`;
-
-    await emailService.sendNotificationEmail({
+const consultationUrl = `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`;
+    await emailService.sendContratEmail({
       nom: contrat.candidature!.nom,
       prenom: contrat.candidature!.prenom,
       email: contrat.candidature!.email,
-      message: `Veuillez trouver votre contrat ${contrat.reference} à consulter. La signature se fera physiquement au siège.`,
-      actionUrl: consultationUrl
+      contratRef: contrat.reference,
+      typeContrat: contrat.typeContrat,
+      poste: contrat.candidature?.offre?.intitule || '',
+      dateDebut: contrat.dateDebut,
+      salaire: contrat.salaire,
+      consultationUrl
     });
 
     const updated = await prisma.contrat.update({
@@ -426,12 +433,15 @@ export const signerContrat = async (req: Request, res: Response) => {
       // Ne pas bloquer la signature si l'évaluation échoue
     }
 
-    await emailService.sendNotificationEmail({
+await emailService.sendContratSigneEmail({
       nom: contrat.candidature!.nom,
       prenom: contrat.candidature!.prenom,
       email: contrat.candidature!.email,
-      message: `Félicitations ! Votre contrat ${contrat.reference} est maintenant actif. Une période d'essai de 3 mois débute.`,
-      actionUrl: `${process.env.FRONTEND_URL}/contrats/consultation/${contrat.id}`
+      contratRef: contrat.reference,
+      typeContrat: contrat.typeContrat,
+      dateDebut: contrat.dateDebut,
+      periodeEssaiFin: contrat.dateFin || contrat.dateDebut,
+consultationUrl: `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`
     });
 
     sendSuccess(res, updated, 'Contrat signé et évaluation PE créée');
