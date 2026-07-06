@@ -9,7 +9,8 @@ import {
   soumettreDonneesPaie,
   soumettreEvaluationN1,
   validerEvaluationN2,  
-  deleteEvaluation
+  deleteEvaluation,
+  relancerEvaluation
 } from '../controllers/evaluationPEController';
 
 const router = Router();
@@ -25,5 +26,6 @@ router.post('/:id/soumettre-paie', authorize('RESP_PAIE'), soumettreDonneesPaie)
 router.post('/:id/soumettre-n1', authorize('MANAGER'), soumettreEvaluationN1);
 router.post('/:id/valider-n2', authorize('DIRECTEUR'), validerEvaluationN2);
 router.delete('/:id', authorize('SUPER_ADMIN', 'RESP_PAIE'), deleteEvaluation);
+router.post('/:id/relancer/:niveauEtape', authorize('RESP_PAIE', 'SUPER_ADMIN'), relancerEvaluation);
 
 export default router;

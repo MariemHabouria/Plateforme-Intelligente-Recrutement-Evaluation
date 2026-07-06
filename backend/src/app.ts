@@ -23,6 +23,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import evaluationRoutes from './routes/evaluationPERoutes';
 import contratRoutes from './routes/contratRoutes';
 import { uploadCV, uploadMiddleware } from './controllers/uploadController';
+import auditRoutes from './routes/auditRoutes';
 
 dotenv.config();
 
@@ -84,6 +85,7 @@ app.use('/api/matching-inverse', matchingInverseRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/evaluations', evaluationRoutes);
 app.use('/api/contrats', contratRoutes);
+app.use('/api/audit-logs', auditRoutes);
 
 // Upload CV
 app.post('/api/upload/cv', uploadMiddleware, uploadCV);

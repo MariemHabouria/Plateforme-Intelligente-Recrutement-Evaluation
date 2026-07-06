@@ -39,6 +39,8 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { id: 'demandes',       label: 'Toutes les demandes',    icon: 'FileText' },
     { id: 'evaluation',     label: 'Evaluations PE',         icon: 'Star',     badge: '3', badgeColor: 'amber' },
     { id: 'audit',          label: "Journal d'audit",        icon: 'Shield' },
+      { id: 'entretiens',     label: 'Entretiens',             icon: 'Calendar' },   
+
   ],
   manager: [
     { section: 'principal' },

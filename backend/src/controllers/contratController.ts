@@ -1,6 +1,32 @@
 // backend/src/controllers/contratController.ts
+//
+// Corrections apportées par rapport à la version précédente :
+//   1. FIX CRITIQUE : signerContrat créait l'EvaluationPE IMMÉDIATEMENT à la
+//      signature (et notifiait le RESP_PAIE tout de suite), au lieu
+//      d'attendre le déclenchement automatique à J-30 décrit dans le cahier
+//      des charges. -> La création de l'EvaluationPE reste exclusivement
+//      dans evaluationPEService.verifierContratsEcheance (job J-30).
+//   2. FIX MÉTIER : l'EMPLOYE n'a PAS accès à la plateforme — seuls
+//      SUPER_ADMIN, MANAGER, DIRECTEUR, DRH, DAF, DGA, DG et RESP_PAIE s'y
+//      connectent. La version précédente traitait le User (role EMPLOYE)
+//      créé à la signature comme un vrai "compte" : mot de passe temporaire
+//      à transmettre, notification au Resp. Paie pour "communiquer les
+//      identifiants de connexion", mustChangePassword présenté comme un
+//      vrai parcours de première connexion. Rien de tout cela n'a de sens
+//      pour un rôle qui ne se connecte jamais. Ce User n'existe que pour
+//      deux raisons strictement internes : (a) EvaluationPE.employeId est
+//      une FK obligatoire qui a besoin d'une ligne à référencer, et (b) les
+//      écrans RH (annuaire, fiches employé) affichent ces données. On parle
+//      donc désormais de "fiche employé", pas de "compte" : mot de passe
+//      aléatoire jamais communiqué (juste pour satisfaire la contrainte
+//      NOT NULL de la colonne), pas de notification de type "voici ses
+//      identifiants".
+//   3. FIX : génération de `reference` contrat protégée contre les
+//      collisions concurrentes (retry sur violation de contrainte unique
+//      au lieu d'un count() naïf).
 
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from '../utils/helpers';
 import { emailService } from '../services/email.service';
@@ -8,10 +34,24 @@ import puppeteer from 'puppeteer';
 
 const generateContratReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
-  const count = await prisma.contrat.count({
-    where: { reference: { startsWith: `CTR-${year}` } }
-  });
-  return `CTR-${year}-${String(count + 1).padStart(4, '0')}`;
+  for (let tentative = 0; tentative < 5; tentative++) {
+    const count = await prisma.contrat.count({
+      where: { reference: { startsWith: `CTR-${year}` } }
+    });
+    const suffixe = tentative === 0 ? '' : `-${Date.now().toString().slice(-4)}`;
+    const reference = `CTR-${year}-${String(count + 1 + tentative).padStart(4, '0')}${suffixe}`;
+    const existe = await prisma.contrat.findUnique({ where: { reference } });
+    if (!existe) return reference;
+  }
+  return `CTR-${year}-${Date.now()}`;
+};
+
+// Génère une valeur aléatoire pour le champ `password` (NOT NULL en base)
+// de la fiche EMPLOYE auto-créée à la signature. Cette valeur n'est
+// JAMAIS communiquée à qui que ce soit : l'EMPLOYE n'a pas accès à la
+// plateforme, donc ce mot de passe ne sert jamais à une connexion réelle.
+const genererValeurPlaceholder = (): string => {
+  return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '').slice(0, 12) + 'Aa1!';
 };
 
 
@@ -327,7 +367,7 @@ export const envoyerContrat = async (req: Request, res: Response) => {
       return sendError(res, 'Seuls les contrats en brouillon peuvent être envoyés', 400);
     }
 
-const consultationUrl = `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`;
+    const consultationUrl = `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`;
     await emailService.sendContratEmail({
       nom: contrat.candidature!.nom,
       prenom: contrat.candidature!.prenom,
@@ -422,18 +462,34 @@ export const signerContrat = async (req: Request, res: Response) => {
       data: { statut: 'ACTIF' }
     });
 
-    //  CRÉER L'ÉVALUATION PE APRÈS LA SIGNATURE
+    // FIX : on crée UNIQUEMENT la fiche employé ici (pas un "compte" —
+    // l'EMPLOYE n'a pas accès à la plateforme, voir
+    // creerFicheEmployeDepuisContrat ci-dessous). La création de
+    // l'EvaluationPE reste exclusivement déclenchée par
+    // evaluationPEService.verifierContratsEcheance() à J-30.
     try {
-      const evaluation = await creerEvaluationPEDepuisContrat(contrat);
-      if (evaluation) {
-        console.log(`✅ Évaluation PE créée avec succès: ${evaluation.reference}`);
+      const { employe, ficheCreee } = await creerFicheEmployeDepuisContrat(contrat);
+      if (employe && ficheCreee) {
+        console.log(`✅ Fiche employé créée: ${employe.email}`);
       }
-    } catch (evalError) {
-      console.error(' Erreur lors de la création de l\'évaluation PE:', evalError);
-      // Ne pas bloquer la signature si l'évaluation échoue
+    } catch (ficheError) {
+      console.error(' Erreur lors de la création de la fiche employé:', ficheError);
+      // Ne pas bloquer la signature si la création de la fiche échoue —
+      // mais alerter, sinon le job J-30 ne trouvera personne à évaluer.
+      const superAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN', actif: true } });
+      if (superAdmin) {
+        await emailService.sendNotificationEmail({
+          nom: superAdmin.nom,
+          prenom: superAdmin.prenom,
+          email: superAdmin.email,
+          message: `Le contrat ${contrat.reference} a été signé mais la création automatique de la ` +
+            `fiche employé a échoué. Merci de créer le dossier manuellement.`,
+          actionUrl: `${process.env.FRONTEND_URL}/contrats/${contrat.id}`
+        });
+      }
     }
 
-await emailService.sendContratSigneEmail({
+    await emailService.sendContratSigneEmail({
       nom: contrat.candidature!.nom,
       prenom: contrat.candidature!.prenom,
       email: contrat.candidature!.email,
@@ -441,10 +497,10 @@ await emailService.sendContratSigneEmail({
       typeContrat: contrat.typeContrat,
       dateDebut: contrat.dateDebut,
       periodeEssaiFin: contrat.dateFin || contrat.dateDebut,
-consultationUrl: `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`
+      consultationUrl: `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`
     });
 
-    sendSuccess(res, updated, 'Contrat signé et évaluation PE créée');
+    sendSuccess(res, updated, 'Contrat signé et dossier employé créé. L\'évaluation de période d\'essai sera générée automatiquement à J-30 de la fin de période d\'essai.');
 
   } catch (error) {
     console.error('signerContrat error:', error);
@@ -453,22 +509,26 @@ consultationUrl: `${process.env.BACKEND_URL}/api/contrats/${contrat.id}/pdf`
 };
 
 
-//  NOUVELLE FONCTION : Créer l'évaluation PE depuis un contrat
-
-async function creerEvaluationPEDepuisContrat(contrat: any) {
-  console.log(` Création évaluation PE pour contrat ${contrat.reference}...`);
-
-  // Vérifier si une évaluation existe déjà
-  const existingEval = await prisma.evaluationPE.findFirst({
-    where: { contratId: contrat.id }
-  });
-
-  if (existingEval) {
-    console.log(` Une évaluation existe déjà pour ce contrat (${existingEval.reference})`);
-    return null;
-  }
-
-  // Récupérer la candidature associée
+// Crée (ou retrouve) la FICHE employé (User, role EMPLOYE) correspondant
+// au candidat dont le contrat vient d'être signé.
+//
+// FIX IMPORTANT : un EMPLOYE n'a PAS accès à la plateforme — seuls
+// SUPER_ADMIN, MANAGER, DIRECTEUR, DRH, DAF, DGA, DG et RESP_PAIE s'y
+// connectent. La version précédente traitait ce User comme un vrai
+// "compte" (mot de passe temporaire généré et à transmettre, workflow de
+// première connexion) alors que ce rôle ne se connecte jamais. Ce User
+// n'existe ici que pour deux raisons strictement internes :
+//   1. EvaluationPE.employeId est une FK obligatoire vers User : il faut
+//      bien une ligne à référencer pour pouvoir suivre sa période d'essai.
+//   2. Les écrans RH (annuaire, fiches employé) affichent ces données
+//      (poste, direction, manager...).
+// Le champ `password` reste NOT NULL en base (contrainte du schéma), donc
+// on y met une valeur aléatoire non communiquée à qui que ce soit — elle
+// ne sera jamais utilisée puisqu'aucune connexion EMPLOYE n'est prévue.
+// On ne crée PLUS l'EvaluationPE ici (voir note dans signerContrat
+// ci-dessus) — c'est désormais le job J-30 qui s'en charge exclusivement,
+// via evaluationPEService.verifierContratsEcheance().
+async function creerFicheEmployeDepuisContrat(contrat: any): Promise<{ employe: any; ficheCreee: boolean }> {
   const candidature = await prisma.candidature.findUnique({
     where: { id: contrat.candidatureId! },
     include: { offre: { include: { demande: { include: { direction: true } } } } }
@@ -476,91 +536,58 @@ async function creerEvaluationPEDepuisContrat(contrat: any) {
 
   if (!candidature) {
     console.log(` Candidature non trouvée pour contrat ${contrat.reference}`);
-    return null;
+    return { employe: null, ficheCreee: false };
   }
 
-  // Trouver ou créer un employé (User avec role EMPLOYE)
-  // On utilise l'email de la candidature pour trouver l'employé correspondant
   let employe = await prisma.user.findFirst({
     where: { email: candidature.email, role: 'EMPLOYE' }
   });
 
-  if (!employe) {
-    // Créer un employé à partir de la candidature
-    const defaultPassword = await require('bcrypt').hash('Password123!', 10);
-    employe = await prisma.user.create({
-      data: {
-        email: candidature.email,
-        password: defaultPassword,
-        nom: candidature.nom,
-        prenom: candidature.prenom,
-        role: 'EMPLOYE',
-        poste: contrat.donneesContrat?.poste?.intitule || candidature.offre?.intitule || 'Employé',
-        telephone: candidature.telephone,
-        directionId: candidature.offre?.demande?.directionId,
-        dateArrivee: contrat.dateDebut,
-        actif: true,
-        mustChangePassword: true
-      }
-    });
-    console.log(` Employé créé: ${employe.prenom} ${employe.nom} (${employe.email})`);
+  if (employe) {
+    return { employe, ficheCreee: false };
   }
 
-  // Trouver le manager de la même direction
-  const manager = await prisma.user.findFirst({
-    where: {
-      role: 'MANAGER',
-      directionId: candidature.offre?.demande?.directionId,
-      actif: true
-    }
-  });
+  const bcrypt = require('bcrypt');
+  const valeurPlaceholder = genererValeurPlaceholder();
+  const passwordHash = await bcrypt.hash(valeurPlaceholder, 10);
 
-  if (!manager) {
-    console.log(` Aucun manager trouvé pour la direction ${candidature.offre?.demande?.directionId}`);
-    return null;
-  }
-
-  // Calculer les jours restants
-  const today = new Date();
-  const dateFin = contrat.dateFin;
-  const joursRestants = Math.ceil((dateFin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  // Générer la référence
-  const year = new Date().getFullYear();
-  const count = await prisma.evaluationPE.count();
-  const reference = `EVAL-${year}-${String(count + 1).padStart(4, '0')}`;
-
-  // Créer l'évaluation
-  const evaluation = await prisma.evaluationPE.create({
+  employe = await prisma.user.create({
     data: {
-      reference,
-      employeId: employe.id,
-      managerId: manager.id,
-      contratId: contrat.id,
-      dateDebut: contrat.dateDebut,
-      dateFin: dateFin,
-      joursRestants: joursRestants > 0 ? joursRestants : 0,
-      statut: 'BROUILLON',
-      etapeActuelle: 0,
-      totalEtapes: 3
+      email: candidature.email,
+      password: passwordHash,
+      nom: candidature.nom,
+      prenom: candidature.prenom,
+      role: 'EMPLOYE',
+      poste: contrat.donneesContrat?.poste?.intitule || candidature.offre?.intitule || 'Employé',
+      telephone: candidature.telephone,
+      directionId: candidature.offre?.demande?.directionId,
+      dateArrivee: contrat.dateDebut,
+      actif: true,
+      // Sans objet pour un rôle qui ne se connecte jamais à la
+      // plateforme ; laissé à true par cohérence avec le reste du modèle.
+      mustChangePassword: true
     }
   });
 
-  console.log(` Évaluation PE créée: ${evaluation.reference} (J-${joursRestants})`);
-  
-  // Notifier le responsable paie
+  console.log(` Fiche employé créée : ${employe.prenom} ${employe.nom} (${employe.email}) — sans accès plateforme`);
+
+  // On informe le Resp. Paie que le dossier RH a été créé, pour son suivi
+  // administratif — mais on ne parle plus d'identifiants de connexion :
+  // l'employé n'en a pas et n'en aura jamais besoin.
   const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
   if (respPaie) {
     await emailService.sendNotificationEmail({
       nom: respPaie.nom,
       prenom: respPaie.prenom,
       email: respPaie.email,
-      message: `Une nouvelle évaluation PE a été créée pour ${candidature.prenom} ${candidature.nom}. Veuillez saisir les données contractuelles.`,
-      actionUrl: `${process.env.FRONTEND_URL}/evaluations/${evaluation.id}`
+      message: `Le dossier employé de ${employe.prenom} ${employe.nom} (${employe.email}) a été créé ` +
+        `suite à la signature du contrat ${contrat.reference}. Cet employé n'a pas d'accès à la ` +
+        `plateforme ; aucune action de votre part n'est requise à ce sujet.`,
+      actionUrl: `${process.env.FRONTEND_URL}/employes/${employe.id}`
     });
   }
 
-  return evaluation;
+  return { employe, ficheCreee: true };
 }
 
 
@@ -632,85 +659,20 @@ export const telechargerPDF = async (req: Request, res: Response) => {
   <meta charset="UTF-8">
   <title>Contrat de travail ${contrat.reference}</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 12pt;
-      line-height: 1.4;
-      color: #000;
-      background: white;
-      padding: 40px;
-      margin: 0;
-    }
-    .header {
-      text-align: right;
-      margin-bottom: 30px;
-    }
-    .header strong {
-      font-size: 14pt;
-    }
-    h1 {
-      text-align: center;
-      font-size: 18pt;
-      text-transform: uppercase;
-      margin: 20px 0;
-      letter-spacing: 2px;
-    }
-    h2 {
-      font-size: 14pt;
-      margin: 20px 0 10px;
-      border-bottom: 1px solid #333;
-      padding-bottom: 5px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 15px 0;
-    }
-    td {
-      padding: 8px 12px;
-      border: 1px solid #ccc;
-      vertical-align: top;
-    }
-    .bold {
-      font-weight: bold;
-      background-color: #f5f5f5;
-      width: 35%;
-    }
-    .notice {
-      background: #fff3cd;
-      border: 1px solid #ffc107;
-      padding: 12px;
-      margin: 20px 0;
-      text-align: center;
-      font-size: 11pt;
-    }
-    .signature-block {
-      margin-top: 50px;
-      display: flex;
-      justify-content: space-between;
-    }
-    .signature-box {
-      width: 45%;
-      text-align: center;
-    }
-    .signature-line {
-      margin-top: 50px;
-      border-top: 1px solid #000;
-      padding-top: 5px;
-    }
-    .footer {
-      margin-top: 40px;
-      text-align: center;
-      font-size: 9pt;
-      color: #666;
-      border-top: 1px solid #eee;
-      padding-top: 15px;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: #000; background: white; padding: 40px; margin: 0; }
+    .header { text-align: right; margin-bottom: 30px; }
+    .header strong { font-size: 14pt; }
+    h1 { text-align: center; font-size: 18pt; text-transform: uppercase; margin: 20px 0; letter-spacing: 2px; }
+    h2 { font-size: 14pt; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    td { padding: 8px 12px; border: 1px solid #ccc; vertical-align: top; }
+    .bold { font-weight: bold; background-color: #f5f5f5; width: 35%; }
+    .notice { background: #fff3cd; border: 1px solid #ffc107; padding: 12px; margin: 20px 0; text-align: center; font-size: 11pt; }
+    .signature-block { margin-top: 50px; display: flex; justify-content: space-between; }
+    .signature-box { width: 45%; text-align: center; }
+    .signature-line { margin-top: 50px; border-top: 1px solid #000; padding-top: 5px; }
+    .footer { margin-top: 40px; text-align: center; font-size: 9pt; color: #666; border-top: 1px solid #eee; padding-top: 15px; }
   </style>
 </head>
 <body>

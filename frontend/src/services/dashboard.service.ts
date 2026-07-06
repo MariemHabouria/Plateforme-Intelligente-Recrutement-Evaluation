@@ -2,6 +2,56 @@
 
 import api from './api';
 
+export type TendanceDirection = 'up' | 'down' | 'stable';
+
+export interface TendanceKpi {
+  valeur: number;
+  precedent: number;
+  evolution: number;
+  direction: TendanceDirection;
+}
+
+export interface FunnelEtape {
+  label: string;
+  valeur: number;
+  tauxConversion: number;
+}
+
+export interface PipelineConversion {
+  funnel: FunnelEtape[];
+  detail: {
+    nouvelles: number;
+    preselectionnees: number;
+    ficheEnvoyee: number;
+    ficheRecue: number;
+    entretien: number;
+    acceptees: number;
+    refusees: number;
+  };
+  tauxAcceptationFinal: number;
+}
+
+export interface SLACompliance {
+  tauxConformite: number;
+  dansLesDelais: number;
+  horsDelais: number;
+  delaiCible: number;
+}
+
+export interface KpisAvances {
+  tendances: {
+    delaiMoyenRecrutement: TendanceKpi;
+    tauxTransformation: TendanceKpi;
+    budgetEngage: TendanceKpi;
+    embauches: TendanceKpi;
+  };
+  pipeline: PipelineConversion;
+  sla: SLACompliance;
+  coutParRecrutement: number;
+  tauxRetentionEssai: number;
+  scoreQualiteRecrutement: number;
+}
+
 export interface DashboardStats {
   // Informations utilisateur
   user: {
@@ -11,7 +61,7 @@ export interface DashboardStats {
     role: string;
     directionId: string | null;
   };
-  
+
   // KPIs (communs + spécifiques par rôle)
   kpis: {
     // KPIs communs
@@ -21,55 +71,74 @@ export interface DashboardStats {
     moyenneEvaluation: number;
     validationsEnAttente: number;
     evaluationsAPreparer: number;
-    
+
     // KPIs SUPER_ADMIN
     utilisateursActifs?: number;
     utilisateursTotal?: number;
     directionsActives?: number;
     tauxOccupation?: number;
-    
+    budgetGlobalEngage?: number;
+    coutMoyenParEmbaucheGlobal?: number;
+    slaGlobal?: number;
+
     // KPIs MANAGER
     monEquipe?: number;
     entretiensASaisir?: number;
     mesEvaluations?: number;
     mesContratsActifs?: number;
-    
+    tauxConversionEquipe?: number;
+    delaiMoyenEquipe?: number;
+    retentionEquipeEssai?: number;
+
     // KPIS DIRECTEUR
     directionsSousResponsabilite?: number;
     demandesDirection?: number;
     recrutementsDirection?: number;
     budgetDirection?: number;
-    
+    coutParRecrutementDirection?: number;
+    slaDirection?: number;
+    scoreQualiteDirection?: number;
+
     // KPIs DRH
     offresPubliees?: number;
     candidaturesNouvelles?: number;
     entretiensASuivre?: number;
     tauxRemplissage?: number;
-    
+    tauxAcceptationFinal?: number;
+    coutParRecrutement?: number;
+    slaConformite?: number;
+    scoreQualiteRecrutement?: number;
+    tauxRetentionEssai?: number;
+
     // KPIs DAF
     budgetTotal?: number;
     demandesBudget?: number;
     coutMoyenParRecrutement?: number;
     economieBudgetaire?: number;
-    
+    budgetEngageVsPrecedent?: TendanceKpi;
+    coutParEmbaucheTendance?: number;
+
     // KPIs DGA
     demandesStrategiques?: number;
     validationsEnCours?: number;
     impactRH?: number;
-    
+
     // KPIs DG
     visionGlobale?: number;
     validationFinale?: number;
     recrutementsAnnee?: number;
     performanceGlobale?: number;
-    
+
     // KPIs RESP_PAIE
     contratsAPreparer?: number;
     evaluationsASaisir?: number;
     contratsActifs?: number;
     periodesEssai?: number;
   };
-  
+
+  // KPIs avancés "niveau ERP" (communs à tous les rôles)
+  kpisAvances: KpisAvances;
+
   // Compteurs principaux
   counters: {
     demandes: {
@@ -130,7 +199,7 @@ export interface DashboardStats {
       depassees: number;
     };
   };
-  
+
   // Activité récente
   activiteRecente: {
     demandes: Array<{
@@ -170,7 +239,7 @@ export interface DashboardStats {
       employe: string;
     }>;
   };
-  
+
   // Logs d'audit
   auditLogs: Array<{
     id: string;
@@ -181,7 +250,7 @@ export interface DashboardStats {
     acteur: string;
     createdAt: string;
   }>;
-  
+
   // Tendances graphiques
   tendances: {
     mois: string[];
@@ -189,8 +258,9 @@ export interface DashboardStats {
     offres: number[];
     candidatures: number[];
     embauches: number[];
+    budget: number[];
   };
-  
+
   // Alertes
   alertes: Array<{
     type: 'danger' | 'warning' | 'info';

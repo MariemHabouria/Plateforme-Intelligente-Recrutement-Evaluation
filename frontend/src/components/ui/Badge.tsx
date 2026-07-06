@@ -1,6 +1,6 @@
 import { CSSProperties } from 'react'
 
-type BadgeVariant = 'green' | 'amber' | 'red' | 'olive' | 'umber' | 'gold'
+export type BadgeVariant = 'green' | 'amber' | 'red' | 'olive' | 'umber' | 'gold'
 
 const styles: Record<BadgeVariant, CSSProperties> = {
   green:  { background: 'var(--green-bg)',  color: 'var(--green-text)' },

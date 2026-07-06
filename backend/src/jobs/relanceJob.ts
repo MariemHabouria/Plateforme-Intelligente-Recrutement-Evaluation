@@ -1,12 +1,9 @@
 import cron from 'node-cron';
 import { relanceService } from '../services/relance.service';
 import { relanceFiche48hService } from '../services/relanceFiche48h.service';
+import { evaluationPEService } from '../services/evaluationPE.service';
 
-/**
- * Job cron qui s'exécute toutes les heures pour vérifier les deadlines
- */
 export const startRelanceJobs = () => {
-  // Toutes les heures
   cron.schedule('0 * * * *', async () => {
     console.log(' [CRON] Vérification des deadlines...');
     
@@ -21,10 +18,14 @@ export const startRelanceJobs = () => {
         console.log(` [CRON] ${executedCount} relance(s) exécutée(s)`);
       }
 
-      // NOUVEAU : règle des 48h — fiche de renseignement non reçue
       const ficheRefuseesCount = await relanceFiche48hService.verifierEtRefuserFichesNonRecues();
       if (ficheRefuseesCount > 0) {
         console.log(` [CRON] ${ficheRefuseesCount} candidature(s) refusee(s) automatiquement (fiche non recue sous 48h)`);
+      }
+
+      const evalResult = await evaluationPEService.checkRelanceEvaluations();
+      if (evalResult.relances > 0 || evalResult.escalades > 0) {
+        console.log(` [CRON] Evaluations PE: ${evalResult.relances} relance(s), ${evalResult.escalades} escalade(s)`);
       }
     } catch (error) {
       console.error(' [CRON] Erreur lors des relances:', error);

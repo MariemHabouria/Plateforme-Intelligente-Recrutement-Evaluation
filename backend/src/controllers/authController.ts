@@ -20,6 +20,46 @@ const generateToken = (id: string, role: string): string => {
   );
 };
 
+// FIX : le circuit d'évaluation PE (et le circuit de recrutement) suppose
+// qu'il n'existe QU'UN SEUL manager actif et QU'UN SEUL directeur actif par
+// direction — sinon les recherches par `findFirst({ role, directionId })`
+// dans evaluationPEController.ts / evaluationPE.service.ts peuvent retomber
+// sur n'importe lequel des doublons, ce qui casse silencieusement les
+// vérifications d'autorisation ("Cette evaluation est assignee a un autre
+// manager"). Rien n'empêchait jusqu'ici de créer un deuxième MANAGER/
+// DIRECTEUR actif dans la même direction. Ce garde-fou centralise la
+// vérification pour bloquer ce cas dès la création/modification du compte.
+async function verifierUnicitePosteDirection(
+  role: string,
+  directionId: string | null | undefined,
+  excludeUserId?: string
+): Promise<{ ok: boolean; message?: string }> {
+  if ((role !== 'MANAGER' && role !== 'DIRECTEUR') || !directionId) {
+    return { ok: true };
+  }
+
+  const dejaPresent = await prisma.user.findFirst({
+    where: {
+      role: role as any,
+      directionId,
+      actif: true,
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {})
+    }
+  });
+
+  if (dejaPresent) {
+    const libelleRole = role === 'MANAGER' ? 'manager' : 'directeur';
+    return {
+      ok: false,
+      message: `Cette direction a déjà un ${libelleRole} actif (${dejaPresent.prenom} ${dejaPresent.nom}). ` +
+        `Désactivez-le d'abord si vous voulez le remplacer.`
+    };
+  }
+
+  return { ok: true };
+}
+
+
 // POUR SUPER ADMIN - CRÉATION D'UTILISATEUR
 
 
@@ -49,6 +89,13 @@ export const register = async (req: Request, res: Response) => {
         success: false,
         message: 'Un utilisateur avec cet email existe déjà'
       });
+    }
+
+    // FIX : empêcher la création d'un deuxième manager/directeur actif
+    // dans une direction qui en a déjà un.
+    const verifUnicite = await verifierUnicitePosteDirection(role, directionId);
+    if (!verifUnicite.ok) {
+      return res.status(400).json({ success: false, message: verifUnicite.message });
     }
 
     // Générer un mot de passe temporaire sécurisé

@@ -1,4 +1,15 @@
 // frontend/src/components/pages/evaluation/EvaluationPage.tsx
+//
+// Corrections apportées :
+//   1. Au clic sur une ligne, on va chercher la fiche via GET /evaluations/:id
+//      (getEvaluationById, filtrée côté serveur) plutôt que de réutiliser
+//      l'objet déjà présent dans la liste. Défense en profondeur : même si
+//      la confidentialité venait à être cassée à nouveau sur un des deux
+//      endpoints, l'autre continue de protéger l'affichage détaillé.
+//   2. Les affichages de evaluationN1 / commentaireN1 / evaluationN2 /
+//      commentaireN2 gèrent maintenant proprement le cas "null" (donnée
+//      masquée par la confidentialité) au lieu d'afficher "null" ou une
+//      chaîne vide silencieuse.
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -53,6 +64,15 @@ function WorkflowSteps({ etapeActuelle, totalEtapes }: { etapeActuelle: number; 
       })}
     </div>
   );
+}
+
+// Petit helper d'affichage : évite d'afficher "null" ou un champ vide sans
+// explication quand une donnée est masquée par la confidentialité.
+function ChampConfidentiel({ valeur, roleRequis }: { valeur: string | null | undefined; roleRequis: string }) {
+  if (valeur === null || valeur === undefined || valeur === '') {
+    return <span style={{ fontStyle: 'italic', color: '#999' }}>Non visible avec votre rôle ({roleRequis} requis)</span>;
+  }
+  return <>{valeur}</>;
 }
 
 // ====================== VIEW PAIE ======================
@@ -209,12 +229,16 @@ function ViewManager({ evaluation, onRefresh, isReadOnly = false }: {
 
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Mon evaluation</div>
-            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>{evaluation.evaluationN1}</div>
+            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>
+              <ChampConfidentiel valeur={evaluation.evaluationN1} roleRequis="Manager assigné / Directeur" />
+            </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Mon commentaire</div>
-            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>{evaluation.commentaireN1}</div>
+            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>
+              <ChampConfidentiel valeur={evaluation.commentaireN1} roleRequis="Manager assigné / Directeur" />
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -251,6 +275,28 @@ function ViewManager({ evaluation, onRefresh, isReadOnly = false }: {
             <option value="CHANGEMENT">Changement de situation</option>
           </Select>
         </FormGroup>
+
+        {formData.decision === 'PROLONGATION' && (
+          <FormGroup>
+            <FormLabel required>Duree de prolongation (mois)</FormLabel>
+            <Input
+              type="number"
+              value={(formData as any).dureeProlongation || ''}
+              onChange={(e) => setFormData({ ...formData, dureeProlongation: parseInt(e.target.value) } as any)}
+            />
+          </FormGroup>
+        )}
+
+        {formData.decision === 'RUPTURE' && (
+          <FormGroup>
+            <FormLabel required>Justification de la rupture</FormLabel>
+            <Textarea
+              value={(formData as any).justificationRupture || ''}
+              onChange={(e) => setFormData({ ...formData, justificationRupture: e.target.value } as any)}
+              rows={3}
+            />
+          </FormGroup>
+        )}
 
         <FormGroup>
           <FormLabel required>Evaluation globale</FormLabel>
@@ -324,8 +370,14 @@ function ViewDirecteur({ evaluation, onRefresh, isReadOnly = false }: {
           <div style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 10 }}>Evaluation Manager N+1</div>
             <Badge variant="green">{evaluation.decision || 'CONFIRMATION'}</Badge>
-            <div style={{ marginTop: 10, fontSize: 13 }}>"{evaluation.evaluationN1}"</div>
-            {evaluation.commentaireN1 && <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>Commentaire: {evaluation.commentaireN1}</div>}
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              <ChampConfidentiel valeur={evaluation.evaluationN1} roleRequis="Directeur" />
+            </div>
+            {evaluation.commentaireN1 !== null && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                Commentaire: <ChampConfidentiel valeur={evaluation.commentaireN1} roleRequis="Directeur" />
+              </div>
+            )}
           </div>
 
           {evaluation.evaluationN2 && (
@@ -367,15 +419,25 @@ function ViewDirecteur({ evaluation, onRefresh, isReadOnly = false }: {
         <div style={{ background: '#fff3e0', border: '1px solid #ffc107', borderRadius: 8, padding: 14, marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Evaluation Manager N+1</div>
           <Badge variant="green">{evaluation.decision || 'CONFIRMATION'}</Badge>
-          <div style={{ marginTop: 10, fontSize: 13 }}>"{evaluation.evaluationN1 || 'Evaluation en attente'}"</div>
-          {evaluation.commentaireN1 && <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>Commentaire: {evaluation.commentaireN1}</div>}
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            <ChampConfidentiel valeur={evaluation.evaluationN1} roleRequis="Directeur" />
+          </div>
+          {evaluation.commentaireN1 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>Commentaire: {evaluation.commentaireN1}</div>
+          )}
+          {evaluation.decision === 'PROLONGATION' && evaluation.dureeProlongation && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>Duree de prolongation proposee : {evaluation.dureeProlongation} mois</div>
+          )}
+          {evaluation.decision === 'RUPTURE' && evaluation.justificationRupture && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>Justification de rupture : {evaluation.justificationRupture}</div>
+          )}
         </div>
 
         <FormGroup>
           <FormLabel required>Votre decision (N+2)</FormLabel>
           <Select value={formData.decision} onChange={(e) => setFormData({ ...formData, decision: e.target.value })}>
-            <option value="VALIDEE">Valider l'evaluation (Confirmation)</option>
-            <option value="REJETEE">Rejeter l'evaluation (Rupture)</option>
+            <option value="VALIDEE">Valider l'evaluation (applique la decision du Manager)</option>
+            <option value="REJETEE">Rejeter l'evaluation</option>
           </Select>
         </FormGroup>
 
@@ -417,18 +479,24 @@ function ViewReadOnly({ evaluation }: { evaluation: EvaluationPEDetail }) {
     <Card>
       <CardHeader>
         <CardTitle>Evaluation Periode d'Essai — {evaluation.employe.prenom} {evaluation.employe.nom}</CardTitle>
-        <CardSubtitle>Consultation uniquement (evaluation finalisee)</CardSubtitle>
+        <CardSubtitle>Consultation uniquement</CardSubtitle>
       </CardHeader>
       <CardBody>
-        <Alert variant="green">Evaluation finalisee le {evaluation.valideeAt ? new Date(evaluation.valideeAt).toLocaleDateString('fr-FR') : '-'}</Alert>
+        <Alert variant="green">
+          {evaluation.statut === 'VALIDEE'
+            ? `Evaluation finalisee le ${evaluation.valideeAt ? new Date(evaluation.valideeAt).toLocaleDateString('fr-FR') : '-'}`
+            : 'Evaluation en cours de traitement'}
+        </Alert>
         <WorkflowSteps etapeActuelle={evaluation.etapeActuelle} totalEtapes={3} />
         <div style={{ height: 1, background: '#e0e0e0', margin: '16px 0' }} />
 
         <div style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 10 }}>Decision finale</div>
-          <Badge variant="green">{evaluation.decision || 'CONFIRMATION'}</Badge>
+          <Badge variant="green">{evaluation.decision || 'En attente'}</Badge>
         </div>
 
+        {/* Par confidentialité, evaluationN1/N2 arrivent déjà à null pour ce
+            rôle si non autorisé — on ne les affiche donc que si présents. */}
         {evaluation.evaluationN1 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Evaluation Manager</div>
@@ -436,24 +504,10 @@ function ViewReadOnly({ evaluation }: { evaluation: EvaluationPEDetail }) {
           </div>
         )}
 
-        {evaluation.commentaireN1 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Commentaire Manager</div>
-            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>{evaluation.commentaireN1}</div>
-          </div>
-        )}
-
         {evaluation.evaluationN2 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Evaluation Directeur</div>
             <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>{evaluation.evaluationN2}</div>
-          </div>
-        )}
-
-        {evaluation.commentaireN2 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Commentaire Directeur</div>
-            <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 8, fontSize: 13 }}>{evaluation.commentaireN2}</div>
           </div>
         )}
       </CardBody>
@@ -466,6 +520,7 @@ export const EvaluationPage = () => {
   const { user } = useAuth();
   const [evaluations, setEvaluations] = useState<EvaluationPEDetail[]>([]);
   const [selectedEval, setSelectedEval] = useState<EvaluationPEDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -487,7 +542,23 @@ export const EvaluationPage = () => {
     }
   };
 
-  // ✅ Normaliser le rôle pour les comparaisons
+  // FIX : on va chercher la fiche détaillée filtrée côté serveur plutôt que
+  // de réutiliser l'objet de la liste (défense en profondeur pour la
+  // confidentialité N1/N2).
+  const ouvrirEvaluation = async (id: string) => {
+    setLoadingDetail(true);
+    setError('');
+    try {
+      const response = await api.get(`/evaluations/${id}`);
+      setSelectedEval(response.data.data.evaluation);
+    } catch (err) {
+      console.error('Erreur:', err);
+      setError('Erreur lors du chargement de la fiche');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
   const normalizedRole = normalizeRole(user?.role);
 
   const isEditableForRole = (evaluation: EvaluationPEDetail): boolean => {
@@ -505,7 +576,7 @@ export const EvaluationPage = () => {
     <div className="page-fade">
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 600 }}>Evaluation Periode d'Essai</h1>
-        <p style={{ color: '#666', marginTop: 4 }}>Workflow: Resp. Paie → Manager N+1 → Directeur N+2</p>
+        <p style={{ color: '#666', marginTop: 4 }}>Workflow: Resp. Paie → Manager N+1 → Directeur N+2 (meme direction)</p>
       </div>
 
       {error && <Alert variant="red">{error}</Alert>}
@@ -567,7 +638,12 @@ export const EvaluationPage = () => {
                           </Badge>
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <Button variant={isEditable ? 'primary' : 'secondary'} size="xs" onClick={() => setSelectedEval(e)}>
+                          <Button
+                            variant={isEditable ? 'primary' : 'secondary'}
+                            size="xs"
+                            disabled={loadingDetail}
+                            onClick={() => ouvrirEvaluation(e.id)}
+                          >
                             <Eye size={12} /> {isEditable ? (normalizedRole === 'RESP_PAIE' ? 'Saisir' : 'Traiter') : 'Consulter'}
                           </Button>
                         </td>
@@ -584,24 +660,24 @@ export const EvaluationPage = () => {
       {selectedEval && (
         <>
           {normalizedRole === 'RESP_PAIE' && (
-            <ViewPaie 
-              evaluation={selectedEval} 
-              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }} 
-              isReadOnly={!isEditableForRole(selectedEval)} 
+            <ViewPaie
+              evaluation={selectedEval}
+              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }}
+              isReadOnly={!isEditableForRole(selectedEval)}
             />
           )}
           {normalizedRole === 'MANAGER' && (
-            <ViewManager 
-              evaluation={selectedEval} 
-              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }} 
-              isReadOnly={!isEditableForRole(selectedEval)} 
+            <ViewManager
+              evaluation={selectedEval}
+              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }}
+              isReadOnly={!isEditableForRole(selectedEval)}
             />
           )}
           {normalizedRole === 'DIRECTEUR' && (
-            <ViewDirecteur 
-              evaluation={selectedEval} 
-              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }} 
-              isReadOnly={!isEditableForRole(selectedEval)} 
+            <ViewDirecteur
+              evaluation={selectedEval}
+              onRefresh={() => { fetchEvaluations(); setSelectedEval(null); }}
+              isReadOnly={!isEditableForRole(selectedEval)}
             />
           )}
           {!['RESP_PAIE', 'MANAGER', 'DIRECTEUR'].includes(normalizedRole) && (

@@ -9,6 +9,11 @@ import { Modal } from '../../ui/Modal';
 import { Input, FormGroup, FormLabel, FormRow, Select } from '../../ui/FormField';
 import { userService, User } from '../../../services/user.service';
 import { useAuth } from '../../../contexts/AuthContext';
+import { dashboardService, DashboardStats } from '../../../services/dashboard.service';
+import { Download, Search, RotateCcw } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { auditService, AuditLogEntry, AuditFilters, AuditStats } from '../../../services/audit.service';
+import { getAuditActionBadge } from '../../../lib/utils';
 
 import { CircuitConfigPage } from './CircuitConfigPage';
 import api from '../../../services/api';
@@ -462,30 +467,318 @@ function UtilisateursPage() {
 
 // AuditPage
 function AuditPage() {
-  const auditLog = [
-    { time: '14:32', user: 'S. Karoui', action: 'Candidature acceptée', detail: 'Aymen Bouslama' },
-    { time: '13:18', user: 'M. Kilani', action: 'Demande soumise', detail: 'DEM-2026-018' },
-    { time: '12:05', user: 'L. Marzouk', action: 'Données PE saisies', detail: 'Amira Ben Salah' },
-  ];
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [stats, setStats] = useState<AuditStats | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+  const [filters, setFilters] = useState<AuditFilters>({});
+  const [searchInput, setSearchInput] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => { fetchStats(); }, []);
+  useEffect(() => { fetchLogs(); }, [filters, pagination.page]);
+
+  const fetchLogs = async () => {
+    try {
+      setLoading(true);
+      const { logs: data, pagination: pag } = await auditService.getLogs({
+        ...filters,
+        page: pagination.page,
+        limit: pagination.limit
+      });
+      setLogs(data);
+      setPagination(pag);
+    } catch (err) {
+      setError("Erreur lors du chargement du journal d'audit");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const data = await auditService.getStats();
+      setStats(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const applyFilters = (patch: Partial<AuditFilters>) => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+    setFilters(prev => ({ ...prev, ...patch }));
+  };
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setFilters({});
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const blob = await auditService.exportCsv(filters);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Erreur lors de l'export");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
 
   return (
     <div className="page-fade">
-      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>Journal d'audit</h2>
-      <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>Journal d'audit</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{pagination.total} événement(s) enregistré(s)</p>
+        </div>
+        <Button size="sm" onClick={handleExport} disabled={exporting}>
+          <Download size={13} /> {exporting ? 'Export...' : 'Exporter CSV'}
+        </Button>
+      </div>
+
+      {error && <Alert variant="red">{error}</Alert>}
+
+      {/* KPI cards */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 24 }}>
+          <Card>
+            <CardBody>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Total événements</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.total}</div>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Aujourd'hui</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.todayCount}</div>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Utilisateurs actifs</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.distinctActeurs}</div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {/* Charts */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20, marginBottom: 24 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Activité (30 derniers jours)</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={stats.byDay}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#4a90d9" name="Événements" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Top actions</CardTitle>
+            </CardHeader>
+            <CardBody>
+              {stats.byAction.map((a, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+                  <span>{a.action}</span>
+                  <Badge variant={getAuditActionBadge(a.action)}>{a.count}</Badge>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {/* Filtres */}
+      <Card style={{ marginBottom: 20 }}>
         <CardBody>
-          {auditLog.map((log, i) => (
-            <div key={i} style={{ padding: '12px 0', borderBottom: i < auditLog.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{log.time}</span>
-                <span style={{ fontWeight: 500 }}>{log.user}</span>
-                <span>•</span>
-                <span>{log.action}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{log.detail}</span>
+          <FormRow>
+            <FormGroup>
+              <FormLabel>Recherche</FormLabel>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && applyFilters({ search: searchInput })}
+                  placeholder="Action, détail, ID..."
+                />
+                <Button variant="secondary" size="sm" onClick={() => applyFilters({ search: searchInput })}>
+                  <Search size={13} />
+                </Button>
               </div>
-            </div>
-          ))}
+            </FormGroup>
+            <FormGroup>
+              <FormLabel>Type d'entité</FormLabel>
+              <Select
+                value={filters.entityType || ''}
+                onChange={(e) => applyFilters({ entityType: e.target.value || undefined })}
+              >
+                <option value="">Tous</option>
+                {stats?.byEntityType.map(e => (
+                  <option key={e.entityType} value={e.entityType}>{e.entityType}</option>
+                ))}
+              </Select>
+            </FormGroup>
+            <FormGroup>
+              <FormLabel>Du</FormLabel>
+              <Input
+                type="date"
+                value={filters.dateFrom || ''}
+                onChange={(e) => applyFilters({ dateFrom: e.target.value || undefined })}
+              />
+            </FormGroup>
+            <FormGroup>
+              <FormLabel>Au</FormLabel>
+              <Input
+                type="date"
+                value={filters.dateTo || ''}
+                onChange={(e) => applyFilters({ dateTo: e.target.value || undefined })}
+              />
+            </FormGroup>
+          </FormRow>
+          <Button variant="ghost" size="xs" onClick={resetFilters}>
+            <RotateCcw size={12} /> Réinitialiser
+          </Button>
         </CardBody>
       </Card>
+
+      {/* Table */}
+      <Card>
+        <CardBody style={{ padding: 0 }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Date</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Acteur</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Action</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Entité</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}>Détail</th>
+                  <th style={{ padding: '10px 16px', textAlign: 'left' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: 40 }}>Chargement...</td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                      Aucun résultat
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)' }}>
+                        {formatDate(log.createdAt)}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {log.acteur ? `${log.acteur.prenom} ${log.acteur.nom}` : 'Système'}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <Badge variant={getAuditActionBadge(log.action)}>{log.action}</Badge>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 12 }}>{log.entityType}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13 }}>{log.details || '-'}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <Button variant="ghost" size="xs" onClick={() => setSelectedLog(log)}>
+                          Détails
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {pagination.totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: 16 }}>
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={pagination.page <= 1}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+              >
+                Précédent
+              </Button>
+              <span style={{ fontSize: 13 }}>
+                Page {pagination.page} / {pagination.totalPages}
+              </span>
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+              >
+                Suivant
+              </Button>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Modal détail avec diff avant/après */}
+      <Modal
+        open={!!selectedLog}
+        onClose={() => setSelectedLog(null)}
+        title="Détail de l'événement"
+        maxWidth={600}
+      >
+        {selectedLog && (
+          <div style={{ padding: '8px 0' }}>
+            <p><strong>Action :</strong> {selectedLog.action}</p>
+            <p><strong>Entité :</strong> {selectedLog.entityType} ({selectedLog.entityId})</p>
+            <p><strong>Acteur :</strong> {selectedLog.acteur ? `${selectedLog.acteur.prenom} ${selectedLog.acteur.nom}` : 'Système'}</p>
+            <p><strong>Date :</strong> {formatDate(selectedLog.createdAt)}</p>
+            {selectedLog.ipAdresse && <p><strong>IP :</strong> {selectedLog.ipAdresse}</p>}
+            {selectedLog.details && <p><strong>Détail :</strong> {selectedLog.details}</p>}
+
+            {(selectedLog.anciennesValeurs || selectedLog.nouvellesValeurs) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--red)' }}>Avant</div>
+                  <pre style={{ background: '#fdf2f2', padding: 10, borderRadius: 6, fontSize: 11, overflow: 'auto', maxHeight: 250 }}>
+                    {JSON.stringify(selectedLog.anciennesValeurs || {}, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--green)' }}>Après</div>
+                  <pre style={{ background: '#f0f9f0', padding: 10, borderRadius: 6, fontSize: 11, overflow: 'auto', maxHeight: 250 }}>
+                    {JSON.stringify(selectedLog.nouvellesValeurs || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -1,87 +1,86 @@
-// frontend/src/components/pages/entretiens/EntretiensPage.tsx
-
-import { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, Eye, Search, X as XIcon } from 'lucide-react';
-import { Card, CardBody } from '../../ui/Card';
-import { Badge } from '../../ui/Badge';
-import { Button } from '../../ui/Button';
-import { Alert } from '../../ui/Alert';
-import { Avatar } from '../../ui/Avatar';
-import api from '../../../services/api';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Calendar, Search, Filter, Eye, CheckCircle, Clock, XCircle, RefreshCcw } from 'lucide-react';
+import { Card, CardBody, CardHeader, CardTitle, CardSubtitle } from '../../ui/Card';
+import { Badge } from '../../ui/Badge';
+import { Alert } from '../../ui/Alert';
 import { useAuth } from '../../../contexts/AuthContext';
+import { entretienService, EntretienAvecInfo, OffreFiltre, GetEntretiensParams } from '../../../services/entretien.service';
+import { normalizeRole } from '@/types';
 
-interface Entretien {
-  id: string;
-  type: string;
-  date: string;
-  heure: string;
-  lieu: string;
-  statut: string;
-  feedback?: string;
-  evaluation?: number;
-  candidature: {
-    id: string;
-    nom: string;
-    prenom: string;
-    email: string;
-    offre: {
-      id: string;
-      intitule: string;
-      reference: string;
-    };
-  };
-  interviewer: {
-    id: string;
-    nom: string;
-    prenom: string;
-    email: string;
-  };
-}
-
-interface Filtres {
-  type: string;
-  statut: string;
-  dateDebut: string;
-  dateFin: string;
-  recherche: string;
-  offreId: string;
-}
-
-const FILTRES_VIDES: Filtres = {
-  type: '', statut: '', dateDebut: '', dateFin: '', recherche: '', offreId: ''
+const TYPE_LABELS: Record<string, string> = {
+  RH: 'Entretien RH',
+  TECHNIQUE: 'Entretien technique',
+  DIRECTION: 'Entretien direction'
 };
+
+const STATUT_LABELS: Record<string, string> = {
+  PLANIFIE: 'Planifié',
+  REALISE: 'Réalisé',
+  ANNULE: 'Annulé',
+  REPORTE: 'Reporté'
+};
+
+function badgeVariantStatut(statut: string) {
+  if (statut === 'REALISE') return 'green';
+  if (statut === 'ANNULE') return 'red';
+  if (statut === 'REPORTE') return 'amber';
+  return 'gold'; // PLANIFIE
+}
 
 export function EntretiensPage() {
   const { user } = useAuth();
-  const [entretiens, setEntretiens] = useState<Entretien[]>([]);
+  const navigate = useNavigate();
+  const role = normalizeRole(user?.role as string);
+  const isSuperAdmin = role === 'SUPER_ADMIN';
+  const isDRH = role === 'DRH';
+
+  const [entretiens, setEntretiens] = useState<EntretienAvecInfo[]>([]);
+  const [offres, setOffres] = useState<OffreFiltre[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filtres, setFiltres] = useState<Filtres>(FILTRES_VIDES);
-  const [rechercheInput, setRechercheInput] = useState('');
-  const navigate = useNavigate();
 
-  // Debounce sur la recherche texte pour eviter un appel API a chaque frappe
+  // Filtres
+  const [type, setType] = useState('');
+  const [statut, setStatut] = useState('');
+  const [recherche, setRecherche] = useState('');
+  const [offreId, setOffreId] = useState('');
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
+  const [vueGlobale, setVueGlobale] = useState(true); // pertinent pour le DRH uniquement
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setFiltres(prev => ({ ...prev, recherche: rechercheInput }));
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [rechercheInput]);
+    fetchOffres();
+  }, []);
 
   useEffect(() => {
     fetchEntretiens();
-  }, [filtres]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, statut, offreId, dateDebut, dateFin, vueGlobale]);
+
+  const fetchOffres = async () => {
+    try {
+      const data = await entretienService.getOffresPourFiltre();
+      setOffres(data);
+    } catch (err) {
+      console.error('Erreur chargement offres:', err);
+    }
+  };
 
   const fetchEntretiens = async () => {
     try {
       setLoading(true);
-      const params: Record<string, string> = {};
-      Object.entries(filtres).forEach(([k, v]) => { if (v) params[k] = v; });
-
-      const response = await api.get('/entretiens', { params });
-      setEntretiens(response.data.data.entretiens || []);
       setError('');
+      const params: GetEntretiensParams = {};
+      if (type) params.type = type as any;
+      if (statut) params.statut = statut as any;
+      if (offreId) params.offreId = offreId;
+      if (dateDebut) params.dateDebut = dateDebut;
+      if (dateFin) params.dateFin = dateFin;
+      if (isDRH) params.vueGlobale = vueGlobale;
+
+      const data = await entretienService.getEntretiens(params);
+      setEntretiens(data);
     } catch (err) {
       console.error('Erreur chargement entretiens:', err);
       setError('Erreur lors du chargement des entretiens');
@@ -90,197 +89,228 @@ export function EntretiensPage() {
     }
   };
 
+  // Recherche côté client (nom/prénom candidat) — le backend le supporte aussi via `recherche`,
+  // mais on filtre en local pour un retour instantané pendant la saisie.
+  const entretiensFiltres = useMemo(() => {
+    if (!recherche.trim()) return entretiens;
+    const q = recherche.trim().toLowerCase();
+    return entretiens.filter(e => {
+      const nom = (e.candidature as any)?.nom?.toLowerCase() || '';
+      const prenom = (e.candidature as any)?.prenom?.toLowerCase() || '';
+      return nom.includes(q) || prenom.includes(q);
+    });
+  }, [entretiens, recherche]);
+
+  // Statistiques rapides (calculées côté client à partir de la liste chargée)
+  const stats = useMemo(() => {
+    const total = entretiensFiltres.length;
+    const planifies = entretiensFiltres.filter(e => e.statut === 'PLANIFIE').length;
+    const realises = entretiensFiltres.filter(e => e.statut === 'REALISE').length;
+    const aVenir = entretiensFiltres.filter(e => new Date(e.date) > new Date()).length;
+    return { total, planifies, realises, aVenir };
+  }, [entretiensFiltres]);
+
   const resetFiltres = () => {
-    setFiltres(FILTRES_VIDES);
-    setRechercheInput('');
+    setType('');
+    setStatut('');
+    setRecherche('');
+    setOffreId('');
+    setDateDebut('');
+    setDateFin('');
   };
 
-  const nbFiltresActifs = Object.values(filtres).filter(v => v).length;
-
-  const getStatutVariant = (statut: string): 'gold' | 'green' | 'red' | 'amber' | 'olive' => {
-    const variants: Record<string, any> = {
-      PLANIFIE: 'amber', REALISE: 'green', ANNULE: 'red', REPORTE: 'gold'
-    };
-    return variants[statut] || 'amber';
-  };
-
-  const getStatutLabel = (statut: string): string => {
-    const labels: Record<string, string> = {
-      PLANIFIE: 'Planifie', REALISE: 'Realise', ANNULE: 'Annule', REPORTE: 'Reporte'
-    };
-    return labels[statut] || statut;
-  };
-
-  const getTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-      RH: 'Entretien RH', TECHNIQUE: 'Entretien technique', DIRECTION: 'Entretien direction'
-    };
-    return labels[type] || type;
-  };
-
-  const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  const inputStyle = {
-    padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13
+  const inputStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    borderRadius: 6,
+    border: '1px solid var(--border-light)',
+    fontSize: 13,
+    background: 'var(--bg-card, #fff)',
+    color: 'inherit'
   };
 
   return (
     <div className="page-fade">
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>
-          {user?.role === 'DIRECTEUR' ? 'Entretiens direction' : 'Entretiens'}
-        </h1>
-        <p style={{ color: 'var(--text-muted)' }}>
-          {entretiens.length} entretien(s) {nbFiltresActifs > 0 ? 'correspondant(s)' : 'planifie(s)'}
-        </p>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>
+            {isSuperAdmin ? 'Entretiens — Vue globale' : 'Entretiens'}
+          </h1>
+          <p style={{ color: 'var(--text-muted)' }}>
+            {isSuperAdmin
+              ? "Supervision de tous les entretiens, toutes directions et tous types confondus"
+              : "Suivi de vos entretiens"}
+          </p>
+        </div>
+        {isDRH && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={vueGlobale} onChange={e => setVueGlobale(e.target.checked)} />
+            Vue globale (tous types)
+          </label>
+        )}
       </div>
 
-      {error && (
-        <div style={{ marginBottom: 16 }}>
-          <Alert variant="red">{error}</Alert>
-        </div>
-      )}
+      {/* KPI rapides */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 24 }}>
+        <Card>
+          <CardBody>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Total</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.total}</div>
+              </div>
+              <Calendar size={26} style={{ opacity: 0.5 }} />
+            </div>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Planifiés</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.planifies}</div>
+              </div>
+              <Clock size={26} style={{ opacity: 0.5 }} />
+            </div>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Réalisés</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--green)' }}>{stats.realises}</div>
+              </div>
+              <CheckCircle size={26} style={{ opacity: 0.5 }} />
+            </div>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>À venir</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{stats.aVenir}</div>
+              </div>
+              <RefreshCcw size={26} style={{ opacity: 0.5 }} />
+            </div>
+          </CardBody>
+        </Card>
+      </div>
 
-      {/* Barre de filtres */}
-      <Card style={{ marginBottom: 16 }}>
+      {/* Filtres */}
+      <Card style={{ marginBottom: 24 }}>
         <CardBody>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-
-            <div style={{ position: 'relative', minWidth: 200, flex: 1 }}>
-              <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-muted)' }} />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: '1 1 220px' }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }} />
               <input
+                type="text"
                 placeholder="Rechercher un candidat..."
-                value={rechercheInput}
-                onChange={e => setRechercheInput(e.target.value)}
-                style={{ ...inputStyle, width: '100%', paddingLeft: 32 }}
+                value={recherche}
+                onChange={e => setRecherche(e.target.value)}
+                style={{ ...inputStyle, width: '100%', paddingLeft: 30 }}
               />
             </div>
 
-            <select
-              value={filtres.type}
-              onChange={e => setFiltres({ ...filtres, type: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="">Tous types</option>
-              <option value="RH">RH</option>
-              <option value="TECHNIQUE">Technique</option>
-              <option value="DIRECTION">Direction</option>
+            <select value={type} onChange={e => setType(e.target.value)} style={inputStyle}>
+              <option value="">Tous les types</option>
+              <option value="RH">Entretien RH</option>
+              <option value="TECHNIQUE">Entretien technique</option>
+              <option value="DIRECTION">Entretien direction</option>
             </select>
 
-            <select
-              value={filtres.statut}
-              onChange={e => setFiltres({ ...filtres, statut: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="">Tous statuts</option>
-              <option value="PLANIFIE">Planifie</option>
-              <option value="REALISE">Realise</option>
-              <option value="ANNULE">Annule</option>
-              <option value="REPORTE">Reporte</option>
+            <select value={statut} onChange={e => setStatut(e.target.value)} style={inputStyle}>
+              <option value="">Tous les statuts</option>
+              <option value="PLANIFIE">Planifié</option>
+              <option value="REALISE">Réalisé</option>
+              <option value="ANNULE">Annulé</option>
+              <option value="REPORTE">Reporté</option>
             </select>
 
-            <input
-              type="date"
-              value={filtres.dateDebut}
-              onChange={e => setFiltres({ ...filtres, dateDebut: e.target.value })}
-              style={inputStyle}
-              title="Date de debut"
-            />
-            <input
-              type="date"
-              value={filtres.dateFin}
-              onChange={e => setFiltres({ ...filtres, dateFin: e.target.value })}
-              style={inputStyle}
-              title="Date de fin"
-            />
-
-            {nbFiltresActifs > 0 && (
-              <Button variant="ghost" size="sm" onClick={resetFiltres}>
-                <XIcon size={13} style={{ marginRight: 4 }} /> Reinitialiser ({nbFiltresActifs})
-              </Button>
+            {(isSuperAdmin || isDRH) && (
+              <select value={offreId} onChange={e => setOffreId(e.target.value)} style={inputStyle}>
+                <option value="">Toutes les offres</option>
+                {offres.map(o => (
+                  <option key={o.id} value={o.id}>{o.reference} — {o.intitule}</option>
+                ))}
+              </select>
             )}
+
+            <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} style={inputStyle} />
+            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>à</span>
+            <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} style={inputStyle} />
+
+            <button
+              onClick={resetFiltres}
+              style={{ ...inputStyle, cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Filter size={14} /> Réinitialiser
+            </button>
           </div>
         </CardBody>
       </Card>
 
+      {error && <Alert variant="red">{error}</Alert>}
+
+      {/* Liste */}
       <Card>
-        <CardBody style={{ padding: 0 }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Candidat</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Offre</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Type</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Date / Heure</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Lieu</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Statut</th>
-                  <th style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', padding: '12px 16px', textAlign: 'left' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                      Chargement des entretiens...
-                    </td>
+        <CardHeader>
+          <CardTitle>Liste des entretiens</CardTitle>
+          <CardSubtitle>{entretiensFiltres.length} résultat(s)</CardSubtitle>
+        </CardHeader>
+        <CardBody>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Chargement...</div>
+          ) : entretiensFiltres.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Aucun entretien trouvé</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Date</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Type</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Candidat</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Poste</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Interviewer</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}>Statut</th>
+                    <th style={{ padding: '10px 8px', color: 'var(--text-muted)', fontWeight: 500 }}></th>
                   </tr>
-                ) : entretiens.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                      {nbFiltresActifs > 0 ? 'Aucun entretien ne correspond aux filtres' : 'Aucun entretien planifie'}
-                    </td>
-                  </tr>
-                ) : (
-                  entretiens.map((e) => (
-                    <tr key={e.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Avatar name={`${e.candidature.prenom} ${e.candidature.nom}`} size="sm" />
-                          <div>
-                            <div style={{ fontWeight: 500 }}>{e.candidature.prenom} {e.candidature.nom}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{e.candidature.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
-                        <div style={{ fontWeight: 500 }}>{e.candidature.offre.intitule}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{e.candidature.offre.reference}</div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
-                        <Badge variant="gold">{getTypeLabel(e.type)}</Badge>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Calendar size={12} style={{ color: 'var(--text-muted)' }} />
-                          {formatDate(e.date)}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                          <Clock size={12} style={{ color: 'var(--text-muted)' }} />
-                          {e.heure}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <MapPin size={12} style={{ color: 'var(--text-muted)' }} />
-                          {e.lieu}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <Badge variant={getStatutVariant(e.statut)}>{getStatutLabel(e.statut)}</Badge>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <Button variant="ghost" size="xs" onClick={() => navigate(`/entretiens/${e.id}`)} title="Voir details">
-                          <Eye size={12} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {entretiensFiltres.map(e => {
+                    const candidature: any = e.candidature;
+                    const interviewer: any = e.interviewer;
+                    return (
+                      <tr
+                        key={e.id}
+                        style={{ borderBottom: '1px solid var(--border-light)', cursor: 'pointer' }}
+                        onClick={() => navigate(`/entretiens/${e.id}`)}
+                      >
+                        <td style={{ padding: '10px 8px' }}>
+                          {new Date(e.date).toLocaleDateString('fr-FR')} {e.heure}
+                        </td>
+                        <td style={{ padding: '10px 8px' }}>{TYPE_LABELS[e.type] || e.type}</td>
+                        <td style={{ padding: '10px 8px', fontWeight: 500 }}>
+                          {candidature ? `${candidature.prenom} ${candidature.nom}` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 8px' }}>{candidature?.offre?.intitule || '—'}</td>
+                        <td style={{ padding: '10px 8px' }}>
+                          {interviewer ? `${interviewer.prenom} ${interviewer.nom}` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 8px' }}>
+                          <Badge variant={badgeVariantStatut(e.statut)}>{STATUT_LABELS[e.statut] || e.statut}</Badge>
+                        </td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                          <Eye size={16} style={{ opacity: 0.6 }} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardBody>
       </Card>
     </div>
