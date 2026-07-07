@@ -18,11 +18,19 @@
 //   7. Escalade en cas de non-traitement : notifie le SUPER_ADMIN (autorité
 //      neutre), en plus du RESP_PAIE pour le suivi administratif — au lieu de
 //      ne notifier que le RESP_PAIE même quand c'est le Directeur qui bloque.
+//   8. FIX STRUCTUREL : preparerPropositionModification et
+//      validerModificationParDRH étaient collées APRES l'accolade fermante
+//      de l'objet evaluationPEService (donc en dehors de l'objet), ce qui
+//      cassait la compilation TypeScript (erreurs en cascade lignes
+//      512-624 : "Cannot find name 'evaluationId'", "'string' only refers
+//      to a type...", etc.). Elles sont maintenant deux méthodes normales
+//      de l'objet, séparées par des virgules, avec une seule accolade
+//      fermante finale.
 
 import prisma from '../config/prisma';
 import { emailService } from './email.service';
 import type { DecisionEvaluationPE } from '@prisma/client';
-
+import { avenantService } from './avenant.service';
 const DELAI_RELANCE_HEURES = 48;
 
 function calculerDateLimiteEvaluation(): Date {
@@ -247,7 +255,7 @@ export const evaluationPEService = {
             joursRestants: joursRestants > 0 ? joursRestants : 0,
             statut: 'BROUILLON',
             etapeActuelle: 0,
-            totalEtapes: 3 // Resp. Paie -> Manager -> Directeur (circuit voulu)
+            totalEtapes: 5 // Resp. Paie -> Manager -> Directeur (circuit voulu)
           }
         });
 
@@ -507,5 +515,169 @@ export const evaluationPEService = {
     });
 
     return validation;
+  },
+
+  /**
+   * RESP_PAIE prépare une proposition de modification de contrat (avenant)
+   * à partir de la décision Manager/Directeur, avant validation finale par
+   * la DRH. Les valeurs par défaut sont déduites de la décision ; RESP_PAIE
+   * peut les surcharger via `overrides`.
+   */
+  async preparerPropositionModification(
+  evaluationId: string,
+  proposePar: string,
+  overrides: {
+    typeAvenant?: string; description?: string; nouveauSalaire?: string; nouvelleDateFin?: string;
+    nouveauPoste?: string; nouvelleDirectionId?: string; dateResiliation?: string; motifResiliation?: string;
+  }
+) {
+  const evaluation = await prisma.evaluationPE.findUnique({
+    where: { id: evaluationId },
+    include: { contrat: true, employe: true }
+  });
+  if (!evaluation) throw new Error('Evaluation non trouvee');
+  if (evaluation.statut !== 'EN_VALIDATION_DRH' || evaluation.etapeActuelle !== 3) {
+    throw new Error('Evaluation non a l etape de proposition');
+  }
+
+  // Validation minimale côté service — le front peut être contourné.
+  if (evaluation.decision === 'RUPTURE' && (!overrides.dateResiliation || !overrides.motifResiliation)) {
+    throw new Error('Date et motif de resiliation obligatoires pour une decision de rupture');
+  }
+  if (evaluation.decision === 'PROLONGATION' && !overrides.nouvelleDateFin && !evaluation.dureeProlongation) {
+    throw new Error('Nouvelle date de fin obligatoire pour une prolongation');
+  }
+
+  const typeAvenantDefaut = evaluation.decision === 'RUPTURE' ? 'RUPTURE'
+    : evaluation.decision === 'PROLONGATION' ? 'PROLONGATION_PE'
+    : evaluation.decision === 'CHANGEMENT' ? 'CHANGEMENT_SITUATION'
+    : 'CONFIRMATION_PE';
+
+  const descriptionDefaut =
+    `Suite à l'évaluation ${evaluation.reference} (décision: ${evaluation.decision}). ` +
+    (evaluation.justificationRupture ? `Motif: ${evaluation.justificationRupture}. ` : '') +
+    (evaluation.commentaireN1 ? `Avis Manager: ${evaluation.commentaireN1}. ` : '') +
+    (evaluation.commentaireN2 ? `Avis Directeur: ${evaluation.commentaireN2}.` : '');
+
+  let nouvelleDateFinDefaut: string | undefined;
+  if (evaluation.decision === 'PROLONGATION' && evaluation.dureeProlongation && evaluation.contrat.dateFin) {
+    const d = new Date(evaluation.contrat.dateFin);
+    d.setMonth(d.getMonth() + evaluation.dureeProlongation);
+    nouvelleDateFinDefaut = d.toISOString();
+  }
+
+  const proposition = {
+    typeAvenant: overrides.typeAvenant || typeAvenantDefaut,
+    description: overrides.description || descriptionDefaut,
+    nouveauSalaire: overrides.nouveauSalaire || undefined,
+    nouvelleDateFin: overrides.nouvelleDateFin || nouvelleDateFinDefaut,
+    nouveauPoste: overrides.nouveauPoste || undefined,
+    nouvelleDirectionId: overrides.nouvelleDirectionId || undefined,
+    dateResiliation: overrides.dateResiliation || undefined,
+    motifResiliation: overrides.motifResiliation || undefined,
+    proposePar,
+    proposeAt: new Date().toISOString(),
+    statut: 'EN_ATTENTE_DRH' as const
+  };
+
+  const donneesActuelles = (evaluation.contrat.donneesContrat as any) || {};
+  await prisma.contrat.update({
+    where: { id: evaluation.contratId },
+    data: { donneesContrat: { ...donneesActuelles, propositionModification: proposition } }
+  });
+
+  await prisma.evaluationPE.update({
+    where: { id: evaluationId },
+    data: { etapeActuelle: 4 }
+  });
+
+  return proposition;
+},
+
+  /**
+   * La DRH valide ou rejette la proposition de modification préparée par
+   * RESP_PAIE. En cas de rejet, le dossier repart à l'étape 3 pour
+   * ajustement (boucle purement administrative, sans risque de blocage
+   * sur le sort de l'employé, déjà tranché en Circuit 1). En cas
+   * d'approbation, l'avenant est réellement appliqué au contrat.
+   */
+  async validerModificationParDRH(evaluationId: string, approuve: boolean, commentaireDRH?: string) {
+    const evaluation = await prisma.evaluationPE.findUnique({
+      where: { id: evaluationId },
+      include: { contrat: true, employe: true }
+    });
+    if (!evaluation) throw new Error('Evaluation non trouvee');
+    if (evaluation.statut !== 'EN_VALIDATION_DRH' || evaluation.etapeActuelle !== 4) {
+      throw new Error('Evaluation non a l etape de validation DRH');
+    }
+
+    const donneesActuelles = (evaluation.contrat.donneesContrat as any) || {};
+    const proposition = donneesActuelles.propositionModification;
+    if (!proposition || proposition.statut !== 'EN_ATTENTE_DRH') {
+      throw new Error('Aucune proposition en attente pour cette evaluation');
+    }
+
+    if (!approuve) {
+      // Renvoi à RESP_PAIE pour ajustement — boucle purement administrative,
+      // sans risque de blocage sur le sort de l'employé (déjà tranché en
+      // Circuit 1), donc pas besoin de plafond de tentatives ici.
+      await prisma.contrat.update({
+        where: { id: evaluation.contratId },
+        data: {
+          donneesContrat: {
+            ...donneesActuelles,
+            propositionModification: { ...proposition, statut: 'REJETEE_PAR_DRH', commentaireDRH }
+          }
+        }
+      });
+      await prisma.evaluationPE.update({ where: { id: evaluationId }, data: { etapeActuelle: 3 } });
+      return { approuve: false };
+    }
+
+const avenant = await avenantService.appliquerAvenant({
+  contratId: evaluation.contratId,
+  employeId: evaluation.employeId,
+  typeAvenant: proposition.typeAvenant,
+  description: proposition.description,
+  dateEffet: new Date(),
+  nouveauSalaire: proposition.nouveauSalaire || null,
+  nouvelleDateFin: proposition.nouvelleDateFin ? new Date(proposition.nouvelleDateFin) : null,
+  nouveauPoste: proposition.nouveauPoste || null,
+  nouvelleDirectionId: proposition.nouvelleDirectionId || null,
+  dateResiliation: proposition.dateResiliation ? new Date(proposition.dateResiliation) : null,
+  motifResiliation: proposition.motifResiliation || null
+});
+
+const candidature = await prisma.candidature.findUnique({ where: { id: evaluation.contrat.candidatureId! } });
+if (candidature) {
+  await emailService.sendAvenantEmail({
+    nom: candidature.nom,
+    prenom: candidature.prenom,
+    email: candidature.email,
+    contratRef: evaluation.contrat.reference,
+    typeAvenant: proposition.typeAvenant,
+    description: proposition.description,
+    nouveauSalaire: proposition.nouveauSalaire,
+    nouvelleDateFin: proposition.nouvelleDateFin ? new Date(proposition.nouvelleDateFin) : undefined,
+    consultationUrl: `${process.env.BACKEND_URL}/api/contrats/avenants/${avenant.id}/pdf`
+  });
+}
+
+    await prisma.contrat.update({
+      where: { id: evaluation.contratId },
+      data: {
+        donneesContrat: {
+          ...donneesActuelles,
+          propositionModification: { ...proposition, statut: 'VALIDEE', commentaireDRH }
+        }
+      }
+    });
+
+    await prisma.evaluationPE.update({
+      where: { id: evaluationId },
+      data: { statut: 'VALIDEE', etapeActuelle: 5, valideeAt: new Date() }
+    });
+
+    return { approuve: true };
   }
 };

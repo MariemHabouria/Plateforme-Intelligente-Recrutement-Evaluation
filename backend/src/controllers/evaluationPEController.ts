@@ -34,29 +34,17 @@ import { evaluationPEService } from '../services/evaluationPE.service';
 // - N2 (évaluation + commentaire du Directeur) : visible par le Directeur
 //   qui l'a rédigée et le SUPER_ADMIN uniquement (avis indépendant du N+2,
 //   non partagé avec le Manager ni le Resp. Paie).
+// Chemin B : plus de cloisonnement N1/N2 entre rôles du circuit. Seule
+// règle qui subsiste : evaluationN1Masquee (prévue explicitement par le
+// cahier des charges — "supprimée par le N+2").
 function filtrerConfidentialite(evaluation: any, userRole: string, userId: string) {
-  const estLeManagerConcerne = userRole === 'MANAGER' && evaluation.managerId === userId;
-
-  // Le Directeur peut masquer l'évaluation N1 du Manager (cahier des
-  // charges : "modifiée et/ou validée/supprimée par le N+2"). Une fois
-  // masquée, seuls le Directeur lui-même et le SUPER_ADMIN y ont encore
-  // accès (traçabilité/audit) ; même le Manager qui l'a rédigée ne la voit
-  // plus une fois qu'elle a été retirée par le N+2.
   const n1EstMasquee = evaluation.evaluationN1Masquee === true;
-
-  const peutVoirN1 =
-    userRole === 'DIRECTEUR' ||
-    userRole === 'SUPER_ADMIN' ||
-    (estLeManagerConcerne && !n1EstMasquee);
-
-  const peutVoirN2 = userRole === 'DIRECTEUR' || userRole === 'SUPER_ADMIN';
+  const peutVoirN1 = userRole === 'DIRECTEUR' || userRole === 'SUPER_ADMIN' || !n1EstMasquee;
 
   return {
     ...evaluation,
     evaluationN1: peutVoirN1 ? evaluation.evaluationN1 : null,
     commentaireN1: peutVoirN1 ? evaluation.commentaireN1 : null,
-    evaluationN2: peutVoirN2 ? evaluation.evaluationN2 : null,
-    commentaireN2: peutVoirN2 ? evaluation.commentaireN2 : null,
   };
 }
 
@@ -359,7 +347,6 @@ export const validerEvaluationN2 = async (req: Request, res: Response) => {
     if (user?.directionId !== evaluation.employe?.directionId) {
       return sendForbidden(res, 'Vous n etes pas le directeur de cette direction');
     }
-
     if (evaluation.statut !== 'EN_VALIDATION_DIR' || evaluation.etapeActuelle !== 2) {
       return sendError(res, 'L evaluation n est pas a l etape Directeur', 400);
     }
@@ -368,37 +355,65 @@ export const validerEvaluationN2 = async (req: Request, res: Response) => {
       await evaluationPEService.cloturerValidationEtape(id, 2, 'REJETEE', commentaire);
       await prisma.evaluationPE.update({
         where: { id },
-        data: { statut: 'REJETEE', etapeActuelle: 3, valideeAt: new Date() }
+        data: { statut: 'REJETEE', valideeAt: new Date() }
       });
-      return sendSuccess(res, null, 'Evaluation rejetee');
+
+      // Option 3 : rejet = fin de circuit d'avis. Le contrat n'est PAS
+      // modifié automatiquement. On notifie RESP_PAIE (gestion du contrat)
+      // et SUPER_ADMIN (autorité neutre) qu'une action manuelle hors
+      // circuit est requise.
+      const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
+      const superAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN', actif: true } });
+      for (const destinataire of [respPaie, superAdmin].filter(Boolean) as typeof respPaie[]) {
+        if (!destinataire) continue;
+        await emailService.sendNotificationEmail({
+          nom: destinataire.nom,
+          prenom: destinataire.prenom,
+          email: destinataire.email,
+          message: `L'évaluation ${evaluation.reference} (${evaluation.employe?.prenom} ${evaluation.employe?.nom}) ` +
+            `a été rejetée par le Directeur. Aucune modification automatique n'a été appliquée au contrat ` +
+            `${evaluation.contrat.reference} — une décision manuelle est requise.`,
+          actionUrl: `${process.env.FRONTEND_URL}/contrats/${evaluation.contratId}`
+        });
+      }
+
+      return sendSuccess(res, null, 'Evaluation rejetee — aucune modification automatique du contrat');
     }
 
     await evaluationPEService.cloturerValidationEtape(id, 2, 'VALIDEE', commentaire);
 
+    // FIX : la décision du Directeur clôture le Circuit 1 (avis employé),
+    // mais ne modifie plus directement le contrat. Elle passe la main au
+    // Circuit 2 (RESP_PAIE propose, DRH valide) — cf. Étape 4 ci-dessous.
     await prisma.evaluationPE.update({
       where: { id },
       data: {
         evaluationN2: evaluationN2 || evaluation.evaluationN1,
         commentaireN2: commentaire || null,
         dateDecisionN2: new Date(),
-        statut: 'VALIDEE',
-        etapeActuelle: 3,
-        valideeAt: new Date()
+        statut: 'EN_VALIDATION_DRH',
+        etapeActuelle: 3
       }
     });
 
-    // FIX : avant, le contrat était toujours mis à "CONFIRME" ici, quelle
-    // que soit la décision (même RUPTURE). On applique maintenant le vrai
-    // statut, et on prolonge la date de fin si la décision est PROLONGATION.
-    const statutContrat = await evaluationPEService.finaliserApresDirecteur(id);
+    const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
+    if (respPaie) {
+      await emailService.sendNotificationEmail({
+        nom: respPaie.nom,
+        prenom: respPaie.prenom,
+        email: respPaie.email,
+        message: `L'évaluation ${evaluation.reference} a été validée par le Directeur (décision: ${evaluation.decision}). ` +
+          `Merci de préparer la modification contractuelle correspondante.`,
+        actionUrl: `${process.env.FRONTEND_URL}/evaluations/${id}`
+      });
+    }
 
-    sendSuccess(res, { statutContrat }, 'Evaluation finalisee avec succes');
+    sendSuccess(res, null, 'Evaluation validee — en attente de proposition contractuelle');
   } catch (error) {
     console.error('validerEvaluationN2 error:', error);
     sendError(res, 'Erreur lors de la validation');
   }
 };
-
 // Le Directeur (N+2) masque/rétablit l'évaluation N1 du Manager, comme
 // prévu par le cahier des charges ("modifiée et/ou validée/supprimée par
 // le N+2"). Utilise le champ evaluationN1Masquee, déjà présent dans le
@@ -462,5 +477,80 @@ export const relancerEvaluation = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('relancerEvaluation error:', error);
     sendError(res, error.message || 'Erreur lors de la relance');
+  }
+};
+// ÉTAPE 4 : RESP_PAIE PROPOSE LA MODIFICATION CONTRACTUELLE
+
+export const proposerModificationContrat = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      typeAvenant, description, nouveauSalaire, nouvelleDateFin,
+      nouveauPoste, nouvelleDirectionId, dateResiliation, motifResiliation
+    } = req.body;
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'RESP_PAIE' && userRole !== 'SUPER_ADMIN') {
+      return sendForbidden(res, 'Seul le Responsable Paie peut proposer la modification');
+    }
+
+    const proposition = await evaluationPEService.preparerPropositionModification(id, userId, {
+      typeAvenant, description, nouveauSalaire, nouvelleDateFin,
+      nouveauPoste, nouvelleDirectionId, dateResiliation, motifResiliation
+    });
+
+    const evaluation = await prisma.evaluationPE.findUnique({ where: { id } });
+    const drh = await prisma.user.findFirst({ where: { role: 'DRH', actif: true } });
+    if (drh && evaluation) {
+      await emailService.sendNotificationEmail({
+        nom: drh.nom,
+        prenom: drh.prenom,
+        email: drh.email,
+        message: `Une proposition de modification contractuelle attend votre validation ` +
+          `(évaluation ${evaluation.reference}, type: ${proposition.typeAvenant}).`,
+        actionUrl: `${process.env.FRONTEND_URL}/evaluations/${id}`
+      });
+    }
+
+    sendSuccess(res, proposition, 'Proposition envoyee au DRH');
+  } catch (error: any) {
+    console.error('proposerModificationContrat error:', error);
+    sendError(res, error.message || 'Erreur lors de la proposition');
+  }
+};
+
+// ÉTAPE 5 : DRH VALIDE LA MODIFICATION CONTRACTUELLE
+
+export const validerModificationDRH = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { approuve, commentaire } = req.body;
+    const userRole = (req as any).user.role;
+
+    if (userRole !== 'DRH' && userRole !== 'SUPER_ADMIN') {
+      return sendForbidden(res, 'Seul le DRH peut valider cette modification');
+    }
+
+    const resultat = await evaluationPEService.validerModificationParDRH(id, !!approuve, commentaire);
+
+    if (!resultat.approuve) {
+      const evaluation = await prisma.evaluationPE.findUnique({ where: { id } });
+      const respPaie = await prisma.user.findFirst({ where: { role: 'RESP_PAIE', actif: true } });
+      if (respPaie && evaluation) {
+        await emailService.sendNotificationEmail({
+          nom: respPaie.nom, prenom: respPaie.prenom, email: respPaie.email,
+          message: `Votre proposition pour l'évaluation ${evaluation.reference} a été renvoyée par le DRH` +
+            `${commentaire ? ` : "${commentaire}"` : ''}. Merci de l'ajuster.`,
+          actionUrl: `${process.env.FRONTEND_URL}/evaluations/${id}`
+        });
+      }
+      return sendSuccess(res, resultat, 'Proposition renvoyee au Resp. Paie');
+    }
+
+    sendSuccess(res, resultat, 'Modification contractuelle appliquee avec succes');
+  } catch (error: any) {
+    console.error('validerModificationDRH error:', error);
+    sendError(res, error.message || 'Erreur lors de la validation');
   }
 };

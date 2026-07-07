@@ -228,7 +228,18 @@ interface ContratSigneEmailData {
   periodeEssaiFin: Date;
   consultationUrl: string;
 }
-
+interface AvenantEmailData {
+  nom: string;
+  prenom: string;
+  email: string;
+  contratRef: string;
+  typeAvenant: string;
+  description: string;
+  nouveauSalaire?: string;
+  nouvelleDateFin?: Date;
+  consultationUrl: string;
+  
+}
 
 // CONFIGURATION SMTP
 
@@ -1008,7 +1019,44 @@ async sendLienPlanificationCandidatEmail(data: LienPlanificationCandidatData) {
     await sendEmail(data.email, 'Contrat actif — Bienvenue chez Kilani Groupe', html);
     return { success: true, to: data.email, type: 'contrat_signe' };
   },
+async sendAvenantEmail(data: AvenantEmailData) {
+  const dateFinFormatee = data.nouvelleDateFin
+    ? new Date(data.nouvelleDateFin).toLocaleDateString('fr-TN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : null;
 
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    body{font-family:Arial,sans-serif;line-height:1.6;color:#333}
+    .container{max-width:600px;margin:0 auto;padding:20px}
+    .header{background:#2196F3;color:white;padding:24px;text-align:center}
+    .header h1{margin:0;font-size:22px}
+    .content{padding:24px;background:#f9f9f9}
+    .card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:20px;margin:16px 0}
+    .card-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+    .card-row:last-child{border-bottom:none}
+    .notice{background:#e3f2fd;border-left:4px solid #2196F3;padding:14px;margin:16px 0;border-radius:0 6px 6px 0}
+    .button{background:#2196F3;color:white!important;padding:12px 28px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:bold}
+    .footer{text-align:center;padding:16px;font-size:12px;color:#888}
+  </style></head><body>
+  <div class="container">
+    <div class="header"><h1>Modification de votre contrat</h1></div>
+    <div class="content">
+      <p>Bonjour <strong>${data.prenom} ${data.nom}</strong>,</p>
+      <p>Votre contrat <strong>${data.contratRef}</strong> a fait l'objet d'un avenant.</p>
+      <div class="card">
+        <div class="card-row"><span>Type</span><strong>${data.typeAvenant}</strong></div>
+        ${data.nouveauSalaire ? `<div class="card-row"><span>Nouveau salaire</span><strong>${data.nouveauSalaire}</strong></div>` : ''}
+        ${dateFinFormatee ? `<div class="card-row"><span>Nouvelle date de fin</span><strong>${dateFinFormatee}</strong></div>` : ''}
+      </div>
+      <div class="notice"><strong>Détail</strong><br>${data.description}</div>
+      <p style="text-align:center"><a href="${data.consultationUrl}" class="button">Consulter mon contrat à jour</a></p>
+    </div>
+    <div class="footer"><p>&copy; ${new Date().getFullYear()} Kilani Groupe</p></div>
+  </div></body></html>`;
+
+  await sendEmail(data.email, `Avenant à votre contrat — ${data.contratRef}`, html);
+  return { success: true, to: data.email, type: 'avenant' };
+},
   // ── ÉVALUATION PE ────────────────────────────────────────────────────────────
 
   async sendEvaluationNotification(data: EvaluationNotificationData) {

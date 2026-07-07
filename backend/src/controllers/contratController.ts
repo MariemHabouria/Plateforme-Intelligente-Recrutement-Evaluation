@@ -31,7 +31,7 @@ import prisma from '../config/prisma';
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden } from '../utils/helpers';
 import { emailService } from '../services/email.service';
 import puppeteer from 'puppeteer';
-
+import { avenantService } from '../services/avenant.service';
 const generateContratReference = async (): Promise<string> => {
   const year = new Date().getFullYear();
   for (let tentative = 0; tentative < 5; tentative++) {
@@ -819,40 +819,84 @@ export const updateContratStatut = async (req: Request, res: Response) => {
   }
 };
 
-
 // CRÉER UN AVENANT
 
 export const createAvenant = async (req: Request, res: Response) => {
   try {
-    const { contratId, typeAvenant, description, dateEffet, nouveauSalaire, nouvelleDateFin } = req.body;
+    const {
+      contratId, typeAvenant, description, dateEffet, nouveauSalaire, nouvelleDateFin,
+      nouveauPoste, nouvelleDirectionId, dateResiliation, motifResiliation
+    } = req.body;
     const userRole = (req as any).user.role;
 
     if (userRole !== 'RESP_PAIE' && userRole !== 'SUPER_ADMIN') {
       return sendForbidden(res, 'Non autorisé');
     }
 
-    const contrat = await prisma.contrat.findUnique({ where: { id: contratId } });
-    if (!contrat) return sendNotFound(res, 'Contrat non trouvé');
+    if (!contratId || !typeAvenant || !description || !dateEffet) {
+      return sendError(res, 'Tous les champs requis sont obligatoires', 400);
+    }
+    if (typeAvenant === 'RUPTURE' && (!dateResiliation || !motifResiliation)) {
+      return sendError(res, 'Date et motif de résiliation obligatoires pour une rupture', 400);
+    }
 
-    const avenant = await prisma.avenant.create({
-      data: { typeAvenant, description, date: new Date(dateEffet), contratId }
+    const contrat = await prisma.contrat.findUnique({
+      where: { id: contratId },
+      include: { candidature: true }
+    });
+    if (!contrat) return sendNotFound(res, 'Contrat non trouvé');
+    if (!contrat.candidature) {
+      console.warn(`Avenant créé pour le contrat ${contrat.reference} sans candidature associée — email non envoyé.`);
+    }
+
+    // FIX : pour appliquer un changement de poste/direction, il faut la
+    // fiche employé (User, role EMPLOYE) créée à la signature — retrouvée
+    // par email, comme dans creerFicheEmployeDepuisContrat.
+    let employeId: string | undefined;
+    if (contrat.candidature?.email) {
+      const employe = await prisma.user.findFirst({
+        where: { email: contrat.candidature.email, role: 'EMPLOYE' }
+      });
+      employeId = employe?.id;
+      if (!employeId && (nouveauPoste || nouvelleDirectionId)) {
+        return sendError(res, 'Aucune fiche employé trouvée pour appliquer ce changement de poste/direction', 400);
+      }
+    }
+
+    const avenant = await avenantService.appliquerAvenant({
+      contratId,
+      employeId,
+      typeAvenant,
+      description,
+      dateEffet: new Date(dateEffet),
+      nouveauSalaire: nouveauSalaire || null,
+      nouvelleDateFin: nouvelleDateFin ? new Date(nouvelleDateFin) : null,
+      nouveauPoste: nouveauPoste || null,
+      nouvelleDirectionId: nouvelleDirectionId || null,
+      dateResiliation: dateResiliation ? new Date(dateResiliation) : null,
+      motifResiliation: motifResiliation || null
     });
 
-    if (nouveauSalaire) {
-      await prisma.contrat.update({ where: { id: contratId }, data: { salaire: nouveauSalaire } });
-    }
-    if (nouvelleDateFin) {
-      await prisma.contrat.update({ where: { id: contratId }, data: { dateFin: new Date(nouvelleDateFin) } });
+    if (contrat.candidature) {
+      await emailService.sendAvenantEmail({
+        nom: contrat.candidature.nom,
+        prenom: contrat.candidature.prenom,
+        email: contrat.candidature.email,
+        contratRef: contrat.reference,
+        typeAvenant,
+        description,
+        nouveauSalaire: nouveauSalaire || undefined,
+        nouvelleDateFin: nouvelleDateFin ? new Date(nouvelleDateFin) : undefined,
+        consultationUrl: `${process.env.BACKEND_URL}/api/contrats/avenants/${avenant.id}/pdf`
+      });
     }
 
-    sendCreated(res, avenant, 'Avenant créé avec succès');
+    sendCreated(res, avenant, 'Avenant créé avec succès, employé notifié par email');
   } catch (error) {
     console.error('createAvenant error:', error);
     sendError(res, 'Erreur lors de la création de l\'avenant');
   }
 };
-
-
 // RÉCUPÉRER LES AVENANTS
 
 export const getAvenants = async (req: Request, res: Response) => {
@@ -866,5 +910,173 @@ export const getAvenants = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('getAvenants error:', error);
     sendError(res, 'Erreur lors de la récupération');
+  }
+};
+// GÉNÉRER ET TÉLÉCHARGER LE PDF D'UN AVENANT
+//
+// Même logique que telechargerPDF (contrat) : document public consultable
+// sans authentification (comme le contrat, le candidat/employé n'a pas de
+// compte plateforme). Le PDF reflète les conditions APRES application de
+// l'avenant, puisque avenantService.appliquerAvenant a déjà mis à jour le
+// Contrat (et éventuellement le User) au moment de la création de
+// l'avenant.
+
+export const telechargerAvenantPDF = async (req: Request, res: Response) => {
+  try {
+    const { avenantId } = req.params;
+
+    const avenant = await prisma.avenant.findUnique({ where: { id: avenantId } });
+    if (!avenant) return res.status(404).json({ message: 'Avenant non trouvé' });
+
+    const contrat = await prisma.contrat.findUnique({
+      where: { id: avenant.contratId },
+      include: {
+        candidature: {
+          include: {
+            offre: { include: { demande: { include: { direction: true } } } }
+          }
+        }
+      }
+    });
+    if (!contrat) return res.status(404).json({ message: 'Contrat non trouvé' });
+
+    const donnees = (contrat.donneesContrat as any) || {};
+    const candidat = donnees.candidat || {};
+    const poste = donnees.poste || {};
+    const employeur = donnees.employeur || {};
+
+    const nomFinal = candidat.nom || contrat.candidature?.nom || '';
+    const prenomFinal = candidat.prenom || contrat.candidature?.prenom || '';
+    const employeurNomFinal = employeur.nom || 'KILANI GROUPE';
+    const employeurRepFinal = employeur.representant || 'M. Karim Kilani, Directeur Général';
+    const posteFinal = poste.intitule || contrat.candidature?.offre?.intitule || 'Employé';
+    const directionFinal = poste.direction || contrat.candidature?.offre?.demande?.direction?.nom || 'Non spécifié';
+
+    const typeLabels: Record<string, string> = {
+      CONFIRMATION_PE: 'Confirmation de période d\'essai',
+      PROLONGATION_PE: 'Prolongation de période d\'essai',
+      CHANGEMENT_SITUATION: 'Changement de situation',
+      CHANGEMENT_POSTE: 'Changement de poste',
+      AUGMENTATION_SALAIRE: 'Augmentation de salaire',
+      RUPTURE: 'Rupture',
+      AUTRE: 'Modification contractuelle'
+    };
+    const typeLabel = typeLabels[avenant.typeAvenant] || avenant.typeAvenant;
+
+    const statutLabels: Record<string, string> = {
+      BROUILLON: 'Brouillon', ENVOYE: 'Envoyé', ACTIF: 'Actif',
+      RESILIE: 'Résilié', TERMINE: 'Terminé'
+    };
+
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Avenant au contrat ${contrat.reference}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: #000; background: white; padding: 40px; margin: 0; }
+    .header { text-align: right; margin-bottom: 30px; }
+    .header strong { font-size: 14pt; }
+    h1 { text-align: center; font-size: 18pt; text-transform: uppercase; margin: 20px 0; letter-spacing: 2px; }
+    h2 { font-size: 14pt; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    td { padding: 8px 12px; border: 1px solid #ccc; vertical-align: top; }
+    .bold { font-weight: bold; background-color: #f5f5f5; width: 35%; }
+    .notice { background: #fff3cd; border: 1px solid #ffc107; padding: 12px; margin: 20px 0; text-align: center; font-size: 11pt; }
+    .desc-box { margin: 15px 0; padding: 12px; background: #f5f5f5; border-left: 4px solid #2b6cb0; }
+    .signature-block { margin-top: 50px; display: flex; justify-content: space-between; }
+    .signature-box { width: 45%; text-align: center; }
+    .signature-line { margin-top: 50px; border-top: 1px solid #000; padding-top: 5px; }
+    .footer { margin-top: 40px; text-align: center; font-size: 9pt; color: #666; border-top: 1px solid #eee; padding-top: 15px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <strong>KILANI GROUPE</strong><br>
+  ${directionFinal}<br>
+  Tunis, le ${new Date().toLocaleDateString('fr-FR')}
+</div>
+
+<h1>AVENANT AU CONTRAT DE TRAVAIL</h1>
+
+<p style="text-align:center; margin-bottom:20px;">
+  <strong>Contrat de référence :</strong> ${contrat.reference} &nbsp;|&nbsp;
+  <strong>Type d'avenant :</strong> ${typeLabel} &nbsp;|&nbsp;
+  <strong>Date d'effet :</strong> ${new Date(avenant.date).toLocaleDateString('fr-FR')}
+</p>
+
+<h2>ARTICLE 1 - PARTIES CONCERNÉES</h2>
+<table>
+  <tr><td class="bold">Employeur</td><td>${employeurNomFinal}</td></tr>
+  <tr><td class="bold">Représentant légal</td><td>${employeurRepFinal}</td></tr>
+  <tr><td class="bold">Salarié(e)</td><td>${prenomFinal} ${nomFinal}</td></tr>
+</table>
+
+<h2>ARTICLE 2 - OBJET DE L'AVENANT</h2>
+<div class="desc-box">${avenant.description}</div>
+
+<h2>ARTICLE 3 - CONDITIONS APRÈS MODIFICATION</h2>
+<table>
+  <tr><td class="bold">Poste occupé</td><td>${posteFinal}</td></tr>
+  <tr><td class="bold">Direction / Service</td><td>${directionFinal}</td></tr>
+  <tr><td class="bold">Salaire brut mensuel</td><td><strong>${contrat.salaire}</strong></td></tr>
+  <tr><td class="bold">Statut du contrat</td><td>${statutLabels[contrat.statut] || contrat.statut}</td></tr>
+  <tr><td class="bold">Date de fin de période d'essai / contrat</td><td>${contrat.dateFin ? new Date(contrat.dateFin).toLocaleDateString('fr-FR') : 'Non définie'}</td></tr>
+</table>
+
+${contrat.statut === 'RESILIE' ? `
+<div class="notice" style="background:#fde8e8;border-color:#f44336;">
+  <strong>Contrat résilié</strong><br>
+  Ce contrat a été résilié à compter du ${contrat.dateFin ? new Date(contrat.dateFin).toLocaleDateString('fr-FR') : '-'}.
+</div>
+` : `
+<div class="notice">
+  <strong>Toutes les autres clauses du contrat initial demeurent inchangées.</strong>
+</div>
+`}
+
+<div class="signature-block">
+  <div class="signature-box">
+    <div class="signature-line"></div>
+    <p><strong>L'Employeur</strong><br>${employeurRepFinal}</p>
+  </div>
+  <div class="signature-box">
+    <div class="signature-line"></div>
+    <p><strong>Le(La) Salarié(e)</strong><br>${prenomFinal} ${nomFinal}</p>
+  </div>
+</div>
+
+<div class="footer">
+  <p>Fait à Tunis, en deux exemplaires originaux, le ${new Date().toLocaleDateString('fr-FR')}</p>
+  <p>${employeurNomFinal} — Tous droits réservés</p>
+</div>
+
+</body>
+</html>`;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
+      printBackground: true
+    });
+
+    await browser.close();
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="avenant_${avenant.typeAvenant}_${contrat.reference}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.end(pdfBuffer);
+  } catch (error) {
+    console.error('telechargerAvenantPDF error:', error);
+    res.status(500).json({ message: 'Erreur lors de la génération du PDF' });
   }
 };

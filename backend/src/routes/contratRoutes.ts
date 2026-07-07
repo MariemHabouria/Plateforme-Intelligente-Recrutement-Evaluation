@@ -13,7 +13,8 @@ import {
   telechargerPDF,
   updateContratStatut,
   createAvenant,
-  getAvenants
+  getAvenants,
+  telechargerAvenantPDF
 } from '../controllers/contratController';
 
 const router = Router();
@@ -21,6 +22,7 @@ const router = Router();
 // Routes publiques (consultation sans authentification)
 router.get('/consultation/:id', consulterContrat);
 router.get('/:id/pdf', telechargerPDF);
+router.get('/avenants/:avenantId/pdf', telechargerAvenantPDF); // ← déplacé ici
 
 // Routes protégées
 router.use(protect);
@@ -37,7 +39,7 @@ router.post('/:id/signer', authorize('RESP_PAIE', 'SUPER_ADMIN'), signerContrat)
 router.patch('/:id/statut', authorize('RESP_PAIE', 'SUPER_ADMIN'), updateContratStatut);
 
 // Avenants
-router.post('/:contratId/avenants', authorize('RESP_PAIE', 'SUPER_ADMIN'), createAvenant);
-router.get('/:contratId/avenants', authorize('RESP_PAIE', 'SUPER_ADMIN'), getAvenants);
+router.post('/avenant', authorize('RESP_PAIE', 'SUPER_ADMIN'), createAvenant);
+router.get('/:contratId/avenants', getAvenants);
 
 export default router;

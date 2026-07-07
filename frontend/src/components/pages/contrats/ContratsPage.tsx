@@ -1,7 +1,7 @@
 // frontend/src/components/pages/contrats/ContratsPage.tsx
 
 import { useState, useEffect } from 'react';
-import { Plus, Eye, Download, Send, CheckCircle, FileText, X } from 'lucide-react';
+import { Plus, Eye, Send, CheckCircle, FileText } from 'lucide-react';
 import { Card, CardBody } from '../../ui/Card';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
@@ -11,6 +11,15 @@ import { Modal } from '../../ui/Modal';
 import { FormGroup, FormLabel, Input, Select, Textarea } from '../../ui/FormField';
 import api from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import { normalizeRole } from '../../../types';
+import { AvenantModal } from './AvenantModal';
+
+interface Avenant {
+  id: string;
+  typeAvenant: string;
+  date: string;
+  description: string;
+}
 
 interface Contrat {
   id: string;
@@ -20,6 +29,7 @@ interface Contrat {
   dateDebut: string;
   dateFin?: string;
   statut: string;
+  avenants?: Avenant[];
   candidature: {
     id: string;
     nom: string;
@@ -74,6 +84,12 @@ export function ContratsPage() {
   const [candidaturesAcceptees, setCandidaturesAcceptees] = useState<CandidatureAcceptee[]>([]);
   const [preloading, setPreloading] = useState(false);
   const [donneesPrecontrat, setDonneesPrecontrat] = useState<any>(null);
+
+  // ── Avenant ──
+  const [showAvenantModal, setShowAvenantModal] = useState(false);
+  const [contratPourAvenant, setContratPourAvenant] = useState<Contrat | null>(null);
+  const [expandedAvenants, setExpandedAvenants] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     reference: '',
     typeContrat: 'CDI',
@@ -140,7 +156,7 @@ export function ContratsPage() {
       const response = await api.get(`/contrats/precontrat/${candidatureId}`);
       const data = response.data.data.donnees;
       setDonneesPrecontrat(data);
-      
+
       setFormData(prev => ({
         ...prev,
         salaire: data.demande?.budgetMax ? `${data.demande.budgetMax} DT` : '3000 DT',
@@ -171,30 +187,30 @@ export function ContratsPage() {
     if (!selectedCandidatureId) return;
     try {
       await api.post('/contrats', {
-  candidatureId: selectedCandidatureId,
-  typeContrat: formData.typeContrat,
-  dateDebut: formData.dateDebut,
-  dateFin: formData.dateFin,
-  salaire: formData.salaire,
-  prime: formData.prime,
-  avantages: formData.avantages,
-  clauseParticuliere: formData.clauseParticuliere,
-  employeurNom: formData.employeurNom,
-  employeurRepresentant: formData.employeurRepresentant,
-  employeurAdresse: formData.employeurAdresse,
-  employePoste: formData.employePoste,
-  employeDirection: formData.employeDirection,
-  employeSuperieur: formData.employeSuperieur,
-  employeLieuTravail: formData.employeLieuTravail,
-  periodeEssaiDuree: formData.periodeEssaiDuree,
-  periodeEssaiRenouvelable: formData.periodeEssaiRenouvelable,
-  horairesHebdo: formData.horairesHebdo,
-  horairesPrecision: formData.horairesPrecision,
-  congesPayes: formData.congesPayes,
-  preavis: formData.preavis,
-  observations: formData.observations,
-  documentsFournis: formData.documentsFournis
-});
+        candidatureId: selectedCandidatureId,
+        typeContrat: formData.typeContrat,
+        dateDebut: formData.dateDebut,
+        dateFin: formData.dateFin,
+        salaire: formData.salaire,
+        prime: formData.prime,
+        avantages: formData.avantages,
+        clauseParticuliere: formData.clauseParticuliere,
+        employeurNom: formData.employeurNom,
+        employeurRepresentant: formData.employeurRepresentant,
+        employeurAdresse: formData.employeurAdresse,
+        employePoste: formData.employePoste,
+        employeDirection: formData.employeDirection,
+        employeSuperieur: formData.employeSuperieur,
+        employeLieuTravail: formData.employeLieuTravail,
+        periodeEssaiDuree: formData.periodeEssaiDuree,
+        periodeEssaiRenouvelable: formData.periodeEssaiRenouvelable,
+        horairesHebdo: formData.horairesHebdo,
+        horairesPrecision: formData.horairesPrecision,
+        congesPayes: formData.congesPayes,
+        preavis: formData.preavis,
+        observations: formData.observations,
+        documentsFournis: formData.documentsFournis
+      });
       setSuccess('Contrat généré avec succès');
       fetchContrats();
       fetchCandidaturesAcceptees();
@@ -260,9 +276,9 @@ export function ContratsPage() {
   };
 
   const telechargerContrat = (contratId: string) => {
-  const baseURL = api.defaults.baseURL || '';
-  window.open(`${baseURL}/contrats/${contratId}/pdf`, '_blank');
-};
+    const baseURL = api.defaults.baseURL || '';
+    window.open(`${baseURL}/contrats/${contratId}/pdf`, '_blank');
+  };
 
   const getStatutVariant = (statut: string): BadgeVariant => {
     const variants: Record<string, BadgeVariant> = {
@@ -286,13 +302,11 @@ export function ContratsPage() {
     return labels[statut] || statut;
   };
 
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('fr-FR');
-
   if (loading) {
     return <div style={{ padding: 40, textAlign: 'center' }}>Chargement des contrats...</div>;
   }
 
-  if (user?.role !== 'paie' && user?.role !== 'superadmin') {
+  if (normalizeRole(user?.role) !== 'RESP_PAIE' && normalizeRole(user?.role) !== 'SUPER_ADMIN') {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
         <Alert variant="red">Accès non autorisé</Alert>
@@ -348,44 +362,76 @@ export function ContratsPage() {
                   </tr>
                 ) : (
                   contrats.map((c) => (
-                    <tr key={c.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Avatar name={`${c.candidature?.prenom} ${c.candidature?.nom}`} size="sm" />
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{c.candidature?.prenom} {c.candidature?.nom}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.candidature?.email}</div>
+                    <>
+                      <tr key={c.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Avatar name={`${c.candidature?.prenom} ${c.candidature?.nom}`} size="sm" />
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{c.candidature?.prenom} {c.candidature?.nom}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.candidature?.email}</div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>{c.candidature?.offre?.intitule || '-'}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <Badge variant="gold">{c.typeContrat}</Badge>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{c.salaire}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <Badge variant={getStatutVariant(c.statut)}>
-                          {getStatutLabel(c.statut)}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          <Button variant="ghost" size="xs" onClick={() => telechargerContrat(c.id)} title="Voir le contrat">
-                            <Eye size={12} />
-                          </Button>
-                          {c.statut === 'BROUILLON' && (
-                            <Button variant="primary" size="xs" onClick={() => envoyerContrat(c.id)}>
-                              <Send size={11} /> Envoyer
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13 }}>{c.candidature?.offre?.intitule || '-'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <Badge variant="gold">{c.typeContrat}</Badge>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{c.salaire}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <Badge variant={getStatutVariant(c.statut)}>
+                            {getStatutLabel(c.statut)}
+                          </Badge>
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <Button variant="ghost" size="xs" onClick={() => telechargerContrat(c.id)} title="Voir le contrat">
+                              <Eye size={12} />
                             </Button>
-                          )}
-                          {c.statut === 'ENVOYE' && (
-                            <Button variant="success" size="xs" onClick={() => marquerSigne(c.id)}>
-                              <CheckCircle size={11} /> Signer (physique)
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                            {c.statut === 'BROUILLON' && (
+                              <Button variant="primary" size="xs" onClick={() => envoyerContrat(c.id)}>
+                                <Send size={11} /> Envoyer
+                              </Button>
+                            )}
+                            {c.statut === 'ENVOYE' && (
+                              <Button variant="success" size="xs" onClick={() => marquerSigne(c.id)}>
+                                <CheckCircle size={11} /> Signer (physique)
+                              </Button>
+                            )}
+                            {c.statut === 'ACTIF' && (
+                              <Button
+                                variant="secondary"
+                                size="xs"
+                                onClick={() => { setContratPourAvenant(c); setShowAvenantModal(true); }}
+                              >
+                                <FileText size={11} /> Avenant
+                              </Button>
+                            )}
+                            {c.avenants && c.avenants.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={() => setExpandedAvenants(expandedAvenants === c.id ? null : c.id)}
+                              >
+                                {c.avenants.length} avenant{c.avenants.length > 1 ? 's' : ''}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedAvenants === c.id && c.avenants && c.avenants.length > 0 && (
+                        <tr key={`${c.id}-avenants`}>
+                          <td colSpan={6} style={{ padding: '8px 16px', background: '#fafafa' }}>
+                            {c.avenants.map(a => (
+                              <div key={a.id} style={{ padding: '8px 0', borderBottom: '1px solid #eee', fontSize: 12 }}>
+                                <strong>{a.typeAvenant}</strong> — {new Date(a.date).toLocaleDateString('fr-FR')}
+                                <div style={{ color: '#666', marginTop: 2 }}>{a.description}</div>
+                              </div>
+                            ))}
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))
                 )}
               </tbody>
@@ -596,6 +642,22 @@ export function ContratsPage() {
           )}
         </div>
       </Modal>
+
+      {/* Modal de création d'avenant */}
+      {contratPourAvenant && (
+        <AvenantModal
+          open={showAvenantModal}
+          onClose={() => { setShowAvenantModal(false); setContratPourAvenant(null); }}
+          contratId={contratPourAvenant.id}
+          contratRef={contratPourAvenant.reference}
+          salaireActuel={contratPourAvenant.salaire}
+          onSuccess={() => {
+            fetchContrats();
+            setSuccess('Avenant créé, employé notifié par email');
+            setTimeout(() => setSuccess(''), 3000);
+          }}
+        />
+      )}
     </div>
   );
 }

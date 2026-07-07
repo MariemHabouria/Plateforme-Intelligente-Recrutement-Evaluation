@@ -3,26 +3,28 @@
 import type { RoleConfig, NavItem, Demande, OffreEmploi, Candidature, Entretien, EvaluationPE, Contrat, ValidationEtape, StatCard } from '@/types';
 
 
-// ROLES CONFIG — clés minuscules (normalisées par Sidebar)
+// ROLES CONFIG — clés minuscules (normalisees par Sidebar)
 
 export const ROLES: Record<string, RoleConfig> = {
   superadmin: { label: 'Super Admin',       color: '#9A8A50', initials: 'SA', name: 'Super Admin',      sub: 'Administration systeme' },
   SUPER_ADMIN:{ label: 'Super Admin',       color: '#9A8A50', initials: 'SA', name: 'Super Admin',      sub: 'Administration systeme' },
   manager:    { label: 'Manager (N+1)',     color: '#5A7A3A', initials: 'MK', name: 'Mohamed Kilani',   sub: 'Manager – Dir. Industrielle' },
   MANAGER:    { label: 'Manager (N+1)',     color: '#5A7A3A', initials: 'MK', name: 'Mohamed Kilani',   sub: 'Manager – Dir. Industrielle' },
-  directeur:  { label: 'Directeur (N+2)',  color: '#7A6C3A', initials: 'AK', name: 'Ahmed Kilani',     sub: 'Directeur Industriel' },
-  DIRECTEUR:  { label: 'Directeur (N+2)',  color: '#7A6C3A', initials: 'AK', name: 'Ahmed Kilani',     sub: 'Directeur Industriel' },
-  rh:         { label: 'RH / DRH',         color: '#6A7A3A', initials: 'SK', name: 'Sonia Karoui',     sub: 'Responsable RH' },
-  DRH:        { label: 'RH / DRH',         color: '#6A7A3A', initials: 'SK', name: 'Sonia Karoui',     sub: 'Responsable RH' },
-  daf:        { label: 'DAF',              color: '#C07820', initials: 'RB', name: 'Rami Ben Ali',     sub: 'Dir. Administratif & Financier' },
-  DAF:        { label: 'DAF',              color: '#C07820', initials: 'RB', name: 'Rami Ben Ali',     sub: 'Dir. Administratif & Financier' },
-  dga:        { label: 'DGA',              color: '#7A5A3A', initials: 'NK', name: 'Nabil Kilani',     sub: 'Directeur General Adjoint' },
-  DGA:        { label: 'DGA',              color: '#7A5A3A', initials: 'NK', name: 'Nabil Kilani',     sub: 'Directeur General Adjoint' },
-  dg:         { label: 'DG',               color: '#7A5A3A', initials: 'KK', name: 'Karim Kilani',     sub: 'Directeur General' },
-  DG:         { label: 'DG',               color: '#7A5A3A', initials: 'KK', name: 'Karim Kilani',     sub: 'Directeur General' },
-  paie:       { label: 'Resp. Paie',       color: '#9A8A50', initials: 'LM', name: 'Leila Marzouk',    sub: 'Responsable Paie & Admin.' },
-  RESP_PAIE:  { label: 'Resp. Paie',       color: '#9A8A50', initials: 'LM', name: 'Leila Marzouk',    sub: 'Responsable Paie & Admin.' },
-  candidat:   { label: 'Candidat (public)',color: '#A04030', initials: 'CA', name: 'Candidat Externe', sub: 'Formulaire public' },
+  directeur:  { label: 'Directeur (N+2)',   color: '#7A6C3A', initials: 'AK', name: 'Ahmed Kilani',     sub: 'Directeur Industriel' },
+  DIRECTEUR:  { label: 'Directeur (N+2)',   color: '#7A6C3A', initials: 'AK', name: 'Ahmed Kilani',     sub: 'Directeur Industriel' },
+  rh:         { label: 'RH / DRH',          color: '#6A7A3A', initials: 'SK', name: 'Sonia Karoui',     sub: 'Responsable RH' },
+  DRH:        { label: 'RH / DRH',          color: '#6A7A3A', initials: 'SK', name: 'Sonia Karoui',     sub: 'Responsable RH' },
+  drh:        { label: 'RH / DRH',          color: '#6A7A3A', initials: 'SK', name: 'Sonia Karoui',     sub: 'Responsable RH' },
+  daf:        { label: 'DAF',               color: '#C07820', initials: 'RB', name: 'Rami Ben Ali',     sub: 'Dir. Administratif & Financier' },
+  DAF:        { label: 'DAF',               color: '#C07820', initials: 'RB', name: 'Rami Ben Ali',     sub: 'Dir. Administratif & Financier' },
+  dga:        { label: 'DGA',               color: '#7A5A3A', initials: 'NK', name: 'Nabil Kilani',     sub: 'Directeur General Adjoint' },
+  DGA:        { label: 'DGA',               color: '#7A5A3A', initials: 'NK', name: 'Nabil Kilani',     sub: 'Directeur General Adjoint' },
+  dg:         { label: 'DG',                color: '#7A5A3A', initials: 'KK', name: 'Karim Kilani',     sub: 'Directeur General' },
+  DG:         { label: 'DG',                color: '#7A5A3A', initials: 'KK', name: 'Karim Kilani',     sub: 'Directeur General' },
+  paie:       { label: 'Resp. Paie',        color: '#9A8A50', initials: 'LM', name: 'Leila Marzouk',    sub: 'Responsable Paie & Admin.' },
+  RESP_PAIE:  { label: 'Resp. Paie',        color: '#9A8A50', initials: 'LM', name: 'Leila Marzouk',    sub: 'Responsable Paie & Admin.' },
+  resp_paie:  { label: 'Resp. Paie',        color: '#9A8A50', initials: 'LM', name: 'Leila Marzouk',    sub: 'Responsable Paie & Admin.' },
+  candidat:   { label: 'Candidat (public)', color: '#A04030', initials: 'CA', name: 'Candidat Externe', sub: 'Formulaire public' },
 };
 
 
@@ -39,8 +41,7 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { id: 'demandes',       label: 'Toutes les demandes',    icon: 'FileText' },
     { id: 'evaluation',     label: 'Evaluations PE',         icon: 'Star',     badge: '3', badgeColor: 'amber' },
     { id: 'audit',          label: "Journal d'audit",        icon: 'Shield' },
-      { id: 'entretiens',     label: 'Entretiens',             icon: 'Calendar' },   
-
+    { id: 'entretiens',     label: 'Entretiens',             icon: 'Calendar' },   
   ],
   manager: [
     { section: 'principal' },
@@ -67,6 +68,17 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { id: 'entretiens', label: 'Entretiens',        icon: 'Calendar' },
     { section: 'gestion_rh' },
     { id: 'evaluation', label: 'Evaluations PE',    icon: 'Star' },
+  ],
+  drh: [  //AJOUT : Configuration pour le role DRH
+    { section: 'principal' },
+    { id: 'dashboard',  label: 'Tableau de bord',  icon: 'LayoutDashboard' },
+    { id: 'demandes',   label: 'Demandes',          icon: 'FileText', badge: '3', badgeColor: 'amber' },
+    { id: 'offres',     label: "Offres d'emploi",   icon: 'Briefcase' },
+    { id: 'candidats',  label: 'Candidatures',      icon: 'Users', badge: '12', badgeColor: 'red' },
+    { id: 'entretiens', label: 'Entretiens',        icon: 'Calendar' },
+    { section: 'gestion_rh' },
+    { id: 'evaluation', label: 'Evaluations PE',    icon: 'Star', badge: '3', badgeColor: 'amber' },
+    { id: 'contrats',   label: 'Contrats',          icon: 'FileCheck' },
   ],
   daf: [
     { section: 'principal' },
@@ -96,13 +108,20 @@ export const NAV_CONFIG: Record<string, NavItem[]> = {
     { section: 'periode_essai' },
     { id: 'evaluation', label: 'Donnees PE',      icon: 'Star', badge: '3', badgeColor: 'amber' },
   ],
+  resp_paie: [  //AJOUT : Configuration pour resp_paie (minuscule)
+    { section: 'principal' },
+    { id: 'dashboard',  label: 'Tableau de bord', icon: 'LayoutDashboard' },
+    { id: 'contrats',   label: 'Contrats',        icon: 'FileCheck', badge: '4', badgeColor: 'amber' },
+    { section: 'periode_essai' },
+    { id: 'evaluation', label: 'Donnees PE',      icon: 'Star', badge: '3', badgeColor: 'amber' },
+  ],
   candidat: [
     { id: 'candidature', label: 'Formulaire candidature', icon: 'FileText' },
   ],
 };
 
 
-// DONNEES MOCK — typées as any[] pour éviter
+// DONNEES MOCK — typees as any[] pour eviter
 // les conflits avec les types stricts du backend
 
 export const DEMANDES: any[] = [
@@ -206,6 +225,12 @@ export const STATS: Record<string, StatCard[]> = {
     { label: 'Entretiens planifies', value: '14',  delta: 'Sur 3 offres',      up: null,  icon: 'Calendar',  color: 'var(--umber-bg)' },
     { label: 'Contrats a generer',   value: '3',   delta: 'En attente',        up: false, icon: 'FileCheck', color: 'var(--amber-bg)' },
   ],
+  drh: [  //AJOUT : Stats pour DRH (minuscule)
+    { label: 'Offres publiees',      value: '7',   delta: '+2 ce mois',        up: true,  icon: 'Briefcase', color: 'var(--olive-bg)' },
+    { label: 'Candidatures recues',  value: '124', delta: '+18 cette semaine', up: true,  icon: 'Mail',      color: 'var(--green-bg)' },
+    { label: 'Entretiens planifies', value: '14',  delta: 'Sur 3 offres',      up: null,  icon: 'Calendar',  color: 'var(--umber-bg)' },
+    { label: 'Contrats a generer',   value: '3',   delta: 'En attente',        up: false, icon: 'FileCheck', color: 'var(--amber-bg)' },
+  ],
   daf: [
     { label: 'Demandes a valider',  value: '2',       delta: 'Urgentes',        up: false, icon: 'Check',      color: 'var(--amber-bg)' },
     { label: 'Budget RH consomme',  value: '68%',     delta: 'Sur plan annuel', up: null,  icon: 'DollarSign', color: 'var(--olive-bg)' },
@@ -249,6 +274,12 @@ export const STATS: Record<string, StatCard[]> = {
     { label: 'Contrats signes',     value: '6', delta: '+2 vs mois prec.',    up: true,  icon: 'Check',     color: 'var(--green-bg)' },
   ],
   RESP_PAIE: [
+    { label: 'Contrats a generer',  value: '4', delta: 'Candidats confirmes', up: false, icon: 'FileCheck', color: 'var(--amber-bg)' },
+    { label: 'Donnees PE a saisir', value: '3', delta: 'Urgentes J-30',       up: false, icon: 'Star',      color: 'var(--amber-bg)' },
+    { label: 'Avenants en cours',   value: '2', delta: 'En traitement',       up: null,  icon: 'RefreshCw', color: 'var(--olive-bg)' },
+    { label: 'Contrats signes',     value: '6', delta: '+2 vs mois prec.',    up: true,  icon: 'Check',     color: 'var(--green-bg)' },
+  ],
+  resp_paie: [  //AJOUT : Stats pour resp_paie (minuscule)
     { label: 'Contrats a generer',  value: '4', delta: 'Candidats confirmes', up: false, icon: 'FileCheck', color: 'var(--amber-bg)' },
     { label: 'Donnees PE a saisir', value: '3', delta: 'Urgentes J-30',       up: false, icon: 'Star',      color: 'var(--amber-bg)' },
     { label: 'Avenants en cours',   value: '2', delta: 'En traitement',       up: null,  icon: 'RefreshCw', color: 'var(--olive-bg)' },

@@ -11,6 +11,7 @@ export type Role =
   | 'RESP_PAIE'
   | 'EMPLOYE'
   | 'candidat';
+
 export const normalizeRole = (role: string | undefined): string => {
   if (!role) return '';
   const roleMap: Record<string, string> = {
@@ -18,9 +19,12 @@ export const normalizeRole = (role: string | undefined): string => {
     'manager': 'MANAGER',
     'directeur': 'DIRECTEUR',
     'rh': 'DRH',
+    'daf': 'DAF',
+    'dga': 'DGA',
+    'dg': 'DG',
     'superadmin': 'SUPER_ADMIN'
   };
-  return roleMap[role] || role;
+  return roleMap[role] || role.toUpperCase();
 };
 
 // Enum TypeEntretien aligne avec le backend
@@ -243,6 +247,9 @@ export interface Contrat {
   candidature?: Candidature;
   evaluationPE?: EvaluationPEDetail;
   avenants?: Avenant[];
+  donneesContrat?: {
+    propositionModification?: PropositionModification;
+  };
 }
 
 export interface Avenant {
@@ -262,11 +269,25 @@ export type StatutEvaluationPE =
   | 'BROUILLON'
   | 'EN_VALIDATION_DIR'
   | 'EN_VALIDATION_DRH'
-  | 'EN_VALIDATION_DAF'
-  | 'EN_VALIDATION_DGA'
-  | 'EN_VALIDATION_DG'
   | 'VALIDEE'
   | 'REJETEE';
+
+// Proposition de modification contractuelle (Circuit 2)
+export interface PropositionModification {
+  typeAvenant: string;
+  description: string;
+  nouveauSalaire?: string;
+  nouvelleDateFin?: string;
+  // Nouveaux champs — pertinents selon evaluation.decision
+  nouveauPoste?: string;
+  nouvelleDirectionId?: string;
+  dateResiliation?: string;
+  motifResiliation?: string;
+  proposePar: string;
+  proposeAt: string;
+  statut: 'EN_ATTENTE_DRH' | 'REJETEE_PAR_DRH' | 'VALIDEE';
+  commentaireDRH?: string;
+}
 
 export interface EvaluationPEDetail {
   id: string;
@@ -316,24 +337,8 @@ export interface EvaluationValidation {
 }
 
 
-// WORKFLOW STEPS
-
-export interface PEStep {
-  role: string;
-  label: string;
-  description: string;
-  order: number;
-}
-
-export const PE_WORKFLOW: PEStep[] = [
-  { role: 'paie', label: 'Resp. Paie', description: 'Saisie & verification donnees contractuelles', order: 0 },
-  { role: 'manager', label: 'Manager N+1', description: 'Evaluation comportementale et decision', order: 1 },
-  { role: 'directeur', label: 'Directeur N+2', description: 'Validation avec acces eval. N+1', order: 2 },
-  { role: 'rh', label: 'DRH', description: 'Validation RH — eval. N+1 masquee', order: 3 },
-  { role: 'daf', label: 'DAF', description: 'Validation financiere — eval. N+1 masquee', order: 4 },
-  { role: 'dga', label: 'DGA/DG', description: 'Decision finale — eval. N+1 masquee', order: 5 },
-  { role: 'cloturee', label: 'Cloturee', description: 'Evaluation finalisee', order: 6 }
-];
+// WORKFLOW STEPS - SUPPRIMÉ (PE_WORKFLOW retiré car inutilisé)
+// Les étapes sont maintenant définies localement dans EvaluationPage.tsx
 
 
 // FORMULAIRES EVALUATION PE
