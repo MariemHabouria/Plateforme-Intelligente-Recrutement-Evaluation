@@ -5,29 +5,31 @@ import asyncpg
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-# Chemin absolu basé sur l'emplacement du script
-SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-IA_DIR       = os.path.dirname(SCRIPT_DIR)
-OUTPUT_PATH  = os.path.join(IA_DIR, "training_data", "feedbacks.json")
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+IA_DIR      = os.path.dirname(SCRIPT_DIR)
+OUTPUT_PATH = os.path.join(IA_DIR, "training_data", "feedbacks.json")
+IDS_PATH    = os.path.join(IA_DIR, "training_data", "feedback_ids.json")
 
 
 async def main():
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         rows = await conn.fetch("""
-            SELECT "cvParsed", "scoreIa", "decisionFinale", "offreId"
+            SELECT "id", "cvParsed", "scoreIa", "decisionFinale", "offreId"
             FROM training_feedback
             WHERE "usedForTraining" = FALSE
             ORDER BY "createdAt" ASC
         """)
 
+        os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+
         if not rows:
             print("Aucun nouveau feedback — arrêt.")
-            # Créer un fichier vide pour éviter l'erreur papermill
-            os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
             with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
                 json.dump([], f)
-            exit(0)
+            with open(IDS_PATH, "w", encoding="utf-8") as f:
+                json.dump([], f)
+            return
 
         data = [
             {
@@ -38,16 +40,18 @@ async def main():
             }
             for r in rows
         ]
+        ids = [r["id"] for r in rows]
 
-        os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        await conn.execute("""
-            UPDATE training_feedback
-            SET "usedForTraining" = TRUE
-            WHERE "usedForTraining" = FALSE
-        """)
+        with open(IDS_PATH, "w", encoding="utf-8") as f:
+            json.dump(ids, f)
+
+        # IMPORTANT : on ne marque plus usedForTraining ici.
+        # Ça se fait seulement après coup, une fois qu'on sait si le
+        # retrain a réellement eu lieu (cf mark_feedback_used.py),
+        # pour ne jamais "consommer" des feedbacks qui n'ont servi à rien.
 
         print(f"Exporté {len(data)} feedbacks → {OUTPUT_PATH}")
 

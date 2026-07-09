@@ -41,6 +41,11 @@ jobs:
                     -p data_path "ia_service/training_data/feedbacks.json" \
                     -p model_output_path "ia_service/models/structure_model.pkl"
 
+      - name: Marquer les feedbacks utilises (seulement si entrainement reel)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python ia_service/scripts/mark_feedback_used.py
+
       - name: Debug - lister les fichiers
         run: |
           echo "=== Racine ==="
