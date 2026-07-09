@@ -2,18 +2,25 @@ name: Retrain IA Model
 
 on:
   workflow_dispatch:
+
 permissions:
   contents: write
+
+concurrency:
+  group: retrain-ia-model
+  cancel-in-progress: false
+
 jobs:
   retrain:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: "pip"
 
       - name: Install deps
         run: |
@@ -30,8 +37,10 @@ jobs:
         run: |
           papermill ia_service/notebooks/retrain_pipeline.ipynb \
                     ia_service/notebooks/retrain_output.ipynb \
+                    -k python3 \
                     -p data_path "ia_service/training_data/feedbacks.json" \
                     -p model_output_path "ia_service/models/structure_model.pkl"
+
       - name: Debug - lister les fichiers
         run: |
           echo "=== Racine ==="
@@ -40,11 +49,20 @@ jobs:
           ls -la ia_service/training_data/ || echo "dossier absent"
           echo "=== models ==="
           ls -la ia_service/models/ || echo "dossier absent"
+
+      - name: Upload notebook exécuté (audit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-output-notebook
+          path: ia_service/notebooks/retrain_output.ipynb
+          retention-days: 30
+
       - name: Push modèle si mis à jour
         run: |
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add ia_service/models/structure_model.pkl || true
+          git add ia_service/models/structure_model_metadata.json || true
           git add retrain_result.json || true
           git diff --staged --quiet || git commit -m "retrain: $(date +%Y-%m-%d)"
           git push
@@ -52,6 +70,6 @@ jobs:
       - name: Notifier FastAPI
         run: |
           RESULT=$(cat retrain_result.json 2>/dev/null || echo '{"promoted": false, "new_f1": 0, "old_f1": 0}')
-          curl -X POST "${{ secrets.FASTAPI_WEBHOOK_URL }}/ai/retrain/done" \
+          curl -f -X POST "${{ secrets.FASTAPI_WEBHOOK_URL }}/ai/retrain/done" \
                -H "Content-Type: application/json" \
                -d "$RESULT" || echo "FastAPI non disponible — notification ignorée"

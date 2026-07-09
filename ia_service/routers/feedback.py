@@ -10,10 +10,19 @@ import uuid
 log = logging.getLogger("ia_service.routers")
 router = APIRouter()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:mariem@localhost:5432/kilani_rh")
+# Fail-fast : aucune connexion Postgres locale par défaut.
+# En prod (Neon), DATABASE_URL DOIT être injectée via .env / secrets GitHub Actions.
+try:
+    DATABASE_URL = os.environ["DATABASE_URL"]
+except KeyError:
+    raise RuntimeError(
+        "DATABASE_URL manquant — vérifie le .env (local) ou les secrets "
+        "GitHub Actions / variables d'environnement (prod). "
+        "Aucun fallback vers un Postgres local n'est autorisé."
+    )
 
 # Baseline F1 du modèle initial (cellule 42 de layer1)
-# Mets ici la valeur réelle affichée par ton notebook après entraînement
+# Celui-ci peut garder un défaut : c'est un seuil métier, pas une connexion DB.
 BASELINE_F1 = float(os.getenv("BASELINE_F1", "0.72"))
 
 
@@ -71,7 +80,6 @@ async def save_feedback(payload: FeedbackPayload):
     except Exception as e:
         log.error(f"Erreur save_feedback: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.get("/metrics/drift")
