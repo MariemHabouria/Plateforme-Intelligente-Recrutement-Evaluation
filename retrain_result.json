@@ -1,1 +1,1 @@
-{"promoted": false, "new_f1": 0.0, "old_f1": 0.0, "model": null, "reason": "no_data"}
+{"promoted": false, "new_f1": 0.7111, "old_f1": 0.9248, "old_f1_source": "metadata (test set historique)", "model": "Random Forest"}
