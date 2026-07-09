@@ -4,6 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# ── Configuration du logging — DOIT être fait avant de récupérer les loggers ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+
 try:
     from dotenv import load_dotenv
     _env_path = Path(__file__).parent / ".env"
@@ -14,11 +20,15 @@ except ImportError:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import routers explicitly
 from ia_service.routers.scoring import router as scoring_router
 from ia_service.routers.feedback import router as feedback_router
 from ia_service.config.scoring_config import refresh_config
 
+log = logging.getLogger("ia_service")
+
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("asyncpg").setLevel(logging.WARNING)
+logging.getLogger("pdfplumber").setLevel(logging.WARNING)
 log = logging.getLogger("ia_service")
 
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)

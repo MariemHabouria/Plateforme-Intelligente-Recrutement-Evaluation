@@ -156,6 +156,7 @@ export const iaService = {
       );
 
       const raw = response.data;
+      console.log('[matching-inverse RAW]', JSON.stringify(raw).slice(0, 500));
 
       return {
         success:          raw.success,

@@ -15,7 +15,7 @@ import logging
 import unicodedata
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
-
+from ..cv_extractor.parser import extract_experience_years, extract_skills
 import numpy as np
 
 from ..schemas import CVExtrait, OffreInput, ResultatScoring
@@ -26,9 +26,7 @@ from ..cv_extractor.parser import extract_experience_years
 log = logging.getLogger("ia_service.ats")
 
 
-# =============================================================================
 # 1. DATACLASSES RESULTAT ATS
-# =============================================================================
 
 @dataclass
 class ATSKeywordAnalysis:
@@ -104,9 +102,7 @@ class ATSMatchResult:
     details: Optional[ResultatScoring] = None
 
 
-# =============================================================================
 # 2. SYNONYMES & ONTOLOGIE METIER
-# =============================================================================
 
 SKILL_SYNONYMS: Dict[str, List[str]] = {
     "python":           ["python3", "py", "django", "flask", "fastapi"],
@@ -149,9 +145,7 @@ ATS_SEUIL_FORT        = 80
 ATS_SHORTLIST_MAX     = 10
 
 
-# =============================================================================
 # 3. HELPERS
-# =============================================================================
 
 def _niveau_requis(offre: OffreInput) -> int:
     if offre.formation_requise:
@@ -176,9 +170,7 @@ def _extract_exp_from_texte(cv_texte: str, score_exp_fallback: float) -> float:
     return fallback
 
 
-# =============================================================================
 # 4. MOTEUR ATS
-# =============================================================================
 
 class ATSEngine:
 
@@ -358,7 +350,6 @@ class ATSEngine:
             temps_scoring_ms       = round(dt_ms, 2),
             details                = scoring,
         )
-
     def match_offre(
         self,
         offre: OffreInput,
@@ -380,10 +371,25 @@ class ATSEngine:
                     score_exp_fallback=0,
                 )
 
+                # Fix 6 : ré-extraction des compétences depuis le texte brut du CV.
+                # `competencesDetectees` stocké en BDD est le résultat du scoring
+                # contre l'offre d'ORIGINE du candidat (souvent d'un tout autre
+                # domaine) — le réutiliser ici fait planter s_comp à 0 pour un
+                # matching inverse vers une nouvelle offre, et déclenche à tort
+                # le plafond de désalignement domaine dans scorer.py.
+                competences_reelles = cand.get('competencesDetectees', [])
+                if texte and len(texte.strip()) > 50:
+                    try:
+                        hard_skills, _soft = extract_skills(texte)
+                        if hard_skills:
+                            competences_reelles = hard_skills
+                    except Exception as e:
+                        log.debug(f"[ATS] Ré-extraction compétences échouée pour {cand.get('id')}: {e}")
+
                 cv = CVExtrait(
                     candidat_nom   = f"{cand.get('prenom', '')} {cand.get('nom', '')}".strip(),
                     candidat_email = cand.get('email', ''),
-                    competences    = cand.get('competencesDetectees', []),
+                    competences    = competences_reelles,
                     experience_annees = exp_annees,
                     texte_brut     = texte,
                 )
@@ -451,10 +457,7 @@ class ATSEngine:
             stats               = stats,
         )
 
-
-# =============================================================================
 # 5. FONCTION PUBLIQUE
-# =============================================================================
 
 def rank_candidates(
     candidatures: List[dict],

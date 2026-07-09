@@ -128,7 +128,7 @@ TECH_PATTERNS = [
     r'\b(react(?:\.js)?|angular(?:js)?|vue(?:\.js)?|next(?:\.js)?|html5?|css3?)\b',
     r'\b(django|flask|fastapi|express|laravel|spring(?:boot)?)\b',
     r'\b(mysql|postgresql|sqlite|oracle|mongodb|redis|elasticsearch)\b',
-    r'\b(docker|kubernetes|terraform|ansible|jenkins|gitlab)\b',
+    r'\b(docker|kubernetes|k8s|terraform|ansible|jenkins|gitlab)\b',
     r'\b(aws|azure|gcp|s3|ec2|lambda|heroku)\b',
     r'\b(tensorflow|pytorch|keras|scikit[\ \-]learn|pandas|numpy|matplotlib)\b',
     r'\b(git|github|gitlab|jira|agile|scrum|devops|ci[\ /]cd)\b',
@@ -136,6 +136,11 @@ TECH_PATTERNS = [
     r'\b(node(?:\.js)?|webpack|vite|graphql|rest(?:ful)?|soap)\b',
     r'\b(sql|plsql|tsql|nosql)\b',
     r'\b(sap(?:\s+hana)?|crm|erp|odoo|salesforce)\b',
+    r'\b(machine\s+learning|deep\s+learning|intelligence\s+artificielle|\bia\b|\bml\b|\bdl\b)\b',
+    r'\b(nlp|natural\s+language\s+processing|computer\s+vision|\bcv\b(?=\W|$))\b',
+    r'\b(data\s+science|data\s+analysis|data\s+engineering|big\s+data)\b',
+    r'\b(spacy|nltk|opencv|huggingface|transformers|llm|genai|gen[\ \-]ai)\b',
+    r'\b(xgboost|lightgbm|catboost|shap|lime)\b',
 ]
 
 LANG_MAP = {
