@@ -10,4 +10,3 @@ scikit-learn==1.4.2
 joblib==1.4.2
 numpy==1.26.4
 fastapi-cli==0.0.2
-typer==0.9.4
