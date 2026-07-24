@@ -1,8 +1,14 @@
 # ia_service/main.py
+# Fix perf : creation d'un pool asyncpg partage au demarrage (au lieu
+# d'une connexion par requete) + event loop qui ne bloque plus sur le
+# CPU-bound (voir scoring.py : parse_cv / cv_scorer.scorer via to_thread)
+
 import os
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+import asyncpg
 
 # ── Configuration du logging — DOIT être fait avant de récupérer les loggers ──
 logging.basicConfig(
@@ -29,22 +35,35 @@ log = logging.getLogger("ia_service")
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 logging.getLogger("asyncpg").setLevel(logging.WARNING)
 logging.getLogger("pdfplumber").setLevel(logging.WARNING)
-log = logging.getLogger("ia_service")
-
-logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-logging.getLogger("asyncpg").setLevel(logging.WARNING)
-logging.getLogger("pdfplumber").setLevel(logging.WARNING)
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5000,http://localhost:3000"
 ).split(",")
 
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:mariem@localhost:5432/kilani_rh")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Démarrage du microservice IA — chargement de la configuration...")
     log.info(f"UPLOAD_DIR = {os.getenv('UPLOAD_DIR', '⚠ NON DEFINI')}")
+
+    # Fix perf : un seul pool de connexions PostgreSQL reutilise par toutes
+    # les requetes, au lieu d'ouvrir/fermer une connexion asyncpg par appel.
+    # min_size/max_size a ajuster selon la charge attendue en prod.
+    try:
+        app.state.db_pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=2,
+            max_size=10,
+            command_timeout=10,
+        )
+        log.info("Pool PostgreSQL cree (min=2, max=10).")
+    except Exception as e:
+        log.warning(f"Impossible de creer le pool PostgreSQL au demarrage ({e})")
+        app.state.db_pool = None
+
     try:
         await refresh_config()
         log.info("Configuration chargée depuis PostgreSQL.")
@@ -55,6 +74,8 @@ async def lifespan(app: FastAPI):
         )
     log.info("Microservice IA prêt.")
     yield
+    if app.state.db_pool is not None:
+        await app.state.db_pool.close()
     log.info("Arrêt du microservice IA.")
 
 

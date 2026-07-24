@@ -2,9 +2,16 @@
 import axios from 'axios';
 import { ValidationTokenService as TokenService } from '../middlewares/auth';
 
+// CORRECTION SÉCURITÉ : plus de fallback en dur pour les secrets.
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL_CIRCUIT;
+const N8N_WEBHOOK_SECRET = process.env.N8N_WEBHOOK_SECRET;
 
-// Utiliser l'URL du webhook depuis .env
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL_CIRCUIT || 'http://localhost:5678/webhook/recrutement';
+if (!N8N_WEBHOOK_URL) {
+  throw new Error('[SECURITY] N8N_WEBHOOK_URL_CIRCUIT manquant dans les variables d\'environnement.');
+}
+if (!N8N_WEBHOOK_SECRET) {
+  throw new Error('[SECURITY] N8N_WEBHOOK_SECRET manquant dans les variables d\'environnement.');
+}
 
 export const triggerCircuitRecrutement = async (
   demandeId: string,
@@ -31,27 +38,29 @@ export const triggerCircuitRecrutement = async (
       platformUrl: urlValidation
     };
 
-    console.log(`[n8n] Envoi du webhook pour la demande ${demandeId}, etape ${etape}, role ${roleActuel}`);
-    console.log(`[n8n] URL du webhook: ${N8N_WEBHOOK_URL}`);
-    console.log(`[n8n] URL de validation: ${urlValidation}`);
-console.log('[n8n] N8N_WEBHOOK_URL_CIRCUIT:', process.env.N8N_WEBHOOK_URL_CIRCUIT);
-console.log('[n8n] N8N_WEBHOOK_URL utilisee:', N8N_WEBHOOK_URL);
+    //  CORRECTION SÉCURITÉ : ne jamais logger le token ni l'URL complète
+    // (elle contient le token en query param). On logue uniquement le
+    // contexte métier, utile pour le debug sans exposer de secret.
+    console.log(
+      `[n8n] Envoi du webhook - demande=${demandeId} etape=${etape} role=${roleActuel} isLast=${isLast}`
+    );
+
     const response = await axios.post(N8N_WEBHOOK_URL, payload, {
       headers: {
         'Content-Type': 'application/json',
-        'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || 'kilani-webhook-2026'
+        'X-Webhook-Secret': N8N_WEBHOOK_SECRET
       },
       timeout: 10000
     });
 
-    console.log('[n8n] Webhook envoye avec succes');
+    console.log(`[n8n] Webhook envoye avec succes - demande=${demandeId}`);
     return response.data;
 
   } catch (error: any) {
-    console.error('[n8n] Erreur:', error.message);
+    //  On logue le statut HTTP et le message, jamais le payload (qui contient le token)
+    console.error(`[n8n] Erreur envoi webhook - demande=${demandeId}:`, error.message);
     if (error.response) {
       console.error('[n8n] Status:', error.response.status);
-      console.error('[n8n] Data:', error.response.data);
     }
     throw error;
   }
@@ -74,7 +83,7 @@ export const triggerDecisionCircuit = async (params: {
     if (!params.isLast && params.etape < params.totalEtapes) {
       const prochainRole = 'DG';
       const prochaineEtape = params.etape + 1;
-      
+
       nextToken = TokenService.genererToken(params.demandeId, prochainRole, prochaineEtape);
       nextUrl = TokenService.genererUrlWorkflow(params.demandeId, prochainRole, prochaineEtape);
       nextRole = prochainRole;
@@ -87,22 +96,24 @@ export const triggerDecisionCircuit = async (params: {
       nextRole
     };
 
-    console.log(`[n8n] Envoi decision pour la demande ${params.demandeId}, decision ${params.decision}`);
+    //  Pas de token ni d'URL dans les logs
+    console.log(
+      `[n8n] Envoi decision - demande=${params.demandeId} decision=${params.decision} etape=${params.etape}`
+    );
 
     const response = await axios.post(N8N_WEBHOOK_URL, payload, {
       headers: {
         'Content-Type': 'application/json',
-        'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || 'kilani-webhook-2026'
+        'X-Webhook-Secret': N8N_WEBHOOK_SECRET
       },
       timeout: 10000
     });
 
     return response.data;
   } catch (error: any) {
-    console.error('[n8n] Erreur triggerDecisionCircuit:', error.message);
+    console.error(`[n8n] Erreur triggerDecisionCircuit - demande=${params.demandeId}:`, error.message);
     if (error.response) {
       console.error('[n8n] Status:', error.response.status);
-      console.error('[n8n] Data:', error.response.data);
     }
     throw error;
   }

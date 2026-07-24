@@ -771,13 +771,13 @@ export const classifierCandidaturesOffre = async (req: Request, res: Response) =
     }
 
     // Récupérer toutes les candidatures NOUVELLE de cette offre
-    const candidatures = await prisma.candidature.findMany({
-      where: {
-        offreId,
-        statut: { in: ['NOUVELLE', 'PRESELECTIONNEE'] }, // reclassifier aussi les déjà traitées
-      },
-      select: { id: true, scoreGlobal: true, statut: true },
-    });
+const candidatures = await prisma.candidature.findMany({
+  where: {
+    offreId,
+    statut: { notIn: ['ACCEPTEE', 'REFUSEE'] }, // exclut seulement les décisions finales
+  },
+  select: { id: true, scoreGlobal: true, statut: true },
+});
 
     if (candidatures.length === 0) {
       return sendSuccess(res, { classes: [], total: 0 }, 'Aucune candidature à classifier');

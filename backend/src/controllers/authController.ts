@@ -5,14 +5,41 @@ import jwt from 'jsonwebtoken';
 import { generateTemporaryPassword, validatePasswordStrength } from '../utils/password.util';
 import { emailService } from '../services/email.service';
 
-
+// ============================================================
 // FONCTIONS UTILITAIRES
+// ============================================================
 
+//  CORRECTION SÉCURITÉ : validation au chargement du module plutôt
+// qu'un simple "as string" qui masque une variable manquante.
+if (!process.env.JWT_SECRET) {
+  throw new Error('[SECURITY] JWT_SECRET manquant dans les variables d\'environnement.');
+}
+
+//  Liste des rôles valides de la plateforme — à adapter/compléter
+// pour qu'elle corresponde exactement à ton enum Prisma `Role`.
+const ROLES_VALIDES = [
+  'SUPER_ADMIN',
+  'DRH',
+  'MANAGER',
+  'DIRECTEUR',
+  'DG',
+  'RESP_PAIE',
+  'RECRUTEUR',
+  'EMPLOYE'
+];
+
+//  Hash bcrypt "factice" utilisé pour uniformiser le temps de réponse
+// du login quand l'email n'existe pas (voir explication dans `login`).
+// Correspond au hash bcrypt d'un mot de passe aléatoire, jamais utilisé
+// pour un vrai compte.
+const DUMMY_BCRYPT_HASH = '$2b$10$C6UzMDM.H6dfI/f/IKcEeO5V6vN4vXn9YkzD9Nq5s5rTGkK7X4Dqi';
+
+const BCRYPT_ROUNDS = 12; //  relevé de 10 à 12 (standard actuel recommandé)
 
 const generateToken = (id: string, role: string): string => {
   const secret = process.env.JWT_SECRET as string;
   const expiresIn = process.env.JWT_EXPIRE || '7d';
-  
+
   return jwt.sign(
     { id, role },
     secret,
@@ -59,9 +86,9 @@ async function verifierUnicitePosteDirection(
   return { ok: true };
 }
 
-
+// ============================================================
 // POUR SUPER ADMIN - CRÉATION D'UTILISATEUR
-
+// ============================================================
 
 /**
  * Créer un nouvel utilisateur (Super Admin uniquement)
@@ -79,9 +106,22 @@ export const register = async (req: Request, res: Response) => {
       });
     }
 
+    //  CORRECTION SÉCURITÉ : normalisation de l'email (évite les doublons
+    // "Test@Kilani.tn" vs "test@kilani.tn" et les contournements d'unicité)
+    const emailNormalized = String(email).trim().toLowerCase();
+
+    //  CORRECTION SÉCURITÉ : le rôle doit correspondre à un rôle connu
+    // de la plateforme, sinon on rejette avant toute écriture en base.
+    if (!ROLES_VALIDES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role invalide'
+      });
+    }
+
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { email: emailNormalized }
     });
 
     if (existingUser) {
@@ -100,12 +140,12 @@ export const register = async (req: Request, res: Response) => {
 
     // Générer un mot de passe temporaire sécurisé
     const tempPassword = generateTemporaryPassword();
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+    const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
 
     // Créer l'utilisateur dans la base de données
     const user = await prisma.user.create({
       data: {
-        email,
+        email: emailNormalized,
         password: hashedPassword,
         nom,
         prenom,
@@ -115,7 +155,7 @@ export const register = async (req: Request, res: Response) => {
         directionId: directionId || null,
         mustChangePassword: true,
         actif: true,
-        
+
       }
     });
 
@@ -147,9 +187,9 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
-
+// ============================================================
 // POUR TOUS LES UTILISATEURS - CONNEXION
-
+// ============================================================
 
 /**
  * Connexion à l'application
@@ -165,8 +205,11 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
+    //  Normalisation de l'email, cohérente avec `register`
+    const emailNormalized = String(email).trim().toLowerCase();
+
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: emailNormalized },
       include: {
         direction: {
           select: { id: true, code: true, nom: true }
@@ -174,7 +217,13 @@ export const login = async (req: Request, res: Response) => {
       }
     });
 
-    if (!user) {
+    //  CORRECTION SÉCURITÉ : timing attack / énumération d'utilisateurs.
+    // On exécute TOUJOURS un bcrypt.compare, même si l'utilisateur n'existe
+    // pas (contre un hash factice), pour que le temps de réponse ne révèle
+    // pas si l'email est enregistré dans le système.
+    const isMatch = await bcrypt.compare(password, user?.password || DUMMY_BCRYPT_HASH);
+
+    if (!user || !isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Email ou mot de passe incorrect'
@@ -185,14 +234,6 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         message: 'Compte désactivé. Contactez l\'administrateur.'
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Email ou mot de passe incorrect'
       });
     }
 
@@ -241,8 +282,9 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
+// ============================================================
 // CHANGEMENT DE MOT DE PASSE
-
+// ============================================================
 
 /**
  * Changer le mot de passe (première connexion ou volontaire)
@@ -286,7 +328,7 @@ export const changePassword = async (req: Request, res: Response) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
     await prisma.user.update({
       where: { id: userId },
@@ -310,8 +352,9 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
+// ============================================================
 // PROFIL
-
+// ============================================================
 
 /**
  * Récupérer le profil de l'utilisateur connecté

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Installer les dependances
+        run: npm ci
+        working-directory: backend
+
+      - name: Verifier le typage TypeScript
+        run: npx tsc --noEmit
+        working-directory: backend
+
+      - name: Lancer les tests
+        run: npm test
+        working-directory: backend
+
+  test-ia-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: ia_service/requirements.txt
+
+      - name: Cache modeles HuggingFace
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ hashFiles('ia_service/requirements.txt') }}
+
+      - name: Installer les dependances
+        run: pip install -r requirements.txt
+        working-directory: ia_service
+
+      - name: Lancer les tests
+        run: pytest
+        working-directory: ia_service
+
+  prisma-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Installer les dependances
+        run: npm ci
+        working-directory: backend
+
+      - name: Valider le schema Prisma
+        run: npx prisma validate
+        working-directory: backend
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scanner les secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  

@@ -1,40 +1,48 @@
 import { Router } from 'express';
+import { protect, authorize, verifierTokenValidation, protectOrToken } from '../middlewares/auth';
+import { validationRateLimit } from '../middlewares/rateLimiter';
 import {
-  getUsers,
-  getUserById,
-  updateUser,
-  updateOwnProfile,
-  toggleUserStatus,
-  deleteUser,
-  resendInvite,
-  resetPassword,
-  getCurrentUser,
-  getUserByRole,
-  getUserByRoleAndDirection,
-} from '../controllers/user.controller';
-import { protect, authorize } from '../middlewares/auth';
+  getDemandes,
+  getDemandeById,
+  createDemande,
+  updateDemande,
+  deleteDemande,
+  submitDemande,
+  validerDemande,
+  getDemandeForN8n,
+  updateDemandeStatutN8n,
+  checkRelance,
+  relancerManuellement
+} from '../controllers/demandeController';
 
 const router = Router();
 
-// n8n internal route - BEFORE protect middleware
-router.get('/by-role/:role', getUserByRole);
-router.get('/by-role-direction/:role/:directionId', getUserByRoleAndDirection);
-// protect applies to everything below
+// ── Routes internes n8n (AVANT protect — pas de JWT) ──────────────────
+router.get('/internal/:id', getDemandeForN8n);
+router.patch('/internal/:id/statut', updateDemandeStatutN8n);
+router.post('/internal/:id/check-relance', checkRelance);
+
+// ── Route publique avec token de validation ─────────────────────────────
+router.get('/validation/:id', validationRateLimit, verifierTokenValidation, getDemandeById);
+
+// ── Route avec authentification OU token ───────────────────────────────
+router.get('/secure/:id', validationRateLimit, protectOrToken, getDemandeById);
+
+// ── Toutes les routes suivantes nécessitent un JWT valide ─────────────
 router.use(protect);
 
-// Routes accessible to ALL connected users
-router.get('/profile', getCurrentUser);
-router.patch('/profile', updateOwnProfile);
+// CRUD standard
+router.get('/', getDemandes);
+router.post('/', createDemande);
 
-// Routes reserved for SUPER_ADMIN only
-router.use(authorize('SUPER_ADMIN'));
-router.get('/', getUsers);
-router.get('/:id', getUserById);
-router.put('/:id', updateUser);
-router.patch('/:id', updateUser);
-router.patch('/:id/toggle-status', toggleUserStatus);
-router.post('/:id/resend-invite', resendInvite);
-router.post('/:id/reset-password', resetPassword);
-router.delete('/:id', deleteUser);
+router.get('/:id', getDemandeById);
+router.put('/:id', updateDemande); 
+router.delete('/:id', deleteDemande);
+
+// Circuit de validation
+router.post('/:id/submit', submitDemande);
+router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); 
+
+router.patch('/:id/valider', verifierTokenValidation, validerDemande);
 
 export default router;

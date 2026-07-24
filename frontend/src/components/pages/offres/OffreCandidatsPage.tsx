@@ -431,10 +431,10 @@ export function OffreCandidatsPage({ offreId }: OffreCandidatsPageProps) {
             {/* Distribution */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
               {[
-                { label: 'Entretien',        count: classifResult.resume.ENTRETIEN,       color: '#16a34a' },
-                { label: 'Pré-sélectionnée', count: classifResult.resume.PRESELECTIONNEE, color: '#2563eb' },
-                { label: 'Nouvelle',          count: classifResult.resume.NOUVELLE,        color: '#d97706' },
-                { label: 'Refusée',           count: classifResult.resume.REFUSEE,         color: '#dc2626' },
+               { label: 'Entretien',        count: classifResult.resume?.ENTRETIEN ?? 0,       color: '#16a34a' },
+{ label: 'Pré-sélectionnée', count: classifResult.resume?.PRESELECTIONNEE ?? 0, color: '#2563eb' },
+{ label: 'Nouvelle',          count: classifResult.resume?.NOUVELLE ?? 0,        color: '#d97706' },
+{ label: 'Refusée',           count: classifResult.resume?.REFUSEE ?? 0,         color: '#dc2626' },
               ].map(item => (
                 <div key={item.label} style={{ padding: '10px 14px', borderRadius: 8, border: `1px solid ${item.color}22`, background: `${item.color}0d` }}>
                   <div style={{ fontSize: 22, fontWeight: 700, color: item.color }}>{item.count}</div>
@@ -449,10 +449,10 @@ export function OffreCandidatsPage({ offreId }: OffreCandidatsPageProps) {
                 SEUILS CALCULÉS SUR CE POOL
               </div>
               {[
-                { label: 'Entretien (85e percentile)',      value: classifResult.seuils.entretien },
-                { label: 'Pré-sélection (60e percentile)', value: classifResult.seuils.preselection },
-                { label: 'Nouvelle (35e percentile)',       value: classifResult.seuils.nouvelle },
-                { label: 'Plancher absolu',                 value: classifResult.seuils.plancher },
+               { label: 'Entretien (85e percentile)',      value: classifResult.seuils?.entretien ?? 0 },
+{ label: 'Pré-sélection (60e percentile)', value: classifResult.seuils?.preselection ?? 0 },
+{ label: 'Nouvelle (35e percentile)',       value: classifResult.seuils?.nouvelle ?? 0 },
+{ label: 'Plancher absolu',                 value: classifResult.seuils?.plancher ?? 0 },
               ].map(s => (
                 <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--border-light)' }}>
                   <span>{s.label}</span>

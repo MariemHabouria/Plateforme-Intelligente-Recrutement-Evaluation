@@ -396,3 +396,27 @@ export interface EvaluationPE {
   decisionManager?: string;
   salaire?: string;
 }
+// NOTIFICATIONS (header)
+
+export interface Notification {
+  id: string;
+  type: string;
+  titre: string;
+  message: string;
+  lienAction?: string | null;
+  lu: boolean;
+  luAt?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  createdAt: string;
+}
+
+
+// RECHERCHE GLOBALE (header)
+
+export interface SearchResults {
+  demandes: Pick<Demande, 'id' | 'reference' | 'intitulePoste' | 'statut'>[];
+  candidats: Pick<Candidature, 'id' | 'reference' | 'nom' | 'prenom' | 'statut'>[];
+  offres: Pick<OffreEmploi, 'id' | 'reference' | 'intitule' | 'statut'>[];
+  contrats: Pick<Contrat, 'id' | 'reference' | 'typeContrat' | 'statut'>[];
+}

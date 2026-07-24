@@ -3,16 +3,33 @@
 # Fix 5a : ajout "Ingenieur IA / Machine Learning" dans _SEED_OFFRES
 # Fix 5b : endpoint matching-inverse retourne seuil_utilise dans la reponse
 # Fix 5c : _fetch_offre utilise les donnees BDD en priorite pour description/profilRecherche
+# Fix 6  : _validate_cv_path traite cv_path comme relatif a UPLOAD_DIR
+# Fix 7  : PERFORMANCE — deux causes de la latence/serialisation sous charge :
+#          (a) parse_cv() et cv_scorer.scorer() sont du code synchrone CPU-bound
+#              (LightGBM, spaCy, sentence-transformers) appele directement dans
+#              une route "async def" -> ca bloque tout l'event loop, donc les
+#              requetes concurrentes s'executent EN SERIE au lieu d'en parallele.
+#              Fix : ces appels passent maintenant par asyncio.to_thread(), qui
+#              les execute dans un thread pool sans geler l'event loop.
+#          (b) chaque appel BDD ouvrait une nouvelle connexion asyncpg.connect()
+#              (couteux + instable sous charge concurrente, cause des erreurs
+#              SQL intermittentes observees en test de charge). Fix : un pool
+#              de connexions cree une fois au demarrage (voir main.py) et
+#              reutilise pour chaque requete, recupere via request.app.state.db_pool.
 
 import os
 import json
 import secrets
 import logging
+import asyncio
 import asyncpg
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, BackgroundTasks, Form, UploadFile, File
+from fastapi import (
+    APIRouter, Depends, Header, HTTPException, BackgroundTasks,
+    Form, UploadFile, File, Request,
+)
 
 from ..schemas import (
     ScoringRequest, ScoringResponse,
@@ -42,8 +59,21 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/uploads")).resolve()
 
 
 def _validate_cv_path(cv_path: str) -> Path:
+    """
+    cv_path est envoye par le backend Node sous forme relative
+    (ex: "/uploads/cv/xxx.pdf" ou "uploads/cv/xxx.pdf" ou "cv/xxx.pdf").
+    On le normalise et on le joint a UPLOAD_DIR plutot que de le
+    traiter comme deja absolu (ce qui casse sur Windows : un chemin
+    commencant par "/" se resout par rapport au lecteur courant,
+    pas a la racine du filesystem).
+    """
+    relative = cv_path.replace("\\", "/").lstrip("/")
+
+    if relative.lower().startswith("uploads/"):
+        relative = relative[len("uploads/"):]
+
     try:
-        p = Path(cv_path).resolve()
+        p = (UPLOAD_DIR / relative).resolve()
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=f"Chemin CV invalide : {e}")
 
@@ -59,6 +89,11 @@ def _validate_cv_path(cv_path: str) -> Path:
         raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont acceptes")
 
     return p
+
+
+def _get_pool(request: Request) -> Optional[asyncpg.Pool]:
+    """Recupere le pool asyncpg partage cree au demarrage (voir main.py lifespan)."""
+    return getattr(request.app.state, "db_pool", None)
 
 
 # ── Catalogue seed ────────────────────────────────────────────────────────────
@@ -242,10 +277,14 @@ def _offre_from_seed(offre_id: str, intitule: str, reference: str) -> OffreInput
     )
 
 
-async def _fetch_offre(offre_id: str) -> OffreInput:
+async def _fetch_offre(pool: Optional[asyncpg.Pool], offre_id: str) -> OffreInput:
+    if pool is None:
+        if DEV_MODE:
+            return _offre_from_seed(offre_id, "", f"REF-{offre_id[:8] if offre_id else 'MOCK'}")
+        raise HTTPException(status_code=503, detail="Pool PostgreSQL indisponible")
+
     try:
-        conn = await asyncpg.connect(DATABASE_URL, timeout=5)
-        try:
+        async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT
@@ -263,8 +302,6 @@ async def _fetch_offre(offre_id: str) -> OffreInput:
                 """,
                 offre_id,
             )
-        finally:
-            await conn.close()
 
         if not row:
             log.warning(f"Offre {offre_id} non trouvee en BDD")
@@ -335,13 +372,10 @@ async def _fetch_offre(offre_id: str) -> OffreInput:
         log.error(f"Erreur SQL lors du chargement de l'offre: {e}")
         if DEV_MODE:
             try:
-                conn2 = await asyncpg.connect(DATABASE_URL, timeout=5)
-                try:
+                async with pool.acquire() as conn2:
                     minimal = await conn2.fetchrow(
                         "SELECT intitule FROM offres WHERE id = $1", offre_id
                     )
-                finally:
-                    await conn2.close()
                 intitule_found = minimal['intitule'] if minimal else ""
                 return _offre_from_seed(offre_id, intitule_found, f"REF-{offre_id[:8]}")
             except Exception as e2:
@@ -350,13 +384,16 @@ async def _fetch_offre(offre_id: str) -> OffreInput:
         raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
 
 
-async def _fetch_candidatures_passives() -> List[Dict[str, Any]]:
+async def _fetch_candidatures_passives(pool: Optional[asyncpg.Pool]) -> List[Dict[str, Any]]:
     if DEV_MODE and not DATABASE_URL:
         return []
+    if pool is None:
+        if DEV_MODE:
+            return []
+        raise HTTPException(status_code=503, detail="Pool PostgreSQL indisponible")
 
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
+        async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT id, nom, prenom, email,
@@ -369,8 +406,6 @@ async def _fetch_candidatures_passives() -> List[Dict[str, Any]]:
                 LIMIT 500
                 """
             )
-        finally:
-            await conn.close()
 
         result = []
         for r in rows:
@@ -410,12 +445,11 @@ async def _fetch_candidatures_passives() -> List[Dict[str, Any]]:
         raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
 
 
-async def _persist_scoring(candidature_id: str, resultat, cv_texte_brut: str = "") -> None:
-    if DEV_MODE or not DATABASE_URL:
+async def _persist_scoring(pool: Optional[asyncpg.Pool], candidature_id: str, resultat, cv_texte_brut: str = "") -> None:
+    if DEV_MODE or not DATABASE_URL or pool is None:
         return
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
+        async with pool.acquire() as conn:
             await conn.execute(
                 """
                 UPDATE candidatures
@@ -437,8 +471,6 @@ async def _persist_scoring(candidature_id: str, resultat, cv_texte_brut: str = "
                 cv_texte_brut,
                 candidature_id,
             )
-        finally:
-            await conn.close()
     except Exception as e:
         log.error(f"Erreur persistance scoring: {e}")
 
@@ -446,11 +478,16 @@ async def _persist_scoring(candidature_id: str, resultat, cv_texte_brut: str = "
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/scoring", response_model=ScoringResponse)
-async def scorer_cv(req: ScoringRequest, background_tasks: BackgroundTasks):
+async def scorer_cv(req: ScoringRequest, background_tasks: BackgroundTasks, request: Request):
     validated_path = _validate_cv_path(req.cv_path)
+    pool = _get_pool(request)
 
     try:
-        cv_data = parse_cv(str(validated_path))
+        # Fix 7a : parse_cv() est du CPU-bound synchrone (spaCy, LightGBM,
+        # regex lourds) — l'executer directement dans une route async
+        # bloquerait l'event loop et serialiserait toutes les requetes
+        # concurrentes. to_thread() le deporte dans un thread pool.
+        cv_data = await asyncio.to_thread(parse_cv, str(validated_path))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Impossible de parser le CV : {e}")
 
@@ -467,13 +504,17 @@ async def scorer_cv(req: ScoringRequest, background_tasks: BackgroundTasks):
         texte_brut=cv_data.get('texte_brut', ''),
     )
 
-    offre = await _fetch_offre(req.offre_id)
+    offre = await _fetch_offre(pool, req.offre_id)
     config = await get_config()
-    resultat = cv_scorer.scorer(cv, offre, config)
+
+    # Fix 7a : idem pour le scoring (sentence-transformers / calculs SHAP),
+    # egalement CPU-bound synchrone -> deporte dans un thread.
+    resultat = await asyncio.to_thread(cv_scorer.scorer, cv, offre, config)
 
     if not DEV_MODE:
         background_tasks.add_task(
             _persist_scoring,
+            pool,
             req.candidature_id,
             resultat,
             cv.texte_brut,
@@ -519,11 +560,12 @@ async def scorer_cv(req: ScoringRequest, background_tasks: BackgroundTasks):
 
 
 @router.post("/matching-inverse", response_model=MatchingInverseResponse)
-async def matching_inverse(req: MatchingInverseRequest):
+async def matching_inverse(req: MatchingInverseRequest, request: Request):
     log.info(f"Matching inverse request recu pour offre {req.offre_id}")
+    pool = _get_pool(request)
 
-    offre        = await _fetch_offre(req.offre_id)
-    candidatures = await _fetch_candidatures_passives()
+    offre        = await _fetch_offre(pool, req.offre_id)
+    candidatures = await _fetch_candidatures_passives(pool)
 
     if not candidatures:
         return MatchingInverseResponse(
@@ -531,8 +573,13 @@ async def matching_inverse(req: MatchingInverseRequest):
             n_candidats_total=0, n_shortlist=0, shortlist=[],
         )
 
-    config           = await get_config()
-    shortlist_result = rank_candidates(candidatures, offre, config, top_n=req.top_n)
+    config = await get_config()
+
+    # Fix 7a : rank_candidates fait du calcul CPU-bound sur potentiellement
+    # des centaines de candidatures -> deporte dans un thread.
+    shortlist_result = await asyncio.to_thread(
+        rank_candidates, candidatures, offre, config, req.top_n
+    )
 
     log.info(
         f"Matching termine: {shortlist_result.n_candidats_evalues} candidats evalues, "
@@ -570,7 +617,8 @@ async def parse_cv_endpoint(req: ParseCVRequest):
     validated_path = _validate_cv_path(req.cv_path)
 
     try:
-        cv_data = parse_cv(str(validated_path))
+        # Fix 7a : meme raisonnement, deporte dans un thread.
+        cv_data = await asyncio.to_thread(parse_cv, str(validated_path))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Erreur parsing : {e}")
 
@@ -625,6 +673,7 @@ async def debug_config():
 
 @router.post("/import-candidature")
 async def import_candidature(
+    request: Request,
     offre_id: str = Form(...),
     nom: str = Form(...),
     prenom: str = Form(...),
@@ -637,17 +686,22 @@ async def import_candidature(
     import shutil
     import uuid
 
+    pool = _get_pool(request)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         shutil.copyfileobj(cv_file.file, tmp_file)
         tmp_path = tmp_file.name
 
     try:
-        cv_data = parse_cv(tmp_path)
+        # Fix 7a : deporte dans un thread (CPU-bound).
+        cv_data = await asyncio.to_thread(parse_cv, tmp_path)
         candidature_id = str(uuid.uuid4())
         reference = f"CAND-{uuid.uuid4().hex[:8].upper()}"
 
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
+        if pool is None:
+            raise HTTPException(status_code=503, detail="Pool PostgreSQL indisponible")
+
+        async with pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO candidatures (
@@ -662,8 +716,6 @@ async def import_candidature(
                 cv_data.get('texte_brut', ''),
                 cv_data.get('competences', []),
             )
-        finally:
-            await conn.close()
 
         if background_tasks:
             cv = CVExtrait(
@@ -675,10 +727,10 @@ async def import_candidature(
                 diplomes=cv_data.get('diplomes', []),
                 texte_brut=cv_data.get('texte_brut', ''),
             )
-            offre = await _fetch_offre(offre_id)
+            offre = await _fetch_offre(pool, offre_id)
             config = await get_config()
-            resultat = cv_scorer.scorer(cv, offre, config)
-            background_tasks.add_task(_persist_scoring, candidature_id, resultat, cv.texte_brut)
+            resultat = await asyncio.to_thread(cv_scorer.scorer, cv, offre, config)
+            background_tasks.add_task(_persist_scoring, pool, candidature_id, resultat, cv.texte_brut)
 
         return {
             "success": True,
@@ -687,6 +739,8 @@ async def import_candidature(
             "competences_count": len(cv_data.get('competences', [])),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(f"Erreur import candidature: {e}")
         raise HTTPException(status_code=500, detail=str(e))
