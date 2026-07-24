@@ -23,6 +23,10 @@ jobs:
         run: npm ci
         working-directory: backend
 
+      - name: Generer le client Prisma
+        run: npx prisma generate
+        working-directory: backend
+
       - name: Verifier le typage TypeScript
         run: npx tsc --noEmit
         working-directory: backend
@@ -30,7 +34,6 @@ jobs:
       - name: Lancer les tests
         run: npm test
         working-directory: backend
-
   test-ia-service:
     runs-on: ubuntu-latest
     timeout-minutes: 15
