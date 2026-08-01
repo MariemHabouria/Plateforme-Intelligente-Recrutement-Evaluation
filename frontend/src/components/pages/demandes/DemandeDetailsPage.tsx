@@ -183,11 +183,11 @@ export const DemandeDetailsPage = ({ id: propId }: DemandeDetailsPageProps) => {
   if (!isAuthorizedValidator) return false;
   
   const validatingRoles = ['MANAGER', 'DIRECTEUR', 'DRH', 'DAF', 'DGA', 'DG', 'SUPER_ADMIN'];
-  const userRoleUpper = user.role.toUpperCase();
+  const userRoleUpper = normalizeRole(user.role);   // ← remplace user.role.toUpperCase()
   if (!validatingRoles.includes(userRoleUpper)) return false;
   
   if (demande.statut === 'VALIDEE' || demande.statut === 'REJETEE') return false;
-  if (demande.statut === 'ANNULEE') return false;  // ← ajout
+  if (demande.statut === 'ANNULEE') return false;
   if (demande.statut === 'BROUILLON') return false;
   
   const validationEnCours = demande.validations?.find((v: any) => v.decision === 'EN_ATTENTE');

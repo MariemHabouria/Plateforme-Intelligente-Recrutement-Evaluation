@@ -182,10 +182,10 @@ export const DemandesPage = () => {
     }
   };
 
-  const userRoleUpper = user?.role ? user.role.toUpperCase() : '';
+  const userRoleUpper = normalizeRole(user?.role);
   const isTransversal = ROLES_TRANSVERSAUX.includes(userRoleUpper);
   const isFullAdmin = ROLES_FULL_ADMIN.includes(userRoleUpper);
-
+  
   // --- Options dynamiques : calculées à partir de ce que CET utilisateur voit réellement ---
   const availableStatuts = useMemo(() => {
     const counts: Record<string, number> = {};

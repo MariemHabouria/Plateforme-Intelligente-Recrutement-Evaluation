@@ -476,31 +476,27 @@ export const updateCandidatureStatut = async (req: Request, res: Response) => {
         console.log(' Feedback raw response:', JSON.stringify(feedbackData));
         // Si seuil atteint → déclencher GitHub Actions via n8n webhook
         if (feedbackData.threshold_reached) {
-  console.log('Seuil atteint — declenchement du re-entrainement IA');
+          console.log('Threshold reached — triggering AI retraining');
 
-  const githubRes = await fetch(
-    `https://api.github.com/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/actions/workflows/retrain.yml/dispatches`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ref: 'main' }),
-    }
-  );
+          const githubRes = await fetch(
+            `https://api.github.com/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/actions/workflows/retrain.yml/dispatches`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ ref: 'main' }),
+            }
+          );
 
-  if (githubRes.ok) {
-    console.log('GitHub Actions declenche — re-entrainement lance');
-  } else {
-    const err = await githubRes.text();
-    console.error('Erreur declenchement GitHub Actions:', err);
-  }
-} {
-          console.log(' Seuil atteint — déclenchement du ré-entraînement IA');
-          // n8n s'occupera de déclencher GitHub Actions
-          // (le webhook n8n est configuré séparément)
+          if (githubRes.ok) {
+            console.log('GitHub Actions triggered — retraining started');
+          } else {
+            const err = await githubRes.text();
+            console.error('Error triggering GitHub Actions:', err);
+          }
         }
 
       } catch (err) {
