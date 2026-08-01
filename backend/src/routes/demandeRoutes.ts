@@ -42,6 +42,5 @@ router.delete('/:id', deleteDemande);
 router.post('/:id/submit', submitDemande);
 router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); 
 
-router.patch('/:id/valider', verifierTokenValidation, validerDemande);
-
+router.patch('/:id/valider', protectOrToken, validerDemande);
 export default router;

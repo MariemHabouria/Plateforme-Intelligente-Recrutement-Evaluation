@@ -641,14 +641,26 @@ export const submitDemande = async (req: Request, res: Response) => {
 
 
 // VALIDER DEMANDE
+// VALIDER DEMANDE
 
 export const validerDemande = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { decision, commentaire, disponibilites } = req.body;
-    const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
-    const userDirectionId = (req as any).user.directionId;
+
+    // Support des deux flux d'authentification :
+    // - JWT (utilisateur connecte dans l'app) -> req.user peuple par `protect`
+    // - Token de validation (lien email) -> req.validationToken peuple par `verifierTokenValidation`
+    const authUser = (req as any).user;
+    const validationToken = (req as any).validationToken;
+
+    const acteurId = authUser?.id ?? validationToken?.acteurId;
+    const userRole = authUser?.role ?? validationToken?.role;
+    const userDirectionId = authUser?.directionId ?? null;
+
+    if (!acteurId) {
+      return sendForbidden(res, 'Authentification requise pour valider cette demande');
+    }
 
     const demande = await prisma.demandeRecrutement.findUnique({
       where: { id },
@@ -664,12 +676,12 @@ export const validerDemande = async (req: Request, res: Response) => {
     });
 
     if (!demande) return sendNotFound(res, 'Demande non trouvee');
-        if (demande.statut === 'ANNULEE') {
+    if (demande.statut === 'ANNULEE') {
       return sendError(res, 'Cette demande a ete annulee. Le DRH doit la relancer avant toute nouvelle validation.', 400);
     }
 
     const validationEnCours = demande.validations[0];
-    if (!validationEnCours || validationEnCours.acteurId !== userId) {
+    if (!validationEnCours || validationEnCours.acteurId !== acteurId) {
       return sendForbidden(res, "Vous n'etes pas le validateur de cette etape");
     }
 
@@ -679,7 +691,7 @@ export const validerDemande = async (req: Request, res: Response) => {
         disponibilites.map((d: any) =>
           prisma.disponibiliteInterviewer.create({
             data: {
-              userId, demandeId: id,
+              userId: acteurId, demandeId: id,
               date: new Date(d.date), heureDebut: d.heureDebut, heureFin: d.heureFin,
               reservee: false
             }
@@ -689,11 +701,15 @@ export const validerDemande = async (req: Request, res: Response) => {
       console.log(`${userRole} a ajoute ${disponibilites.length} disponibilite(s) lors de sa validation`);
     }
 
-    if (userRole === 'DIRECTEUR' && userDirectionId !== demande.directionId) {
+    // Ces controles supplementaires ne s'appliquent que dans le flux JWT :
+    // via le lien email, l'appartenance a deja ete prouvee par
+    // validationEnCours.acteurId === acteurId, et userDirectionId n'est pas
+    // disponible dans req.validationToken.
+    if (authUser && userRole === 'DIRECTEUR' && userDirectionId !== demande.directionId) {
       return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre propre direction');
     }
 
-    if (userRole === 'MANAGER' && demande.managerId !== userId) {
+    if (authUser && userRole === 'MANAGER' && demande.managerId !== acteurId) {
       return sendForbidden(res, 'Vous ne pouvez valider que les demandes de votre equipe');
     }
 
@@ -707,7 +723,7 @@ export const validerDemande = async (req: Request, res: Response) => {
     });
 
     await createAuditLog(
-      userId,
+      acteurId,
       decision === 'Validee' ? 'VALIDATE_DEMANDE' : 'REJECT_DEMANDE',
       'DemandeRecrutement', demande.id,
       `${decision === 'Validee' ? 'Validation' : 'Rejet'} de l'etape ${validationEnCours.niveauEtape} de la demande ${demande.reference}`,
@@ -739,7 +755,7 @@ export const validerDemande = async (req: Request, res: Response) => {
         data: { statut: 'VALIDEE' as any, valideeAt: new Date(), etapeActuelle: nouvellesEtapesValidees }
       });
 
-      await createAuditLog(userId, 'VALIDATE_DEMANDE_FINAL', 'DemandeRecrutement', demande.id,
+      await createAuditLog(acteurId, 'VALIDATE_DEMANDE_FINAL', 'DemandeRecrutement', demande.id,
         `Validation finale de la demande ${demande.reference}`);
 
       triggerDecisionCircuit({
@@ -798,7 +814,6 @@ export const validerDemande = async (req: Request, res: Response) => {
     sendError(res, 'Erreur lors de la validation');
   }
 };
-
 
 // ENDPOINTS N8N INTERNES
 

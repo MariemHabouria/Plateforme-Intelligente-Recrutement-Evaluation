@@ -23,7 +23,7 @@ const getNiveauLabel = (niveau: string): string => {
     'EMPLOYE': 'Employe',
     'CADRE_DEBUTANT': 'Cadre debutant',
     'CADRE_CONFIRME': 'Cadre confirme',
-    'CADRE_SUPERIEUR': 'Cadre superieur',
+    'CADRE_SUPERIEUR': 'Cadre superieurd',
     'STRATEGIQUE': 'Strategique'
   };
   return labels[niveau] || niveau;

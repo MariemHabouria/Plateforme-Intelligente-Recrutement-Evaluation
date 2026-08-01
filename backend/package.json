@@ -23,6 +23,8 @@
     "audit": "ts-node src/scripts/auditCoherence.ts"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.9.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "autocannon": "^8.0.0",
@@ -30,7 +32,6 @@
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "express-rate-limit": "^8.6.0",
     "express-validator": "^7.0.1",
@@ -64,6 +65,7 @@
     "@types/sequelize": "^4.28.20",
     "@types/supertest": "^7.2.1",
     "@types/uuid": "^9.0.7",
+    "dotenv": "^17.4.2",
     "nodemon": "^3.0.2",
     "pdfkit": "^0.18.0",
     "prisma": "^7.5.0",

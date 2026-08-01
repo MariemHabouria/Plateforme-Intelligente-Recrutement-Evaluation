@@ -28,6 +28,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - uploads_data:/app/uploads
     restart: unless-stopped
 
   redis:
@@ -48,6 +49,7 @@ services:
       - ./ia_service/.env
     volumes:
       - ./ia_service:/app/ia_service
+      - uploads_data:/app/uploads
     restart: unless-stopped
 
   n8n:
@@ -63,3 +65,4 @@ services:
 volumes:
   redis_data:
   n8n_data:
+  uploads_data:

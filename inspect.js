@@ -1,0 +1,11 @@
+﻿const db = require('better-sqlite3')('/home/node/.n8n/database.sqlite');
+console.log("=== USERS ===");
+console.log(db.prepare('SELECT id, email, role FROM user').all());
+console.log("=== WORKFLOWS ===");
+console.log(db.prepare('SELECT id, name FROM workflow_entity').all());
+console.log("=== PROJECTS ===");
+console.log(db.prepare('SELECT id, name, type FROM project').all());
+console.log("=== PROJECT RELATIONS ===");
+console.log(db.prepare('SELECT projectId, userId, role FROM project_relation').all());
+console.log("=== SHARED WORKFLOWS ===");
+console.log(db.prepare('SELECT workflowId, projectId FROM shared_workflow').all());

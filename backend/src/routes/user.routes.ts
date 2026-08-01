@@ -1,48 +1,112 @@
 import { Router } from 'express';
-import { protect, authorize, verifierTokenValidation, protectOrToken } from '../middlewares/auth';
-import { validationRateLimit } from '../middlewares/rateLimiter';
+import { 
+  protect, 
+  authorize 
+} from '../middlewares/auth';
+
 import {
-  getDemandes,
-  getDemandeById,
-  createDemande,
-  updateDemande,
-  deleteDemande,
-  submitDemande,
-  validerDemande,
-  getDemandeForN8n,
-  updateDemandeStatutN8n,
-  checkRelance,
-  relancerManuellement
-} from '../controllers/demandeController';
+  getUsers,
+  getUserById,
+  updateUser,
+  deleteUser,
+  toggleUserStatus,
+  resendInvite,
+  resetPassword,
+  updateOwnProfile,
+  getCurrentUser,
+  getUserByRole,
+  getUserByRoleAndDirection
+} from '../controllers/user.controller';
 
 const router = Router();
 
-// ── Routes internes n8n (AVANT protect — pas de JWT) ──────────────────
-router.get('/internal/:id', getDemandeForN8n);
-router.patch('/internal/:id/statut', updateDemandeStatutN8n);
-router.post('/internal/:id/check-relance', checkRelance);
 
-// ── Route publique avec token de validation ─────────────────────────────
-router.get('/validation/:id', validationRateLimit, verifierTokenValidation, getDemandeById);
+// ==================================================
+// ROUTES INTERNES N8N
+// ⚠️ AVANT router.use(protect)
+// ==================================================
 
-// ── Route avec authentification OU token ───────────────────────────────
-router.get('/secure/:id', validationRateLimit, protectOrToken, getDemandeById);
+router.get(
+  '/by-role/:role',
+  getUserByRole
+);
 
-// ── Toutes les routes suivantes nécessitent un JWT valide ─────────────
+router.get(
+  '/by-role/:role/direction/:directionId',
+  getUserByRoleAndDirection
+);
+
+
+// ==================================================
+// ROUTES UTILISATEUR CONNECTÉ (JWT)
+// ==================================================
+
 router.use(protect);
 
-// CRUD standard
-router.get('/', getDemandes);
-router.post('/', createDemande);
 
-router.get('/:id', getDemandeById);
-router.put('/:id', updateDemande); 
-router.delete('/:id', deleteDemande);
+// Profil personnel
+router.get(
+  '/me',
+  getCurrentUser
+);
 
-// Circuit de validation
-router.post('/:id/submit', submitDemande);
-router.post('/:id/relancer', authorize('DRH', 'SUPER_ADMIN'), relancerManuellement); 
+router.put(
+  '/me',
+  updateOwnProfile
+);
 
-router.patch('/:id/valider', verifierTokenValidation, validerDemande);
+
+// ==================================================
+// ADMINISTRATION UTILISATEURS
+// ==================================================
+
+router.get(
+  '/',
+  authorize('SUPER_ADMIN', 'DRH'),
+  getUsers
+);
+
+
+router.get(
+  '/:id',
+  authorize('SUPER_ADMIN', 'DRH'),
+  getUserById
+);
+
+
+router.put(
+  '/:id',
+  authorize('SUPER_ADMIN'),
+  updateUser
+);
+
+
+router.delete(
+  '/:id',
+  authorize('SUPER_ADMIN'),
+  deleteUser
+);
+
+
+router.patch(
+  '/:id/toggle-status',
+  authorize('SUPER_ADMIN'),
+  toggleUserStatus
+);
+
+
+router.post(
+  '/:id/resend-invite',
+  authorize('SUPER_ADMIN'),
+  resendInvite
+);
+
+
+router.post(
+  '/:id/reset-password',
+  authorize('SUPER_ADMIN'),
+  resetPassword
+);
+
 
 export default router;

@@ -520,9 +520,9 @@ export const getUserByRole = async (req: Request, res: Response) => {
   try {
     // n8n internal token check
     const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${process.env.N8N_INTERNAL_TOKEN}`) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+    if (authHeader !== "Bearer kilani-n8n-secret-2026") {
+  return res.status(401).json({ success: false, message: "Unauthorized" });
+}
 
     const { role } = req.params;
 
@@ -557,9 +557,9 @@ export const getUserByRole = async (req: Request, res: Response) => {
 export const getUserByRoleAndDirection = async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${process.env.N8N_INTERNAL_TOKEN}`) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+    if (authHeader !== "Bearer kilani-n8n-secret-2026") {
+  return res.status(401).json({ success: false, message: "Unauthorized" });
+}
 
     const { role, directionId } = req.params;
 

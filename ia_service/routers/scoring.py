@@ -57,20 +57,14 @@ async def require_internal(x_internal_key: str = Header(default="")):
 
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/uploads")).resolve()
 
-
 def _validate_cv_path(cv_path: str) -> Path:
-    """
-    cv_path est envoye par le backend Node sous forme relative
-    (ex: "/uploads/cv/xxx.pdf" ou "uploads/cv/xxx.pdf" ou "cv/xxx.pdf").
-    On le normalise et on le joint a UPLOAD_DIR plutot que de le
-    traiter comme deja absolu (ce qui casse sur Windows : un chemin
-    commencant par "/" se resout par rapport au lecteur courant,
-    pas a la racine du filesystem).
-    """
     relative = cv_path.replace("\\", "/").lstrip("/")
 
-    if relative.lower().startswith("uploads/"):
-        relative = relative[len("uploads/"):]
+    # Retire tout ce qui précède "uploads/", peu importe le préfixe
+    # ("uploads/...", "app/uploads/...", "backend/uploads/...", etc.)
+    idx = relative.lower().find("uploads/")
+    if idx != -1:
+        relative = relative[idx + len("uploads/"):]
 
     try:
         p = (UPLOAD_DIR / relative).resolve()
